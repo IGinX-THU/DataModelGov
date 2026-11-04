@@ -959,6 +959,28 @@
             startPolling();
         }
 
+        /** 状态应用(SSE chg负载与 /status 响应同构 {task, logTail}):SSE活跃期间零status轮询XHR */
+        function applyData(d) {
+            const prev = state.task ? state.task.status : null;
+            if (d && (d.success || d.code === 200) && d.data && d.data.task) {
+                state.task = d.data.task;
+                if (Array.isArray(d.data.logTail) && d.data.logTail.length) state.log = d.data.logTail;
+            }
+            // 准备/执行结束一次性提示:运行态→终态跃迁时弹窗,覆盖确认失败(READY+message)
+            // 与建模失败(RUNNING→FAILED)两类静默场景;终态后轮询自停,不会重复弹
+            const RUN_ST = ['PREPARING', 'RUNNING', 'STOP_REQUESTED'];
+            if (prev && RUN_ST.includes(prev) && state.task && !RUN_ST.includes(state.task.status)) {
+                const st2 = state.task.status, msg = state.task.message || '';
+                if (st2 === 'FAILED') toast('建模执行失败: ' + msg, 'error');
+                else if (st2 === 'READY' && msg.indexOf('失败') >= 0) toast(msg, 'error');
+                else if (st2 === 'READY' && state.task.prepMessage) toast(state.task.prepMessage, 'success');
+                else if (st2 === 'COMPLETED') toast('任务已完成', 'success');
+                else if (st2 === 'STOPPED') toast('已安全停止', 'info');
+            }
+            if (running(state.task)) window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000;
+            else if ((window.__WB_ENGINE_POLL_UNTIL__ || 0) < Date.now()) stopPolling();
+            renderBody();
+        }
         function poll() {
             const t = state.task;
             if (!t || !ctx.project.id) return;
@@ -966,51 +988,38 @@
             window.AppConfig.engineGet(
                 'projects/' + encodeURIComponent(ctx.project.id) + '/tasks/'
                 + encodeURIComponent(t.id) + '/status')
-                .then(resp => {
-                    const prev = state.task ? state.task.status : null;
-                    if (resp && (resp.success || resp.code === 200) && resp.data && resp.data.task) {
-                        state.task = resp.data.task;
-                        if (Array.isArray(resp.data.logTail) && resp.data.logTail.length) state.log = resp.data.logTail;
-                    }
-                    // 准备/执行结束一次性提示:运行态→终态跃迁时弹窗,覆盖确认失败(READY+message)
-                    // 与建模失败(RUNNING→FAILED)两类静默场景;终态后轮询自停,不会重复弹
-                    const RUN_ST = ['PREPARING', 'RUNNING', 'STOP_REQUESTED'];
-                    if (prev && RUN_ST.includes(prev) && state.task && !RUN_ST.includes(state.task.status)) {
-                        const st2 = state.task.status, msg = state.task.message || '';
-                        if (st2 === 'FAILED') toast('建模执行失败: ' + msg, 'error');
-                        else if (st2 === 'READY' && msg.indexOf('失败') >= 0) toast(msg, 'error');
-                        else if (st2 === 'READY' && state.task.prepMessage) toast(state.task.prepMessage, 'success');
-                        else if (st2 === 'COMPLETED') toast('任务已完成', 'success');
-                        else if (st2 === 'STOPPED') toast('已安全停止', 'info');
-                    }
-                    if (running(state.task)) window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000;
-                    else if ((window.__WB_ENGINE_POLL_UNTIL__ || 0) < Date.now()) stopPolling();
-                    renderBody();
-                })
+                .then(resp => applyData(resp))
                 .catch(() => { });
         }
         function startPolling() {
             window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000;
             if (state.es) return;
-            // SSE 通知流为主:chg→poll();失败回退4s定时轮询
+            // SSE 通知流为主:chg负载直接渲染(不再回拉status);失败回退5s定时轮询
             try {
                 const cfg0 = window.AppConfig;
                 const url = cfg0.api.baseURL + '/api/engine/projects/' + encodeURIComponent(ctx.project.id || '')
                     + '/tasks/' + encodeURIComponent(state.task.id) + '/stream?token=' + encodeURIComponent(cfg0.getToken() || '');
                 const es = new EventSource(url);
                 state.es = es;
-                es.addEventListener('chg', () => { window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000; poll(); });
+                es.addEventListener('chg', ev => {
+                    window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000;
+                    try {
+                        const d = JSON.parse(ev.data);
+                        // 服务端task流负载为裸{task,logTail};补成/status同构信封再应用
+                        applyData(d && d.task ? { code: 200, data: d } : d);
+                    } catch (e) { poll(); }
+                });
                 es.addEventListener('end', () => { try { es.close(); } catch (e) { } state.es = null; });
                 es.onerror = () => {
                     try { es.close(); } catch (e) { }
                     if (state.es === es) state.es = null;
-                    if (!state.timer) state.timer = setInterval(poll, 4000);
+                    if (!state.timer) state.timer = setInterval(poll, 5000);
                 };
                 poll();
                 return;
             } catch (e) { /* 降级 */ }
             poll();
-            state.timer = setInterval(poll, 4000);
+            state.timer = setInterval(poll, 5000);
         }
         function stopPolling() {
             if (state.timer) { clearInterval(state.timer); state.timer = null; }
@@ -1518,56 +1527,65 @@
             startPolling();
             renderBody();
         }
+        /** 状态应用(SSE chg负载与 /status 响应同构 {task, logTail}):SSE活跃期间零status轮询XHR */
+        function applyData(d) {
+            const prev = state.task ? state.task.status : null;
+            if (d && (d.success || d.code === 200) && d.data && d.data.task) {
+                state.task = d.data.task;
+                if (Array.isArray(d.data.logTail) && d.data.logTail.length) state.log = d.data.logTail;
+            }
+            // 准备/执行结束一次性提示:运行态→终态跃迁时弹窗,覆盖确认失败(READY+message)
+            // 与建模失败(RUNNING→FAILED)两类静默场景;终态后轮询自停,不会重复弹
+            const RUN_ST = ['PREPARING', 'RUNNING', 'STOP_REQUESTED'];
+            if (prev && RUN_ST.includes(prev) && state.task && !RUN_ST.includes(state.task.status)) {
+                const st2 = state.task.status, msg = state.task.message || '';
+                if (st2 === 'FAILED') toast('建模执行失败: ' + msg, 'error');
+                else if (st2 === 'READY' && msg.indexOf('失败') >= 0) toast(msg, 'error');
+                else if (st2 === 'READY' && state.task.prepMessage) toast(state.task.prepMessage, 'success');
+                else if (st2 === 'COMPLETED') toast('任务已完成', 'success');
+                else if (st2 === 'STOPPED') toast('已安全停止', 'info');
+            }
+            if (running(state.task)) window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000;
+            else if ((window.__WB_ENGINE_POLL_UNTIL__ || 0) < Date.now()) stopPolling();
+            renderBody();
+        }
         function poll() {
             const t = state.task;
             if (!t) return;
             if (!running(t) && (window.__WB_ENGINE_POLL_UNTIL__ || 0) < Date.now()) return;
             window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id) + '/tasks/'
                 + encodeURIComponent(t.id) + '/status')
-                .then(resp => {
-                    const prev = state.task ? state.task.status : null;
-                    if (resp && (resp.success || resp.code === 200) && resp.data && resp.data.task) {
-                        state.task = resp.data.task;
-                        if (Array.isArray(resp.data.logTail) && resp.data.logTail.length) state.log = resp.data.logTail;
-                    }
-                    // 准备/执行结束一次性提示:运行态→终态跃迁时弹窗,覆盖确认失败(READY+message)
-                    // 与建模失败(RUNNING→FAILED)两类静默场景;终态后轮询自停,不会重复弹
-                    const RUN_ST = ['PREPARING', 'RUNNING', 'STOP_REQUESTED'];
-                    if (prev && RUN_ST.includes(prev) && state.task && !RUN_ST.includes(state.task.status)) {
-                        const st2 = state.task.status, msg = state.task.message || '';
-                        if (st2 === 'FAILED') toast('建模执行失败: ' + msg, 'error');
-                        else if (st2 === 'READY' && msg.indexOf('失败') >= 0) toast(msg, 'error');
-                        else if (st2 === 'READY' && state.task.prepMessage) toast(state.task.prepMessage, 'success');
-                        else if (st2 === 'COMPLETED') toast('任务已完成', 'success');
-                        else if (st2 === 'STOPPED') toast('已安全停止', 'info');
-                    }
-                    if (running(state.task)) window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000;
-                    else if ((window.__WB_ENGINE_POLL_UNTIL__ || 0) < Date.now()) stopPolling();
-                    renderBody();
-                }).catch(() => { });
+                .then(resp => applyData(resp)).catch(() => { });
         }
         function startPolling() {
             window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000;
             if (state.es) return;
-            // SSE 通知流为主:chg→poll();失败回退4s定时轮询
+            // SSE 通知流为主:chg负载直接渲染(不再回拉status);失败回退5s定时轮询
             try {
                 const cfg0 = window.AppConfig;
                 const url = cfg0.api.baseURL + '/api/engine/projects/' + encodeURIComponent(ctx.project.id || '')
                     + '/tasks/' + encodeURIComponent(state.task.id) + '/stream?token=' + encodeURIComponent(cfg0.getToken() || '');
                 const es = new EventSource(url);
                 state.es = es;
-                es.addEventListener('chg', () => { window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000; poll(); });
+                es.addEventListener('chg', ev => {
+                    window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000;
+                    try {
+                        const d = JSON.parse(ev.data);
+                        // 服务端task流负载为裸{task,logTail};补成/status同构信封再应用
+                        applyData(d && d.task ? { code: 200, data: d } : d);
+                    } catch (e) { poll(); }
+                });
                 es.addEventListener('end', () => { try { es.close(); } catch (e) { } state.es = null; });
                 es.onerror = () => {
                     try { es.close(); } catch (e) { }
                     if (state.es === es) state.es = null;
-                    if (!state.timer) state.timer = setInterval(poll, 4000);
+                    if (!state.timer) state.timer = setInterval(poll, 5000);
                 };
                 poll();
                 return;
             } catch (e) { /* 降级 */ }
             poll();
-            state.timer = setInterval(poll, 4000);
+            state.timer = setInterval(poll, 5000);
         }
         function stopPolling() {
             if (state.timer) { clearInterval(state.timer); state.timer = null; }

@@ -127,23 +127,30 @@ public class AfoService {
         // 引擎预热(program-run 引擎池同款思路):AFO 会话独占引擎,启动期预启 1 台专属引擎,
         // prepare 直接取用(省 ~100s 冷启动);会话关闭后自动回填
         if (warmEngineEnabled) {
-            warmExecutor.submit(this::startWarmEngine);
+            warmExecutor.submit(() -> startWarmEngine("预热"));
         }
         // 增量数据 SSE 泵(有订阅者才扫文件)
         livePump.scheduleWithFixedDelay(this::pumpLiveSafely, 200, 200, java.util.concurrent.TimeUnit.MILLISECONDS);
     }
 
     private void startWarmEngine() {
+        this.startWarmEngine("预热");
+    }
+
+    /** label 用于区分启动期"预热"与会话结束后的"回填"(日志可读性)。 */
+    private void startWarmEngine(String label) {
+        // 已有预热引擎则跳过:准备期回填与会话结束回填可能先后排队,重复启动会泄漏多余MATLAB进程
+        if (warmEngine != null) return;
         try {
             // 原生库路径注入可能晚于本 Bean 初始化(TC24 池/试车台各自注入);此处幂等补齐
             com.tsinghua.matlab.MatlabNativeLibrary.prepare(null);
             long t0 = System.currentTimeMillis();
             MatlabEngine e = MatlabEngine.startMatlab();
             warmEngine = e;
-            log.info("AFO专属MATLAB引擎预热完成(耗时 {} ms),prepare 将直接取用", System.currentTimeMillis() - t0);
+            log.info("AFO专属MATLAB引擎{}完成(耗时 {} ms),prepare 将直接取用", label, System.currentTimeMillis() - t0);
         } catch (Throwable e) {
             warmEngine = null;
-            log.warn("AFO专属MATLAB引擎预热失败(prepare 时将同步重试): {}", e.getMessage());
+            log.warn("AFO专属MATLAB引擎{}失败(prepare 时将同步重试): {}", label, e.getMessage());
         }
     }
 
@@ -517,10 +524,11 @@ public class AfoService {
         // phase/message 为 Java 生命周期真源;applied/pending/events 来自 status.json
         out.put("phase", s.phase);
         out.put("message", s.message);
-        out.put("applied", st.get("applied"));
-        out.put("pending", st.get("pending"));
-        Object evList = st.get("events");
-        out.put("eventsLen", evList instanceof List ? ((List<?>) evList).size() : 0);
+        // MATLAB jsonencode 对单元素struct数组输出JSON对象而非数组;统一规范成数组(前端 filter/forEach 依赖)
+        out.put("applied", asJsonArray(st.get("applied")));
+        out.put("pending", asJsonArray(st.get("pending")));
+        List<Object> evList = asJsonArray(st.get("events"));
+        out.put("eventsLen", evList.size());
         out.put("events", evList); // 命令回执全量(小数组;前端按 eventsLen 变化刷新表)
         if (stoppedOnGap) {
             Map<String, Object> gap = new LinkedHashMap<>();
@@ -698,6 +706,11 @@ public class AfoService {
             File progCopy = ensureAfoSource(s.projectId);
             writeAdapter(s, progCopy);
             MatlabEngine eng = takeWarmEngine();
+            // 冷启兜底会耗尽预热引擎(启动期预热失败/未就绪时走到这里):
+            // 准备期立即回填,保证下次 prepare 免冷启动,而不是等到会话结束
+            if (warmEngineEnabled && warmEngine == null) {
+                warmExecutor.submit(() -> startWarmEngine("回填"));
+            }
             s.engine = eng;
             s.engineOwned = true;
             try {
@@ -770,19 +783,14 @@ public class AfoService {
         cmd.put("id", id);
         cmd.put("kind", kind);
         cmd.put("value", value);
-        // 身份字段从程序原子写的 status.json 读取,与会话校验一致
-        File sf = new File(s.outputDir, "status.json");
-        if (sf.isFile()) {
-            try {
-                Map<?, ?> st = new com.fasterxml.jackson.databind.ObjectMapper().readValue(sf, Map.class);
-                Object sid = st.get("sessionId");
-                if (sid != null) {
-                    cmd.put("sessionId", String.valueOf(sid));
-                }
-            } catch (Exception ignore) {
-                // 读失败则不带身份字段(会话端仅在携带时校验)
-            }
+        // 身份字段从程序原子写的 status.json 读取,与会话校验一致。
+        // status.json 每个记录步都在 movefile 原子替换,读取瞬间可能撞上替换窗口;
+        // 缺 sessionId 会被 MATLAB 会话按合同拒收(R138实测),故重试+兜底,仍拿不到则不下发
+        String sid = readSessionIdentity(s.outputDir);
+        if (sid == null) {
+            throw new IllegalStateException("无法读取会话身份(status.json/channels.json),命令未下发,请稍后重试");
         }
+        cmd.put("sessionId", sid);
         cmd.put("runId", s.runId);
         File inbox = new File(s.outputDir, "inbox");
         if (!inbox.exists() && !inbox.mkdirs()) throw new IOException("无法创建inbox目录");
@@ -797,6 +805,36 @@ public class AfoService {
         out.put("accepted", true);
         out.put("note", "已写入命令通道;回执见processed_commands(Recorder主步服务)");
         return out;
+    }
+
+    /** 会话身份:优先 status.json(高频发布,重试避开替换窗口),回退 channels.json(准备期一次写入)。 */
+    private static String readSessionIdentity(String outputDir) throws IOException {
+        com.fasterxml.jackson.databind.ObjectMapper om = new com.fasterxml.jackson.databind.ObjectMapper();
+        File sf = new File(outputDir, "status.json");
+        for (int i = 0; i < 5; i++) {
+            if (sf.isFile()) {
+                try {
+                    Object sid = om.readValue(sf, Map.class).get("sessionId");
+                    if (sid != null) return String.valueOf(sid);
+                } catch (Exception ignore) {
+                    // 正在原子替换,稍后重试
+                }
+            }
+            try {
+                Thread.sleep(60);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        File cf = new File(outputDir, "channels.json");
+        if (cf.isFile()) {
+            try {
+                Object sid = om.readValue(cf, Map.class).get("sessionId");
+                if (sid != null) return String.valueOf(sid);
+            } catch (Exception ignore) { /* 理论不发生 */ }
+        }
+        return null;
     }
 
     /** 保存重试(ended/failed后;不重新计算)。 */
@@ -872,7 +910,22 @@ public class AfoService {
     public Map<String, Object> readResult(String projectId, String runId) throws IOException {
         File f = new File(afoOutputDir(projectId, runId), "result.json");
         if (!f.exists()) return null;
-        return new com.fasterxml.jackson.databind.ObjectMapper().readValue(f, Map.class);
+        Map<String, Object> r = new com.fasterxml.jackson.databind.ObjectMapper().readValue(f, Map.class);
+        // 单元素struct数组被jsonencode成对象,前端 eventsList().filter 依赖数组,统一规范
+        r.put("events", asJsonArray(r.get("events")));
+        return r;
+    }
+
+    /** MATLAB jsonencode 对单元素struct数组输出JSON对象而非数组;统一规范成数组。 */
+    private static List<Object> asJsonArray(Object o) {
+        if (o instanceof List) {
+            @SuppressWarnings("unchecked")
+            List<Object> l = (List<Object>) o;
+            return l;
+        }
+        List<Object> l = new ArrayList<>();
+        if (o instanceof Map) l.add(o);
+        return l;
     }
 
     public File resultExcel(String projectId, String runId) throws IOException {
@@ -970,7 +1023,7 @@ public class AfoService {
         }
         // 预热回填:会话结束后自动补 1 台专属引擎,下次 prepare 免冷启动
         if (warmEngineEnabled && warmEngine == null) {
-            warmExecutor.submit(this::startWarmEngine);
+            warmExecutor.submit(() -> startWarmEngine("回填"));
         }
     }
 

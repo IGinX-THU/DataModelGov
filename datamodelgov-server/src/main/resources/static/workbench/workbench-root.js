@@ -190,14 +190,25 @@
                         WB().h('td', null, p.owner || '—'),
                         WB().h('td', { class: 'wb-hint', style: 'word-break:break-all' },
                             p.workdir || p.location || '系统默认目录'),
-                        WB().h('td', { style: 'width:150px;text-align:right;white-space:nowrap' },
+                        WB().h('td', { style: 'width:210px;text-align:right;white-space:nowrap' },
                             WB().h('button', {
-                                class: 'wb-btn wb-btn-primary', style: 'margin-right:10px;padding:4px 14px',
+                                class: 'wb-btn wb-btn-primary', style: 'margin-right:6px;padding:4px 14px',
                                 onclick: ev => {
                                     ev.stopPropagation();
                                     self._enter(TYPE_TO_WORKBENCH[p.type] || 'modeling', p);
                                 }
                             }, '进入'),
+                            WB().h('button', {
+                                class: 'wb-btn wb-btn-outline', style: 'margin-right:6px;padding:4px 10px',
+                                title: '打包项目工作目录并下载(同时备份到 IGinX)',
+                                onclick: ev => {
+                                    ev.stopPropagation();
+                                    const cfg0 = window.AppConfig;
+                                    window.open(cfg0.api.baseURL + '/api/engine/projects/'
+                                        + encodeURIComponent(p.id) + '/download?token='
+                                        + encodeURIComponent(cfg0.getToken() || ''));
+                                }
+                            }, '⬇ 下载'),
                             WB().h('button', {
                                 class: 'wb-btn wb-btn-outline', style: 'padding:4px 14px;color:#b91c1c;border-color:#f3c1c1',
                                 title: '删除该项目(任务/模型/评估/预测/仿真记录一并删除,不可恢复)',

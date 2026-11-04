@@ -92,24 +92,36 @@ public class TestbenchService {
     /* ---------- 一次性任务(F-09/F-10) ---------- */
 
     private final Map<String, TaskRun> taskRuns = new ConcurrentHashMap<>();
-    private final ExecutorService taskExecutor = Executors.newFixedThreadPool(2);
+    /** 任务执行线程池:懒初始化,线程数跟随 matlab.engine.pool-size(下限2,保证准备/提交通道不被计算占满) */
+    private volatile ExecutorService taskExecutor;
 
     @org.springframework.beans.factory.annotation.Value("${matlab.engine.home:}")
     private String matlabHome;
+
+    // 引擎池最大并发数(与 program-run/TC24 接入层同键;此前写死1导致第二个任务排队)
+    @org.springframework.beans.factory.annotation.Value("${matlab.engine.pool-size:4}")
+    private int enginePoolSize;
 
     @org.springframework.beans.factory.annotation.Value("${matlab.engine.enabled:true}")
     private boolean engineEnabled;
 
     private volatile com.tsinghua.matlab.MatlabEnginePool enginePool;
 
-    /** 任务执行引擎池(懒加载,size=1;起动停车/设计点任务串行借用,stdout自动落盘+回调)。 */
+    private synchronized ExecutorService taskExecutor() {
+        if (taskExecutor == null) {
+            taskExecutor = Executors.newFixedThreadPool(Math.max(2, enginePoolSize));
+        }
+        return taskExecutor;
+    }
+
+    /** 任务执行引擎池(懒加载;起动停车/设计点任务并行借用,stdout自动落盘+回调)。 */
     private com.tsinghua.matlab.MatlabEnginePool requirePool() {
         if (!engineEnabled) throw new IllegalStateException("MATLAB引擎被禁用(matlab.engine.enabled=false)");
         if (enginePool == null) {
             synchronized (this) {
                 if (enginePool == null) {
-                    enginePool = new com.tsinghua.matlab.MatlabEnginePool(1, matlabHome);
-                    log.info("试车台接入层 MATLAB 引擎池已创建(懒加载): poolSize=1");
+                    enginePool = new com.tsinghua.matlab.MatlabEnginePool(Math.max(1, enginePoolSize), matlabHome);
+                    log.info("试车台接入层 MATLAB 引擎池已创建(懒加载): poolSize={}", Math.max(1, enginePoolSize));
                 }
             }
         }
@@ -724,7 +736,7 @@ public class TestbenchService {
         r.message = "任务排队中";
         taskRuns.put(taskId, r);
         writeTaskIndex(r);
-        taskExecutor.submit(() -> taskExec(r));
+        taskExecutor().submit(() -> taskExec(r));
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("taskId", taskId);
         out.put("phase", r.phase);
@@ -747,7 +759,7 @@ public class TestbenchService {
             r.finishedAt = null;
         }
         final String pkgName = packageName;
-        taskExecutor.submit(() -> {
+        taskExecutor().submit(() -> {
             try {
                 doSavePackageWork(projectId, r, pkgName);
             } catch (Exception e) {
@@ -847,7 +859,7 @@ public class TestbenchService {
         r.phase = "RUNNING";
         r.message = "提交设计(时间备份后写原选定MDL)";
         writeTaskIndex(r);
-        taskExecutor.submit(() -> designPointCommit(r));
+        taskExecutor().submit(() -> designPointCommit(r));
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("accepted", true);
         return out;

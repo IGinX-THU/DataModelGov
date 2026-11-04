@@ -352,6 +352,10 @@
         }
         const runningLike = () => ['RUNNING', 'PAUSE_REQ', 'PAUSED', 'RESUME_REQ', 'STOP_REQ'].includes(uiState());
         const canCmdPhysics = () => ['RUNNING', 'PAUSED'].includes(uiState());
+        /** 运行中但还没收到任何样本:sim() 正在编译/初始化模型,不是"计算中"。 */
+        const isCompiling = () => uiState() === 'RUNNING' && !(
+            (S.liveBuf && S.liveBuf.time && S.liveBuf.time.length > 0)
+            || (((S.live || {}).currentSimulationTime || 0) > 0));
         const isResultMode = () => !!S.result && ['ENDED', 'READONLY', 'FAILED', 'SAVE_FAILED'].includes(uiState());
         const fmtT = t => (t == null || isNaN(t)) ? '—' : Number(t).toFixed(3) + ' s';
         function loadMode() { return (S.result && S.result.config && S.result.config.loadMode) || S.cfg.loadMode; }
@@ -378,7 +382,12 @@
             if (ev.status === 'rejected') return ['已回退:' + (ev.reason || ''), 'red'];
             return [ev.status || '—', 'gray'];
         }
-        const eventsList = () => (S.result && S.result.events && S.result.events.length) ? S.result.events : ((S.live || {}).events || []);
+        // MATLAB jsonencode 会把单元素struct数组编码成对象而非数组;这里统一规范成数组
+        const asArr = x => Array.isArray(x) ? x : (x && typeof x === 'object' ? [x] : []);
+        const eventsList = () => {
+            const re = asArr(S.result && S.result.events);
+            return re.length ? re : asArr((S.live || {}).events);
+        };
         function eventsTable() {
             const events = eventsList();
             if (!events.length) return h('div', { class: 'wb-hint' }, '本次运行无在线操纵(初始配置见准备记录)。');
@@ -410,7 +419,9 @@
                 READY: ['已就绪', 'teal'], PREPARING: ['准备中', 'gray'], ENDED: ['计算结束', 'gray'],
                 FAILED: ['计算失败', 'red'], SAVE_FAILED: ['保存失败', 'red'], READONLY: ['历史只读', 'gray']
             };
-            const meta = stMap[ui] || ['空闲', 'gray'];
+            // 运行栏状态:sim()编译/初始化期(尚无首帧样本)单独标注,不宣称"计算中"
+            const compiling = ui === 'RUNNING' && isCompiling();
+            const meta = compiling ? ['模型编译初始化中', 'amber'] : (stMap[ui] || ['空闲', 'gray']);
             const curT = typeof live.currentSimulationTime === 'number' ? live.currentSimulationTime
                 : (S.result ? S.result.finalSimulationTime || 0 : 0);
             const dur = S.cfgFrozen ? Number(S.cfgFrozen.duration) : parseFloat(S.cfg.duration) || 0;
@@ -448,6 +459,7 @@
             const save = live.saveState;
             const bits = [];
             bits.push('任务 ' + (runId || '—'));
+            if (compiling) bits.push('正在编译模型与初始化求解器(通常1~2分钟),首帧数据到达后自动进入计算');
             if (live.sampleTime != null) bits.push('最新采样 ' + Number(live.sampleTime).toFixed(1) + ' s');
             bits.push('墙钟耗时单独计量' + (wall != null ? ('（' + (wall >= 90 ? Math.floor(wall / 60) + 'm' + Math.round(wall % 60) + 's' : Number(wall).toFixed(1) + 's') + '）') : ''));
             if (live.publishLive === false) bits.push('实时发布已关闭（Excel仍完整保存）');
@@ -997,6 +1009,8 @@
             if (ui === 'PAUSED') host.appendChild(h('div', { class: 'wb-infobar', style: 'border-left:4px solid #0f766e;margin-bottom:10px' },
                 '已暂停：原实例保留，可检查历史，仿真时间不再推进。任一运行阶段都可请求结束计算；这不是发动机物理停车。'));
             if (ui === 'STOP_REQ') host.appendChild(h('div', { class: 'wb-infobar', style: 'margin-bottom:10px' }, '已请求结束计算；服务点确认前仿真仍可能推进（不强杀进程）。'));
+            if (isCompiling()) host.appendChild(h('div', { class: 'wb-infobar', style: 'border-left:4px solid #b45309;margin-bottom:10px' },
+                '模型编译初始化中：仿真内核正在编译模型与加载求解器（通常1~2分钟），此阶段尚无数据流，属正常等待，无需重复操作。此时提交的暂停/结束将在编译完成后的首个安全点生效。'));
             if (S.connLost) host.appendChild(h('div', { class: 'wb-infobar', style: 'border-left:4px solid #b91c1c;margin-bottom:10px' },
                 '连接待核查：最后心跳 ' + ((S.live || {}).lastHeartbeat || '—') + '。曲线已冻结，不宣称后台已停止；恢复后自动补读。'));
             if (S.gapNotice) host.appendChild(h('div', { class: 'wb-infobar', style: 'border-left:4px solid #b45309;margin-bottom:10px' }, S.gapNotice));
@@ -1382,15 +1396,17 @@
                 if (sys) paintSystemTab(sys);
             }
         }
-        function renderAll() {
+        function paintBar() {
             barHost.innerHTML = '';
             if (uiState() !== 'IDLE' && uiState() !== 'VALIDATE_FAILED') barHost.appendChild(runBar());
+        }
+        function renderAll() {
+            paintBar();
             paintTabs();
             paintBody();
         }
         function lightUpdate() {
-            barHost.innerHTML = '';
-            if (uiState() !== 'IDLE' && uiState() !== 'VALIDATE_FAILED') barHost.appendChild(runBar());
+            paintBar();
             const ae = document.activeElement;
             const editing = ae && (ae.tagName === 'INPUT' || ae.tagName === 'SELECT') && body.contains(ae);
             if (editing) return;
@@ -1476,15 +1492,29 @@
             exitReadonly();
         }
 
-        /* ---------- 轮询与增量通道(状态5s;曲线走SSE推送,拉取兜底;绘图节拍200ms) ---------- */
+        /* ---------- 轮询与增量通道 ---------- */
+        /* SSE 主通道:样本+状态+事件+阶段一并推送,活跃时零轮询。
+         * 兜底:SSE 不可用/断链时启动状态 5s + 增量 200ms 轮询;SSE 恢复后自动停。
+         * 引导:页面打开时启动引导轮询(5s)探测阶段→READY 后 loadCatalog→startLiveChannel。 */
         let pollTimer = null, pullTimer = null, pulling = false, statusBusy = false;
+        let lastBarPaint = 0; // 运行栏轻量刷新节流(避免高频重建DOM影响按钮点击)
         function startLoops() {
             stopLoops();
-            startLiveChannel(); // SSE 主通道;失败自动降级 fallbackPull(状态5s+增量200ms)
+            startBootstrapPoll(); // 引导:探测阶段→加载目录→启动 SSE
+            startLiveChannel();
         }
         function stopLoops() {
             if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
             stopLiveChannel();
+        }
+        function startBootstrapPoll() {
+            if (pollTimer) return;
+            pollTimer = setInterval(() => {
+                if (!S.readonlyRunId && ['PREPARING', 'READY', 'RUNNING', 'PAUSED', 'ENDED', 'FAILED'].includes(S.phase)) refresh();
+            }, 5000);
+        }
+        function stopBootstrapPoll() {
+            if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
         }
         /** 增量通道:SSE 为主(program-run live-stream 同构),失败降级 200ms 拉取。 */
         function startLiveChannel() {
@@ -1506,22 +1536,20 @@
                 es.addEventListener('live', ev => {
                     try {
                         ingestLive(JSON.parse(ev.data));
-                        // 通道可用:停兜底轮询(状态5s+增量200ms),轮询仅作为断链后的恢复路径
-                        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+                        // SSE 活跃:停引导轮询与兜底(状态/事件/阶段已由通道覆盖,零轮询)
+                        stopBootstrapPoll();
                         if (S.pullTimer) { clearInterval(S.pullTimer); S.pullTimer = null; }
                     } catch (e) { /* 坏帧忽略 */ }
                 });
                 es.addEventListener('end', () => { if (S.liveBuf) S.liveBuf.isFinal = true; stopLiveChannel(); });
                 es.addEventListener('err', () => { stopLiveChannel(); fallbackPull(); });
-                es.onerror = () => { stopLiveChannel(); fallbackPull(); };
+                es.onerror = () => { stopLiveChannel(); startBootstrapPoll(); fallbackPull(); };
             } catch (e) { fallbackPull(); }
         }
         function fallbackPull() {
             S.streamMode = 'pull';
             if (!S.pullTimer) S.pullTimer = setInterval(pullLive, 200);
-            if (!pollTimer) pollTimer = setInterval(() => {
-                if (!S.readonlyRunId && ['PREPARING', 'READY', 'RUNNING', 'PAUSED', 'ENDED', 'FAILED'].includes(S.phase)) refresh();
-            }, 5000);
+            startBootstrapPoll();
         }
         function stopLiveChannel() {
             if (S.es) { try { S.es.close(); } catch (e) { /* 已关 */ } S.es = null; }
@@ -1564,6 +1592,8 @@
         /** 增量数据统一入口(SSE 消息与 REST 兜底同构):样本+状态+事件+阶段一次到位。 */
         function ingestLive(d) {
             if (!S.liveBuf) return;
+            const prevUi = uiState(); // 状态摘要更新可能引发按钮态迁移(RUNNING→PAUSED等),先记快照
+            const wasCompiling = isCompiling(); // 编译期→首帧样本到达需要重绘运行栏(编译中→计算中)
             const added = S.liveBuf.append(d, S.liveCols);
             let eventsChanged = false;
             // 阶段迁移(Java 生命周期真源):变更即整页重绘
@@ -1583,9 +1613,10 @@
                 if (d[k] !== undefined) S.live[k] = d[k];
             });
             if (d.events && d.eventsLen !== undefined) {
+                const evs = asArr(d.events);
                 const prevLen = (S.live.events || []).length;
-                if (d.eventsLen !== prevLen || (S.live.events || []).length !== d.eventsLen) {
-                    S.live.events = d.events;
+                if (d.eventsLen !== prevLen || evs.length !== d.eventsLen) {
+                    S.live.events = evs;
                     eventsChanged = true;
                 }
             }
@@ -1598,7 +1629,12 @@
             } else if (!S.liveBuf.gap) { S.gapNotice = ''; S.gapRetries = 0; }
             if (added > 0 || d.hasMore || eventsChanged) refreshRuntimeCharts();
             if (d.isFinal) S.liveBuf.isFinal = true; // 通道保持开启:保存状态仍会变化
-            if (phaseChanged) renderAll();
+            if (phaseChanged || (wasCompiling && added > 0 && !isCompiling()) || uiState() !== prevUi) renderAll(); // 按钮态迁移(暂停/继续/结束)或编译期结束即整页重绘
+            else if (runningLike()) {
+                // SSE稳态运行:进度/仿真时间随数据轻量刷新(图表由refreshRuntimeCharts负责),400ms节流
+                const now = Date.now();
+                if (now - lastBarPaint > 400) { lastBarPaint = now; paintBar(); }
+            }
             else if ((S.tab === 'main' || sysOfTab[S.tab]) && uiState() === 'ENDED') lightUpdate();
         }
         async function pullLive() {
@@ -1677,10 +1713,6 @@
         };
 
         /* ---------- 启动 ---------- */
-        if (window.__WB_AFO_TIMER__) clearInterval(window.__WB_AFO_TIMER__);
-        window.__WB_AFO_TIMER__ = setInterval(() => {
-            if (!S.readonlyRunId && ['PREPARING', 'READY', 'RUNNING', 'PAUSED', 'ENDED', 'FAILED'].includes(S.phase)) refresh();
-        }, 5000);
         loadDisp();
         renderAll();
         refresh();

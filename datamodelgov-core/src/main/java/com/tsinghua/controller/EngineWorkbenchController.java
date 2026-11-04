@@ -88,6 +88,9 @@ public class EngineWorkbenchController {
     @Autowired
     private com.tsinghua.engine.EngineProjectMetaService metaService;
 
+    @Autowired
+    private cn.edu.tsinghua.iginx.session_v2.IginXClient iginxClient;
+
     /* ---------- 项目 ---------- */
 
     /** 项目归属校验:owner 为空视为历史遗留数据,仅管理员可见;非创建人一律拒绝。 */
@@ -318,6 +321,122 @@ public class EngineWorkbenchController {
             return Result.success(out);
         } catch (IOException e) {
             return Result.error("读取项目失败: " + e.getMessage());
+        }
+    }
+
+    @ApiOperation("下载项目(打包工作目录为ZIP;备份副本每次覆盖 program/backup/<pid>/*.zip,备份记录按项目ID覆盖入 IGinX)")
+    @GetMapping("/projects/{pid}/download")
+    @RequirePermission(Permission.READ)
+    public org.springframework.http.ResponseEntity<?> downloadProject(@PathVariable("pid") String pid) {
+        EngineModels.EngineProject p;
+        try {
+            p = store.getProject(pid);
+        } catch (IOException e) {
+            return org.springframework.http.ResponseEntity.status(500)
+                    .body(Result.error("读取项目失败: " + e.getMessage()));
+        }
+        String denied = accessDenied(p);
+        if (denied != null) {
+            return org.springframework.http.ResponseEntity.status(403).body(Result.error(denied));
+        }
+        File root = new File(p.getWorkdir());
+        if (!root.isDirectory()) {
+            return org.springframework.http.ResponseEntity.status(404)
+                    .body(Result.error("项目工作目录不存在: " + root.getAbsolutePath()));
+        }
+        try {
+            // 1) 打包:固定文件名(不带时间戳),每次下载覆盖上一份备份,不累积冗余文件;
+            //    先写 .part 临时文件再 REPLACE_EXISTING 原子覆盖,避免下载到半截包
+            File backups = new File(new File("program", "backup"), pid);
+            if (!backups.isDirectory() && !backups.mkdirs()) {
+                throw new IOException("备份目录创建失败: " + backups.getAbsolutePath());
+            }
+            File zip = new File(backups, safeZipName(p.getName()) + ".zip");
+            File tmp = new File(backups, zip.getName() + ".part");
+            long[] stat = zipDir(root, tmp);
+            java.nio.file.Files.move(tmp.toPath(), zip.toPath(),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+
+            // 2) 备份记录入 IGinX(best-effort:IGinX 不可用不阻断下载);
+            //    id 固定为项目ID → 同一项目每次覆盖同一条记录,不产生历史冗余行
+            try {
+                long ts = System.currentTimeMillis();
+                long bkId;
+                try {
+                    bkId = Long.parseLong(pid);
+                } catch (NumberFormatException ex) {
+                    bkId = Math.abs(pid.hashCode());
+                }
+                com.tsinghua.entity.ProjectBackupEntity rec = com.tsinghua.entity.ProjectBackupEntity.builder()
+                        .id(bkId).projectId(p.getId()).projectName(p.getName())
+                        .owner(com.tsinghua.auth.util.AuthUtil.getCurrentUsername())
+                        .zipName(zip.getName()).zipPath(zip.getAbsolutePath())
+                        .sizeBytes(stat[0]).fileCount(stat[1]).dirCount(stat[2])
+                        .backupTime(ts).build();
+                iginxClient.getWriteClient().writeMeasurement(rec);
+            } catch (Exception e) {
+                log.warn("项目备份记录写入 IGinX 失败(不影响下载): {}", pid, e);
+            }
+
+            // 3) 流式返回 ZIP(文件名 UTF-8 编码,兼容中文项目名)
+            String fname = java.net.URLEncoder.encode(zip.getName(), "UTF-8").replace("+", "%20");
+            return org.springframework.http.ResponseEntity.ok()
+                    .header("Content-Disposition", "attachment; filename*=UTF-8''" + fname)
+                    .header("Content-Type", "application/zip")
+                    .contentLength(zip.length())
+                    .body(new org.springframework.core.io.FileSystemResource(zip));
+        } catch (IOException e) {
+            return org.springframework.http.ResponseEntity.status(500)
+                    .body(Result.error("打包失败: " + e.getMessage()));
+        }
+    }
+
+    /** ZIP 文件名安全化:去路径分隔与非法字符,空则回退项目ID。 */
+    private static String safeZipName(String name) {
+        String s = name == null ? "" : name.trim().replaceAll("[\\\\/:*?\"<>|]", "_");
+        return s.isEmpty() ? "project" : s;
+    }
+
+    /**
+     * 递归打包目录为 ZIP(UTF-8 文件名,支持中文)。
+     * 返回 {ZIP字节数, 文件数, 目录数};跳过无法读取的文件,不中断打包。
+     */
+    private static long[] zipDir(File root, File out) throws IOException {
+        java.util.zip.ZipOutputStream zos = new java.util.zip.ZipOutputStream(
+                Files.newOutputStream(out.toPath()), java.nio.charset.StandardCharsets.UTF_8);
+        long[] stat = new long[3];
+        try {
+            zipInto(zos, root, "", stat);
+        } finally {
+            zos.close();
+        }
+        stat[0] = out.length();
+        return stat;
+    }
+
+    /** zipDir 递归辅助:relPrefix 为空表示根;目录条目以 '/' 结尾保持压缩包内目录结构。 */
+    private static void zipInto(java.util.zip.ZipOutputStream zos, File dir, String relPrefix, long[] stat) throws IOException {
+        File[] children = dir.listFiles();
+        if (children == null) return;
+        for (File f : children) {
+            String rel = relPrefix + f.getName();
+            if (f.isDirectory()) {
+                stat[2]++;
+                zos.putNextEntry(new java.util.zip.ZipEntry(rel + "/"));
+                zos.closeEntry();
+                zipInto(zos, f, rel + "/", stat);
+            } else if (f.isFile()) {
+                try (InputStream in = Files.newInputStream(f.toPath())) {
+                    zos.putNextEntry(new java.util.zip.ZipEntry(rel));
+                    byte[] buf = new byte[8192];
+                    int n;
+                    while ((n = in.read(buf)) >= 0) zos.write(buf, 0, n);
+                    zos.closeEntry();
+                    stat[1]++;
+                } catch (IOException e) {
+                    log.warn("打包跳过不可读文件: {}", f.getAbsolutePath(), e);
+                }
+            }
         }
     }
 
