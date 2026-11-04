@@ -201,12 +201,15 @@
         /* ---------- 目录加载 ---------- */
         async function loadCatalog() {
             let cat = null, hash = null, sid = null;
-            try {
-                const resp = await api('/channels');
-                if (resp && (resp.success || resp.code === 200) && resp.data && Array.isArray(resp.data.channels)) {
-                    cat = resp.data.channels; hash = resp.data.channelCatalogHash || null; sid = resp.data.sessionId || null;
-                }
-            } catch (e) { /* 回退 */ }
+            if (!S.readonlyRunId) {
+                // 只读回看不用当前活动会话的通道目录,统一走结果自带目录
+                try {
+                    const resp = await api('/channels');
+                    if (resp && (resp.success || resp.code === 200) && resp.data && Array.isArray(resp.data.channels)) {
+                        cat = resp.data.channels; hash = resp.data.channelCatalogHash || null; sid = resp.data.sessionId || null;
+                    }
+                } catch (e) { /* 回退 */ }
+            }
             if (!cat && S.result) {
                 if (Array.isArray(S.result.catalog)) { cat = S.result.catalog; hash = S.result.channelCatalogHash || null; sid = S.result.sessionId || null; }
                 else if (Array.isArray(S.result.channels)) cat = specToCatalog(S.result.channels);
@@ -329,7 +332,7 @@
 
         /* ---------- 状态与命令 ---------- */
         function uiState() {
-            if (S.readonlyRunId) return 'READONLY';
+            if (S.readonlyRunId) return S.readonlyFailed ? 'FAILED' : 'READONLY';
             const st = S.live || {};
             const ph = S.phase;
             if (ph === 'PREPARING') return 'PREPARING';
@@ -1628,6 +1631,13 @@
             } catch (e) { toast('启动失败:' + e.message, 'error'); }
         }
         async function closeSession() {
+            if (S.readonlyRunId) {
+                // 只读回看(含失败页面):后端没有需要关闭的活动会话,直接退出只读回到准备页,
+                // 避免把别人正在跑的会话误关掉
+                exitReadonly();
+                toast('已退出回看,可新建运行', 'success');
+                return;
+            }
             const live = S.live || {};
             const msg = live.saveState === 'saved'
                 ? '保存已完成,确认关闭会话并释放实例?'
@@ -1648,7 +1658,7 @@
             } catch (e) { toast('关闭失败:' + e.message, 'error'); }
         }
         function exitReadonly() {
-            S.readonlyRunId = null; S.result = null; resultAcc = null; S.tab = 'main'; S.phase = 'IDLE';
+            S.readonlyRunId = null; S.readonlyFailed = false; S.result = null; resultAcc = null; S.tab = 'main'; S.phase = 'IDLE';
             S.live = null; S.message = ''; S.compare = null; S.compareOverlay = false;
             renderAll();
             refresh();
@@ -1918,6 +1928,7 @@
         /* ---------- 历史只读钩子(与仿真记录页兼容) ---------- */
         async function loadReadonly(runId) {
             S.readonlyRunId = runId;
+            S.readonlyFailed = false;
             S.readonlyLoading = true;
             S.result = null; resultAcc = null;
             S.tab = 'main';
@@ -1929,14 +1940,20 @@
                 const resp = await api('/sessions/' + encodeURIComponent(runId) + '/result');
                 if (resp && (resp.success || resp.code === 200) && resp.data) {
                     S.result = resp.data;
-                    await loadCatalog();
-                    // 冻结配置:历史结果回看时取结果的最终配置(含回灌与双总距映射参数)
-                    S.cfgFrozen = {
-                        duration: parseFloat((S.result.config && S.result.config.duration) || 0),
-                        externalAir: !!(S.result.config && S.result.config.externalAir),
-                        tailToMainPowerRatio: S.result.config && S.result.config.tailToMainPowerRatio,
-                        tailDesignPitchDeg: S.result.config && S.result.config.tailDesignPitchDeg
-                    };
+                    if (resp.data.readonlyFailed || resp.data.phase === 'FAILED') {
+                        // 失败会话只读:进入失败页面展示原因(横幅读取 live.error)
+                        S.readonlyFailed = true;
+                        S.live = Object.assign({}, S.live || {}, { error: resp.data.error || '原因未记录' });
+                    } else {
+                        await loadCatalog();
+                        // 冻结配置:历史结果回看时取结果的最终配置(含回灌与双总距映射参数)
+                        S.cfgFrozen = {
+                            duration: parseFloat((S.result.config && S.result.config.duration) || 0),
+                            externalAir: !!(S.result.config && S.result.config.externalAir),
+                            tailToMainPowerRatio: S.result.config && S.result.config.tailToMainPowerRatio,
+                            tailDesignPitchDeg: S.result.config && S.result.config.tailDesignPitchDeg
+                        };
+                    }
                 } else {
                     toast((resp && resp.message) || '结果尚未生成', 'error');
                     S.readonlyRunId = null;

@@ -991,11 +991,54 @@ public class AfoService {
     /** 单条历史结果(result.json:config/identity/channels/time/values/events/timing)。 */
     public Map<String, Object> readResult(String projectId, String runId) throws IOException {
         File f = new File(afoOutputDir(projectId, runId), "result.json");
-        if (!f.exists()) return null;
+        if (!f.exists()) return readFailedAsResult(projectId, runId);
         Map<String, Object> r = new com.fasterxml.jackson.databind.ObjectMapper().readValue(f, Map.class);
         // 单元素struct数组被jsonencode成对象,前端 eventsList().filter 依赖数组,统一规范
         r.put("events", asJsonArray(r.get("events")));
         return r;
+    }
+
+    /** 失败会话没有result.json:从status.json合成只读失败结果(真实原因+事件+通道目录),
+     *  让历史"打开(只读)"进入失败页面而不是报"结果尚未生成"。 */
+    private Map<String, Object> readFailedAsResult(String projectId, String runId) {
+        try {
+            File dir = afoOutputDir(projectId, runId);
+            File sf = new File(dir, "status.json");
+            if (!sf.exists()) return null;
+            Map<?, ?> st = new com.fasterxml.jackson.databind.ObjectMapper().readValue(sf, Map.class);
+            if (!"failed".equalsIgnoreCase(String.valueOf(st.get("state")))) return null;
+            Map<String, Object> r = new java.util.HashMap<>();
+            r.put("phase", "FAILED");
+            r.put("readonlyFailed", true);
+            r.put("stopReason", String.valueOf(st.get("stopReason")));
+            r.put("config", st.get("initialConfig"));
+            r.put("events", asJsonArray(st.get("events")));
+            r.put("duration", st.get("duration"));
+            // 真实原因:优先MATLAB侧error-report.txt(新会话),回退status.json的error,再回退提示语
+            File ad = new File(dir.getParentFile(), "_work_" + runId + File.separator + "adapter");
+            String err = readMatlabErrorReport(ad);
+            if (err == null) {
+                Object e0 = st.get("error");
+                err = (e0 == null || String.valueOf(e0).isEmpty())
+                        ? "原因未记录(旧版本会话),请查看服务端日志或error-report.txt"
+                        : String.valueOf(e0);
+            }
+            r.put("error", err);
+            // 通道目录:让曲线区能显示部分采样的通道结构(数据本身为空则图上无线)
+            File cf = new File(dir, "channels.json");
+            if (cf.exists()) {
+                try {
+                    Map<?, ?> c = new com.fasterxml.jackson.databind.ObjectMapper().readValue(cf, Map.class);
+                    r.put("catalog", c.get("channels"));
+                    r.put("channelCatalogHash", c.get("hash"));
+                } catch (Exception ignore) { /* 目录缺失不影响失败查看 */ }
+            }
+            File[] xs = dir.listFiles((d, n) -> n.toLowerCase().endsWith(".xlsx"));
+            if (xs != null) for (File x : xs) if (x.getName().startsWith("AFO_")) { r.put("excelName", x.getName()); break; }
+            return r;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /** MATLAB jsonencode 对单元素struct数组输出JSON对象而非数组;统一规范成数组。 */
@@ -1078,8 +1121,12 @@ public class AfoService {
     /** 读取MATLAB侧错误报告(dmg_afo_task catch ME时写adapterDir/error-report.txt)。
      *  滤掉Goto/From匹配、端口未连接等编译警告行,只留真实错误与调用栈,超长截断。 */
     private String readMatlabErrorReport(AfoSession s) {
+        return readMatlabErrorReport(new File(s.adapterDir));
+    }
+
+    private String readMatlabErrorReport(File ad) {
         try {
-            File f = new File(s.adapterDir, "error-report.txt");
+            File f = new File(ad, "error-report.txt");
             if (!f.isFile()) return null;
             String txt = new String(Files.readAllBytes(f.toPath()), StandardCharsets.UTF_8);
             StringBuilder sb = new StringBuilder();
