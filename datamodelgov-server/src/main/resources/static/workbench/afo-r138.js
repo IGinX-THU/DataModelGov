@@ -2475,7 +2475,8 @@
             S.live = S.live || {};
             ['state', 'currentSimulationTime', 'sampleTime', 'sampleSeq', 'publishedSeq',
              'lastHeartbeat', 'saveState', 'saveError', 'publishError', 'applied', 'pending',
-             'pauseRequested', 'stopRequested', 'error'].forEach(k => {
+             'pauseRequested', 'stopRequested', 'error',
+             'progress', 'duration', 'wallSeconds'].forEach(k => {
                 if (d[k] !== undefined) S.live[k] = d[k];
             });
             if (d.events && d.eventsLen !== undefined) {

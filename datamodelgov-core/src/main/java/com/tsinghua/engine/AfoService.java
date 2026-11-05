@@ -594,6 +594,11 @@ public class AfoService {
         out.put("publishedSeq", st.get("publishedSeq"));
         out.put("lastHeartbeat", st.get("lastHeartbeat"));
         out.put("publishLive", st.getOrDefault("publishLive", true));
+        // 进度三元组随live通道透传(status.json原生字段):SSE稳态运行期前端由帧刷新进度条/ETA,
+        // 否则S.live.progress停留在运行前最后一次/status轮询的0,进度条恒0.0%
+        out.put("progress", st.get("progress"));
+        out.put("duration", st.get("duration"));
+        out.put("wallSeconds", st.get("wallSeconds"));
         out.put("publishError", st.get("publishError"));
         out.put("observerError", st.get("observerError"));
         out.put("saveState", st.getOrDefault("saveState", "not_started"));
