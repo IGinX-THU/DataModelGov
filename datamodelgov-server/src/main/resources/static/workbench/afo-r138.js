@@ -514,21 +514,21 @@
         if (!document.getElementById('afo-r138-style')) {
             const st = document.createElement('style');
             st.id = 'afo-r138-style';
-            st.textContent = '@keyframes afoIndet{0%{left:-32%}100%{left:100%}}'
-                + '@keyframes afoBreath{0%,100%{opacity:.45}50%{opacity:.75}}'
-                + '.wb-chart{transition:opacity .45s ease}'
-                + '.afo-compiling .wb-chart{animation:afoBreath 2s ease-in-out infinite}';
+            st.textContent = '@keyframes afoIndet{0%{left:-32%}100%{left:100%}}';
             document.head.appendChild(st);
         }
 
         /* ---------- 页面骨架 ---------- */
         const wrap = h('div', null);
         const barHost = h('div');
+        // 页签+图表区包一层:编译期 loading 遮罩盖这里(不盖运行栏,暂停/结束仍可操作)
+        const midHost = h('div', { style: 'position:relative' });
         const tabHost = h('div', { class: 'wb-tabs' });
         const body = h('div');
+        midHost.appendChild(tabHost);
+        midHost.appendChild(body);
         wrap.appendChild(barHost);
-        wrap.appendChild(tabHost);
-        wrap.appendChild(body);
+        wrap.appendChild(midHost);
 
         const TABS = [['main', '总控'], ['engine', '发动机'], ['control', '控制与负载'], ['fuel', '燃油'], ['oil', '滑油'], ['air', '空气']];
         function paintTabs() {
@@ -1627,22 +1627,30 @@
         }
 
         /* ---------- 渲染 ---------- */
-        /** 编译期过渡条:图表已提前铺好,这里只给一行状态+不确定进度动画,首帧样本到达后消失。 */
-        function compileStrip() {
-            const bar = h('div', {
-                style: 'margin:0 18px 10px;padding:8px 14px;border-radius:6px;background:#f0fdfa;'
-                    + 'border-left:4px solid #b45309;display:flex;align-items:center;gap:12px;font-size:13px;color:#334155'
+        /** 编译期 loading 遮罩:盖住页签+图表区,图表照常提前渲染,首帧样本到达后摘除消失。 */
+        function compileOverlay() {
+            const ov = h('div', {
+                class: 'afo-compile-overlay',
+                style: 'position:absolute;left:0;right:0;top:0;bottom:0;z-index:20;'
+                    + 'background:rgba(248,250,252,.85);display:flex;align-items:flex-start;justify-content:center'
             });
-            bar.appendChild(h('span', { style: 'flex:none;font-weight:600;color:#0f766e' }, '模型编译初始化中'));
-            const track = h('div', { style: 'flex:1;min-width:160px;height:6px;background:#e2e8f0;border-radius:3px;position:relative;overflow:hidden' });
+            const card = h('div', {
+                style: 'margin-top:96px;padding:22px 34px;border:1px solid #e2e8f0;border-radius:10px;background:#fff;'
+                    + 'box-shadow:0 4px 18px rgba(15,23,42,.08);text-align:center;min-width:300px'
+            });
+            card.appendChild(h('div', { style: 'font-size:15px;font-weight:700;color:#0f766e' }, '模型编译初始化中'));
+            const track = h('div', {
+                style: 'margin:14px auto 0;width:240px;height:6px;background:#e2e8f0;border-radius:3px;position:relative;overflow:hidden'
+            });
             track.appendChild(h('div', {
                 style: 'position:absolute;top:0;bottom:0;width:32%;border-radius:3px;'
                     + 'background:linear-gradient(90deg,#0e7490,#22d3ee);animation:afoIndet 1.4s ease-in-out infinite'
             }));
-            bar.appendChild(track);
-            bar.appendChild(h('span', { style: 'flex:none;color:#64748b' },
-                '通常 1~2 分钟；首帧样本到达后自动进入计算，此时提交的暂停/结束在首个安全点生效'));
-            return bar;
+            card.appendChild(track);
+            card.appendChild(h('div', { style: 'margin-top:12px;font-size:12px;color:#64748b' },
+                '正在编译模型与加载求解器（通常 1~2 分钟），首帧样本到达后自动进入计算'));
+            ov.appendChild(card);
+            return ov;
         }
         function paintBody() {
             killCharts();
@@ -1651,7 +1659,7 @@
                 body.appendChild(h('div', { class: 'wb-empty' }, '正在加载历史结果(不启动MATLAB/DLL)…'));
                 return;
             }
-            // 编译期:图表照常提前渲染(空态),只叠过渡动画;同一页签已渲染则保持,避免轮询重启动画
+            // 编译期:图表照常提前渲染(空态),上面盖一个 loading 遮罩;同一页签已渲染则保持,避免轮询重启动画
             const chartTab = (S.tab === 'main' || sysOfTab[S.tab]);
             const compiling = chartTab && isCompiling() && !S.readonlyRunId;
             if (compiling && body.dataset.compile === '1' && body.dataset.compileTab === S.tab) return;
@@ -1665,13 +1673,19 @@
                 const sys = sysOfTab[S.tab];
                 if (sys) paintSystemTab(sys);
             }
-            body.classList.toggle('afo-compiling', compiling);
             if (compiling) {
                 body.dataset.compile = '1';
                 body.dataset.compileTab = S.tab;
-                // 放在页面大标题之后,不抢标题位置
-                body.insertBefore(compileStrip(), body.children[1] || null);
+                midHost.appendChild(compileOverlay());
             }
+        }
+        /** 编译期结束(首帧样本到达):只摘 loading 遮罩并刷新运行栏/曲线,图表实例保持,不整页重建。 */
+        function exitCompileOverlay() {
+            delete body.dataset.compile;
+            delete body.dataset.compileTab;
+            const ov = midHost.querySelector('.afo-compile-overlay');
+            if (ov) ov.remove();
+            paintBar();
         }
         function paintBar() {
             barHost.innerHTML = '';
@@ -1991,7 +2005,8 @@
             }
             if (added > 0 || d.hasMore || eventsChanged) refreshRuntimeCharts();
             if (d.isFinal) S.liveBuf.isFinal = true; // 通道保持开启:保存状态仍会变化
-            if (phaseChanged || (wasCompiling && added > 0 && !isCompiling()) || uiState() !== prevUi) renderAll(); // 按钮态迁移(暂停/继续/结束)或编译期结束即整页重绘
+            if (phaseChanged || uiState() !== prevUi) renderAll(); // 按钮态迁移(暂停/继续/结束)
+            else if (wasCompiling && added > 0 && !isCompiling()) exitCompileOverlay(); // 编译期结束:只摘遮罩+刷新,不整页重建
             else if (runningLike()) {
                 // SSE稳态运行:进度/仿真时间随数据轻量刷新(图表由refreshRuntimeCharts负责),400ms节流
                 const now = Date.now();
