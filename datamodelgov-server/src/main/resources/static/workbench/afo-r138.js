@@ -165,6 +165,7 @@
             follow: true, followDirty: false, windowPreset: '30s', conv: true, // followDirty:关跟随后有新样本(L2)
             compare: null, compareOverlay: false,
             localResume: false, connLost: false, pauseReqAt: null, // 暂停请求提交时刻(30s延迟提示,L3)
+            applyBusy: false, lastSubmit: null, // 规格3.3:物理输入在途提交/最近提交回执(仅桥接显示,生效仍以applied为准)
             es: null, streamMode: '', pullTimer: null,
         };
         S.tab = S.tab || 'main';
@@ -411,9 +412,9 @@
             if (ev.status === 'accepted') {
                 // L4(规格3.3):暂停期间提交的物理输入,发动机未推进,继续后才施加,不显示"待生效"
                 if ((ev.kind === 'np' || ev.kind === 'load') && uiState() === 'PAUSED') return ['已接受，继续后施加', 'amber'];
-                return ['已接受,待生效', 'amber'];
+                return ['已接受，待生效', 'amber'];
             }
-            if (ev.status === 'not_applied') return ['未施加,运行已结束', 'gray'];
+            if (ev.status === 'not_applied') return ['未施加，运行已结束', 'gray'];
             if (ev.status === 'failed') return ['失败:' + (ev.reason || ''), 'red'];
             if (ev.status === 'rejected') return ['已回退:' + (ev.reason || ''), 'red'];
             return [ev.status || '—', 'gray'];
@@ -1255,11 +1256,58 @@
             host.appendChild(rm);
         }
 
-        /** Np 操作条待生效提示文案(与主面板渲染共用)。 */
+        /** 待生效命令:Java把status.json的pending统一规范成数组(单元素对象→[obj],空→[]),
+         *  不能直接当对象读;空数组在JS恒为真,会误判为"永远有待生效项"(规格3.3占位)。 */
+        function pendingOf(live) {
+            const p = (live || {}).pending;
+            if (Array.isArray(p)) return p.length ? p[0] : null;
+            return p || null;
+        }
+        /** 本端已提交、回执未到的事件(按提交编号匹配)。 */
+        function submittedEvent() {
+            const l = S.lastSubmit;
+            if (!l || !l.id) return null;
+            return eventsList().filter(e => e && String(e.id) === String(l.id)).slice(-1)[0] || null;
+        }
+        /** 物理输入占位(规格3.3):后台待生效项 + 本端等待回执的提交(8s兜底防永久锁死)。
+         *  只约束np/load的"施加";暂停、继续、结束计算不受此占位限制。 */
+        function physicsLocked() {
+            if (S.applyBusy) return true;
+            if (pendingOf(S.live)) return true;
+            const l = S.lastSubmit;
+            return !!(l && !submittedEvent() && (Date.now() - l.at) < 8000);
+        }
+        /** 待生效提示:请求值与提交编号取自后台pending,状态与事件表同源。 */
         function pendingHintText(live) {
-            const pending = (live || {}).pending;
-            return '待施加命令：最多1项' + (pending ? '（当前:' + (pending.kind || '') + '）' : '')
-                + (uiState() === 'PAUSED' ? '；暂停中提交在继续后施加' : '');
+            const p = pendingOf(live);
+            if (!p) return '待施加命令：最多1项';
+            return '待施加命令：最多1项（' + cmdText(p) + (p.id ? '，提交编号 ' + p.id : '')
+                + '；' + (uiState() === 'PAUSED' ? '已接受，继续后施加' : '已接受，待生效') + '）';
+        }
+        /** 两个物理"施加"按钮的统一置灰/恢复(就地补丁,不重建页面)。
+         *  文案始终保留"施加",禁用时用置灰+title解释,避免入口看起来消失。 */
+        function paintApplyButtons() {
+            const locked = physicsLocked();
+            ['apply-np', 'apply-load'].forEach(k => {
+                const b = body.querySelector('[data-afo="' + k + '"]');
+                if (b) {
+                    b.disabled = locked;
+                    b.title = locked ? '已有待生效的物理输入命令，暂不能施加' : '';
+                }
+            });
+        }
+        /** 最近一次物理输入提交:提交编号、请求值、状态(接受≠生效,生效值只认applied回执)。 */
+        function lastSubmitText() {
+            const l = S.lastSubmit;
+            if (!l) return '';
+            const ev = submittedEvent();
+            const p = pendingOf(S.live);
+            let st;
+            if (ev) st = evState(ev)[0];
+            else if (p && l.id && String(p.id || '') === String(l.id)) {
+                st = uiState() === 'PAUSED' ? '已接受，继续后施加' : '已接受，待生效';
+            } else st = '已提交，等待后台回执';
+            return '最近提交：提交编号 ' + (l.id || '—') + ' · ' + cmdText(l) + ' · 状态：' + st;
         }
         /** 填充状态提示条(暂停/暂停请求/结束请求/断连/增量异常)。 */
         function fillStateNotices(host, live) {
@@ -1304,12 +1352,10 @@
             if (appliedEl) appliedEl.textContent = '当前采用值与编辑值分开（当前采用: ' + appliedText() + '）';
             const hintEl = body.querySelector('[data-afo="pending-hint"]');
             if (hintEl) hintEl.textContent = pendingHintText(live);
-            const applyBtn = body.querySelector('[data-afo="apply-load"]');
-            if (applyBtn) {
-                const locked = !!live.pending;
-                applyBtn.disabled = locked;
-                applyBtn.textContent = locked ? '有待生效命令' : '施加';
-            }
+            // 规格3.3:同一时刻只允许一项未生效物理输入,有待生效项时两个"施加"一起禁用
+            paintApplyButtons();
+            const subEl = body.querySelector('[data-afo="last-submit"]');
+            if (subEl) subEl.textContent = lastSubmitText();
             const notice = body.querySelector('.afo-state-notice');
             if (notice) fillStateNotices(notice, live);
             // 命令记录小表就地重建,避免为一条事件重建整个主面板与图表
@@ -1338,9 +1384,9 @@
             body.appendChild(host);
             // 操纵区(浅色横条两行)
             const live = S.live || {};
-            const pending = live.pending;
             if (canCmdPhysics()) {
-                const locked = !!pending;
+                // 规格3.3:有待生效命令或本端提交等待回执时,只禁用物理"施加";编辑框与草稿仍可改
+                const locked = physicsLocked();
                 S.npDraft = S.npDraft || S.cfg.npRatio || '1';
                 const lm = loadMode();
                 const strip = h('div', { 'data-afo': 'op-strip', style: 'background:#f0fdf9;border-radius:6px;padding:10px 16px;margin-bottom:14px' });
@@ -1349,11 +1395,18 @@
                 [['0.8', '80%'], ['0.9', '90%'], ['0.95', '95%'], ['1', '100%'], ['1.05', '105%']].forEach(([val, label]) => {
                     row1.appendChild(h('button', {
                         class: 'wb-btn ' + (S.npDraft === val ? 'wb-btn-primary' : 'wb-btn-outline'),
-                        // M3(规格3.3):有待生效命令时仍可编辑下一组数值,仅禁用"施加"提交
+                        // 规格3.3:填写阶段只改草稿,点击前不影响模型;有待生效项时仍可改下一组数值
+                        'data-afo': 'np-opt', 'data-np': val,
                         style: 'min-width:0;padding:4px 14px',
-                        onclick: () => { S.npDraft = val; renderAll(); }
+                        onclick: () => selectNpDraft(val)
                     }, label));
                 });
+                row1.appendChild(h('button', {
+                    'data-afo': 'apply-np', class: 'wb-btn wb-btn-outline', style: 'padding:4px 16px',
+                    disabled: locked ? '' : null,
+                    title: locked ? '已有待生效的物理输入命令，暂不能施加' : null,
+                    onclick: applyNp
+                }, '施加'));
                 row1.appendChild(h('span', { style: 'flex:1' }));
                 row1.appendChild(h('span', { 'data-afo': 'applied-text', style: 'font-size:13px;color:#0f766e' }, '当前采用值与编辑值分开（当前采用: ' + appliedText() + '）'));
                 strip.appendChild(row1);
@@ -1371,12 +1424,17 @@
                 else if (lm === 'pitch') addLoad('总距角', 'afo-load-0', 'deg');
                 else { addLoad('主桨', 'afo-load-0', '6~14'); addLoad('尾桨', 'afo-load-1', '−8~18'); }
                 row2.appendChild(h('button', {
-                    'data-afo': 'apply-load', class: 'wb-btn wb-btn-outline', disabled: locked ? '' : null, style: 'padding:4px 16px',
+                    // 规格3.3:输入框在有待生效命令时保持可编辑(下一组数值),提交由"施加"按钮统一限制
+                    'data-afo': 'apply-load', class: 'wb-btn wb-btn-outline', style: 'padding:4px 16px',
+                    disabled: locked ? '' : null,
+                    title: locked ? '已有待生效的物理输入命令，暂不能施加' : null,
                     onclick: () => applyLoad(lm)
-                }, locked ? '有待生效命令' : '施加'));
+                }, '施加'));
                 row2.appendChild(h('span', { style: 'flex:1' }));
                 row2.appendChild(h('span', { 'data-afo': 'pending-hint', style: 'font-size:13px;color:#334155' }, pendingHintText(live)));
                 strip.appendChild(row2);
+                // 规格3.3:施加后显示提交编号、请求值和状态;接受≠生效,生效值只认applied回执
+                strip.appendChild(h('div', { 'data-afo': 'last-submit', style: 'font-size:12px;color:#475569;margin-top:6px' }, lastSubmitText()));
                 host.appendChild(strip);
             }
             // 状态提示条独立宿主:暂停/继续迁移时就地更新,不必重建整个主面板
@@ -1440,6 +1498,20 @@
             const gm = 0.15 + 0.85 * Math.pow(main / 12, 1.5);
             const gt = 0.15 + 0.85 * Math.pow(Math.abs(tail / design), 1.5);
             return 12 * Math.pow((f * gm + (1 - f) * gt - 0.15) / 0.85, 2 / 3);
+        }
+        /** Np草稿选择:只改编辑值不提交(规格3.3"点击之前不影响模型"),就地换高亮避免整页重建。 */
+        function selectNpDraft(val) {
+            S.npDraft = val;
+            body.querySelectorAll('[data-afo="np-opt"]').forEach(b => {
+                const on = b.getAttribute('data-np') === String(val);
+                b.className = 'wb-btn ' + (on ? 'wb-btn-primary' : 'wb-btn-outline');
+            });
+        }
+        /** Np施加:先检查挡位枚举、再提交;后台接受只入队,生效看applied回执(规格3.3)。 */
+        function applyNp() {
+            const v = String(S.npDraft);
+            if (!['0.8', '0.9', '0.95', '1', '1.05'].includes(v)) { toast('请选择有效的Np挡位（80%/90%/95%/100%/105%）', 'error'); return; }
+            sendCmd('np', parseFloat(v));
         }
         async function applyLoad(lm) {
             const e0 = document.getElementById('afo-load-0');
@@ -1891,22 +1963,36 @@
 
         /* ---------- 动作 ---------- */
         async function sendCmd(kind, value) {
+            const physical = kind === 'np' || kind === 'load';
+            // 规格3.3:同一时刻只允许一项未生效物理输入;暂停/继续/结束计算不受此占位限制
+            if (physical && physicsLocked()) { toast('已有待生效的物理输入命令，暂不能施加', 'info'); return; }
+            if (physical) { S.applyBusy = true; paintApplyButtons(); schedulePatchRunningUi(); } // 提交在途期间同步锁住两个"施加"
             try {
                 // R138 6.2禁重复提交:暂停/继续请求已在途时忽略同Kind命令(防连点造成多重请求)
                 if (kind === 'pause' && uiState() === 'PAUSE_REQ') { toast('暂停请求已在处理中,请等待安全响应点', 'info'); return; }
                 if (kind === 'resume' && uiState() === 'RESUME_REQ') { toast('继续请求已在处理中', 'info'); return; }
                 if (kind === 'stop' && uiState() === 'STOP_REQ') { toast('结束请求已在处理中', 'info'); return; }
-                await apiPost('/command', { kind, value });
+                const resp = await apiPost('/command', { kind, value });
+                const rd = (resp && (resp.data || resp)) || {};
+                if (physical) {
+                    // 规格3.3:记录提交编号/请求值;状态由后台pending/events回执驱动,不本地伪造生效
+                    S.lastSubmit = { id: rd.id ? String(rd.id) : '', kind, value, at: Date.now() };
+                }
                 if (kind === 'resume') { S.localResume = true; S.pauseReqAt = null; }
                 if (kind === 'pause') { S.localResume = false; S.pauseReqAt = Date.now(); } // L3:30s延迟提示计时起点
                 if (kind === 'stop') S.pauseReqAt = null;
                 toast(kind === 'pause' ? '暂停请求已提交,等待安全响应点' : kind === 'resume' ? '继续请求已提交' :
-                    kind === 'stop' ? '结束请求已提交;不强杀进程' : '命令已提交;实际生效以回执为准', 'info');
+                    kind === 'stop' ? '结束请求已提交;不强杀进程'
+                        : '命令已提交' + (S.lastSubmit && S.lastSubmit.id ? '（' + S.lastSubmit.id + '）' : '') + ';实际生效以回执为准', 'info');
                 refresh(); if (S.streamMode !== 'sse') quickPoll();
             } catch (e) { toast('命令失败:' + e.message, 'error'); }
+            finally {
+                if (physical) { S.applyBusy = false; paintApplyButtons(); schedulePatchRunningUi(); }
+            }
         }
         async function startRun() {
             try {
+                S.applyBusy = false; S.lastSubmit = null; S.npDraft = null; // 新会话:清上一次的提交回执与草稿
                 await apiPost('/run', {});
                 toast('仿真已启动', 'success');
                 startLoops();
@@ -1935,6 +2021,7 @@
                 S.liveBuf = null; S.sessionId = null; S.catalog = null; S.byId = null;
                 S.dispIds = null; S.dispPos = null; S.liveCols = null;
                 S.gapNotice = ''; S.liveErr = ''; S.connLost = false; S.pauseReqAt = null;
+                S.applyBusy = false; S.lastSubmit = null;
                 stopLoops();
                 toast('会话已关闭;可新建运行', 'success');
                 renderAll();
@@ -1943,6 +2030,7 @@
         function exitReadonly() {
             S.readonlyRunId = null; S.readonlyFailed = false; S.result = null; resultAcc = null; S.tab = 'main'; S.phase = 'IDLE';
             S.live = null; S.message = ''; S.error = ''; S.compare = null; S.compareOverlay = false;
+            S.applyBusy = false; S.lastSubmit = null;
             renderAll();
             refresh();
         }
