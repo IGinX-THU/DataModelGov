@@ -73,18 +73,17 @@
                         WB().h('div', { class: 'wb-identity-name' }, p.engineId || '—'),
                         WB().h('div', { class: 'wb-identity-meta' }, p.engineDesc || ''),
                         WB().h('div', { class: 'wb-identity-meta' }, p.matlab || 'MATLAB R2019b'),
-                        WB().h('div', { class: 'wb-identity-meta' }, '本地项目'))),
+                        WB().h('div', { class: 'wb-identity-meta' }, '本地运行'))),
                 WB().h('main', { class: 'wb-main' })));
 
-            // 状态栏:MATLAB日志行滚动(左,同旧版program-run footer-log) + 引擎状态(右) + 固定说明
+            // 状态栏:MATLAB日志行滚动(左,同旧版program-run footer-log) + 引擎状态(右)
             app.appendChild(WB().h('footer', { class: 'wb-statusbar' },
                 WB().h('span', {
                     class: 'wb-engine-log',
                     style: 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap',
                     title: '加载中...'
                 }, 'MATLAB 日志加载中...'),
-                WB().h('span', { class: 'wb-engine-status', style: 'flex-shrink:0' }, 'MATLAB 引擎状态查询中...'),
-                WB().h('span', { style: 'flex-shrink:0' }, '界面结构依据 UI-R131 · 程序绑定以 R06 交付包为准')));
+                WB().h('span', { class: 'wb-engine-status', style: 'flex-shrink:0' }, 'MATLAB 引擎状态查询中...')));
             this._startEngineStatusPolling();
 
             this.appendChild(app);

@@ -1011,7 +1011,6 @@ public class AfoService {
             Map<String, Object> r = new java.util.HashMap<>();
             r.put("phase", "FAILED");
             r.put("readonlyFailed", true);
-            r.put("stopReason", String.valueOf(st.get("stopReason")));
             r.put("config", st.get("initialConfig"));
             r.put("events", asJsonArray(st.get("events")));
             r.put("duration", st.get("duration"));
@@ -1025,6 +1024,10 @@ public class AfoService {
                         : String.valueOf(e0);
             }
             r.put("error", err);
+            // 结果页"结束原因"列:异常首行 + Caused by 末尾真实原因;完整报告仍走error字段
+            String summary = failureSummary(err);
+            if (summary == null || summary.startsWith("原因未记录")) summary = String.valueOf(st.get("stopReason"));
+            r.put("stopReason", summary);
             // 部分采样数据:从stream块组装time/values/channels,让只读失败页也能画出失败前的部分曲线
             // (结构与MATLAB侧result.json一致:values[i][gi][j],i=时刻,gi=spec组,j=组内序号)
             File cf = new File(dir, "channels.json");
@@ -1168,7 +1171,8 @@ public class AfoService {
     }
 
     /** 读取MATLAB侧错误报告(dmg_afo_task catch ME时写adapterDir/error-report.txt)。
-     *  滤掉Goto/From匹配、端口未连接等编译警告行,只留真实错误与调用栈,超长截断。 */
+     *  滤掉Goto/From匹配、端口未连接等编译警告行,只留真实错误与调用栈;
+     *  上限20k字符,超长时保留截断标记(前端据此提示)。 */
     private String readMatlabErrorReport(AfoSession s) {
         return readMatlabErrorReport(new File(s.adapterDir));
     }
@@ -1183,7 +1187,7 @@ public class AfoService {
                 String t = line.trim();
                 if (t.startsWith("警告:") || t.startsWith("> In ")) continue;
                 if (t.isEmpty() && sb.length() == 0) continue;
-                if (sb.length() + line.length() > 1600) { sb.append("\n...(报告过长已截断,全文见error-report.txt)"); break; }
+                if (sb.length() + line.length() > 20000) { sb.append("\n...(报告过长已截断,全文见error-report.txt)"); break; }
                 sb.append(line).append('\n');
             }
             String out = sb.toString().trim();
@@ -1191,6 +1195,40 @@ public class AfoService {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    /** 失败原因摘要:异常首行 + 最后一个Caused by块的真实message(供结果页"结束原因"列定位问题);
+     *  完整报告保留在error字段/error-report.txt。 */
+    private String failureSummary(String err) {
+        if (err == null) return null;
+        String text = err.replace("\r", "");
+        String first = null;
+        for (String raw : text.split("\n")) {
+            String t = raw.trim();
+            if (!t.isEmpty()) { first = t; break; }
+        }
+        String last = null;
+        int ci = text.lastIndexOf("Caused by");
+        if (ci >= 0) {
+            boolean headerSeen = false, msgStarted = false;
+            StringBuilder msg = new StringBuilder();
+            for (String raw : text.substring(ci).split("\n")) {
+                String t = raw.trim();
+                if (t.isEmpty()) { if (msgStarted) break; continue; }
+                if (!headerSeen) { headerSeen = true; continue; }
+                if (t.startsWith("错误使用") || t.startsWith("Error using")
+                        || t.startsWith("出错") || t.startsWith("Error in")) {
+                    if (msgStarted) break;
+                    continue;
+                }
+                if (!msgStarted) msgStarted = true; else msg.append(' ');
+                msg.append(t);
+            }
+            if (msgStarted) last = msg.toString();
+        }
+        if (first == null && last == null) return null;
+        if (last == null || last.equals(first)) return first;
+        return first + "；" + last;
     }
 
     /** feval一个session动作:写action配置→feval→读取JSON结果落 outputDir/afo-result.json。 */

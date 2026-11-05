@@ -511,6 +511,7 @@
         function openFailLogModal(text) {
             hideFailTip();
             const full = String(text);
+            const truncated = /报告过长已截断/.test(full);
             let closed = false;
             const prevOverflow = document.body.style.overflow;
             const onKey = e => {
@@ -544,6 +545,7 @@
             mask.appendChild(h('div', { class: 'wb-card', style: 'max-width:760px;width:100%;max-height:calc(100vh - 48px);display:flex;flex-direction:column;box-shadow:0 12px 40px rgba(0,0,0,.28)' },
                 h('div', { class: 'wb-section-title', style: 'margin-bottom:10px' }, '计算失败日志'),
                 h('div', { style: 'max-height:60vh;overflow:auto;overscroll-behavior:contain;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:10px 12px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;line-height:1.6;color:#334155;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-all;user-select:text' }, full),
+                truncated ? h('div', { style: 'margin-top:6px;font-size:12px;color:#b45309' }, '日志过长已截断，完整内容见服务端 error-report.txt') : null,
                 h('div', { class: 'wb-actions-row', style: 'margin-top:14px;justify-content:flex-end' },
                     h('button', { class: 'wb-btn wb-btn-outline', onclick: copy }, '复制日志'),
                     h('button', { class: 'wb-btn wb-btn-primary', onclick: close }, '关闭'))));
@@ -1638,18 +1640,31 @@
             body.appendChild(pageHead('结果与历史'));
             const host = h('div', { style: 'padding:0 18px 16px' });
             body.appendChild(host);
-            if (resultAcc && resultAcc.time.length) {
+            if (S.result && ((resultAcc && resultAcc.time.length) || S.result.phase === 'FAILED' || S.result.readonlyFailed)) {
                 const r = S.result, t = r.timing || {};
                 const runId = S.readonlyRunId || (S.live && S.live.runId);
+                const failed = r.phase === 'FAILED' || r.readonlyFailed === true || String(r.state || '').toLowerCase() === 'failed';
                 host.appendChild(h('div', { style: 'font-weight:700;font-size:15px;margin-bottom:6px' }, '结果摘要'));
                 const early = r.stopReason === 'user_ended_computation';
                 const saveTxt = (S.live && S.live.saveState === 'failed') ? h('span', { style: 'color:#b91c1c' }, '保存失败:' + (S.live.saveError || '') + '(可重试,不重新仿真)') : '已保存';
+                // 结束原因:失败给"异常首行+末尾原因"摘要并提供完整报告入口;正常结束把机器码翻成中文
+                let reasonNode;
+                if (failed) {
+                    reasonNode = h('div', { style: 'white-space:pre-wrap;overflow-wrap:anywhere' }, r.stopReason || r.error || '—');
+                    if (r.error) reasonNode.appendChild(h('div', { style: 'margin-top:4px' },
+                        h('button', { class: 'wb-btn wb-btn-outline', style: 'font-size:12px;padding:1px 8px;line-height:1.4', onclick: () => openFailLogModal(String(r.error)) }, '查看完整失败日志')));
+                } else {
+                    const reasonTxt = early ? '提前结束(用户结束计算;不强制100%)'
+                        : r.stopReason === 'time_limit' ? '达到目标终止时间'
+                        : (r.stopReason || '达到目标终止时间');
+                    reasonNode = h('div', { style: 'white-space:pre-wrap;overflow-wrap:anywhere' }, reasonTxt);
+                }
                 host.appendChild(h('table', { class: 'wb-table' },
                     h('tr', null, ['最终仿真时间', '目标终止时间', '结束原因', '样本数', '保存状态'].map(x => h('th', null, x))),
                     h('tr', null,
-                        h('td', null, Number(r.finalSimulationTime || 0).toFixed(3) + ' s'),
+                        h('td', null, Number(r.finalSimulationTime != null ? r.finalSimulationTime : ((r.time && r.time.length) ? r.time[r.time.length - 1] : 0)).toFixed(3) + ' s'),
                         h('td', null, Number((r.config && r.config.duration) || 0).toFixed(2) + ' s'),
-                        h('td', null, early ? '提前结束(用户结束计算;不强制100%)' : (r.stopReason || '达到时限')),
+                        h('td', { style: 'max-width:420px' }, reasonNode),
                         h('td', null, String((r.time || []).length)),
                         h('td', null, saveTxt))));
                 host.appendChild(h('div', { style: 'font-weight:700;font-size:15px;margin:12px 0 6px' }, '耗时口径（计算结束后的管理等待不计入运行墙钟）'));
@@ -2155,7 +2170,7 @@
         function ensureSessionResult() {
             if (S.result || S._resultLoading || S.readonlyRunId) return;
             const runId = S.live && S.live.runId;
-            if (!runId || S.phase !== 'ENDED') return;
+            if (!runId || (S.phase !== 'ENDED' && S.phase !== 'FAILED')) return;
             S._resultLoading = true;
             api('/sessions/' + encodeURIComponent(runId) + '/result')
                 .then(resp => { if (resp && (resp.success || resp.code === 200) && resp.data) S.result = resp.data; })
