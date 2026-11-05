@@ -2281,6 +2281,10 @@
         }
         function startBootstrapPoll() {
             if (pollTimer) return;
+            // 状态SSE在线时阶段迁移由chg推送覆盖,绝不叠加5s /status轮询。
+            // live流的end/断链处理曾无条件启动本轮询,若chg恰好先到(stopBootstrapPoll扑空),
+            // 之后不再有chg,轮询就与活跃SSE永久并存——故统一在此守卫。
+            if (S.stsEs || S.readonlyRunId) return;
             pollTimer = setInterval(() => {
                 if (!S.readonlyRunId && ['PREPARING', 'READY', 'RUNNING', 'PAUSED', 'ENDED', 'FAILED'].includes(S.phase)) refresh();
             }, 5000);
