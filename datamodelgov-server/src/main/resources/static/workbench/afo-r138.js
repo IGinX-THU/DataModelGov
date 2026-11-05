@@ -142,7 +142,7 @@
     /* ================= 页面 ================= */
     W.pages['testbench.afo'] = (ctx) => {
         const pid = ctx.project.id || '';
-        const api = p => window.AppConfig.engineGet('projects/' + encodeURIComponent(pid) + '/afo' + p);
+        const api = (p, params) => window.AppConfig.engineGet('projects/' + encodeURIComponent(pid) + '/afo' + p, params);
         const apiPost = (p, body) => window.AppConfig.enginePost('projects/' + encodeURIComponent(pid) + '/afo' + p, body || {});
 
         const S = window.__WB_AFO__ = window.__WB_AFO__ || {
@@ -165,6 +165,7 @@
             follow: true, followDirty: false, windowPreset: '30s', conv: true, // followDirty:关跟随后有新样本(L2)
             compare: null, compareOverlay: false,
             localResume: false, connLost: false, pauseReqAt: null, // 暂停请求提交时刻(30s延迟提示,L3)
+            procLost: false, statusOutputDir: null, // D8:心跳长期停止判定"该实例不能续算";D12:会话输出目录(只读)
             applyBusy: false, lastSubmit: null, // 规格3.3:物理输入在途提交/最近提交回执(仅桥接显示,生效仍以applied为准)
             es: null, streamMode: '', pullTimer: null,
         };
@@ -391,7 +392,10 @@
             || (((S.live || {}).currentSimulationTime || 0) > 0));
         const isResultMode = () => !!S.result && ['ENDED', 'READONLY', 'FAILED', 'SAVE_FAILED'].includes(uiState());
         const fmtT = t => (t == null || isNaN(t)) ? '—' : Number(t).toFixed(3) + ' s';
-        function loadMode() { return (S.result && S.result.config && S.result.config.loadMode) || S.cfg.loadMode; }
+        function loadMode() {
+            // D2:负载模式以冻结配置为准(服务端恢复),避免运行中刷新后按错误量纲换算
+            return (S.cfgFrozen && S.cfgFrozen.loadMode) || (S.result && S.result.config && S.result.config.loadMode) || S.cfg.loadMode;
+        }
         function cmdText(ev) {
             const v = ev.value, lm = loadMode();
             switch (ev.kind) {
@@ -572,10 +576,28 @@
             const meta = compiling ? ['模型编译初始化中', 'amber'] : (stMap[ui] || ['空闲', 'gray']);
             const curT = typeof live.currentSimulationTime === 'number' ? live.currentSimulationTime
                 : (S.result ? S.result.finalSimulationTime || 0 : 0);
-            const dur = S.cfgFrozen ? Number(S.cfgFrozen.duration) : parseFloat(S.cfg.duration) || 0;
-            const pct = dur > 0 ? 100 * Math.min(Math.max(curT / dur, 0), 1) : 0;
+            // D2/D3:进度分母优先用服务端 status.json 的 duration/progress(刷新/重开不回落默认配置)
+            const dur = (typeof live.duration === 'number' && isFinite(live.duration) && live.duration > 0) ? Number(live.duration)
+                : (S.cfgFrozen && isFinite(Number(S.cfgFrozen.duration)) && Number(S.cfgFrozen.duration) > 0 ? Number(S.cfgFrozen.duration)
+                    : (parseFloat(S.cfg.duration) || 0));
+            const prog = (typeof live.progress === 'number' && isFinite(live.progress))
+                ? Math.min(Math.max(live.progress, 0), 1)
+                : (dur > 0 ? Math.min(Math.max(curT / dur, 0), 1) : 0);
+            const pct = 100 * prog;
+            // D3:准备/编译阶段没有可靠工作总量 → 不定进度+阶段名,不显示 0.0% 当作确定进度
+            const indet = compiling || ui === 'PREPARING';
+            const stage = compiling ? '模型编译与求解器初始化' : (S.message || '准备中');
             const early = (S.result && S.result.stopReason === 'user_ended_computation') || live.stopReason === 'user_ended_computation';
-            const pctTxt = (ui === 'ENDED' && early) ? Number(pct).toFixed(1) + '%（提前结束）' : Number(pct).toFixed(1) + '%';
+            const pctTxt = indet ? '' : (ui === 'ENDED' && early) ? Number(pct).toFixed(1) + '%（提前结束）' : Number(pct).toFixed(1) + '%';
+            // D3:预计剩余时间;暂停/失联时不给不可靠估计
+            let etaTxt = '';
+            if (!indet && (ui === 'RUNNING')) {
+                if (S.connLost) etaTxt = '预计剩余：暂不可估计（连接待核查）';
+                else if (typeof live.wallSeconds === 'number' && prog > 0 && prog < 1) {
+                    const rem = live.wallSeconds * (1 - prog) / prog;
+                    etaTxt = '预计剩余 ' + (rem >= 90 ? Math.floor(rem / 60) + 'm' + Math.round(rem % 60) + 's' : Math.round(rem) + 's');
+                } else etaTxt = '预计剩余：暂不可估计';
+            } else if (ui === 'PAUSED' || ui === 'RESUME_REQ' || ui === 'PAUSE_REQ') etaTxt = '预计剩余：暂不可估计（暂停中）';
             const runId = S.readonlyRunId || live.runId || (S.result && S.result.runId) || '';
             const wall = typeof live.wallSeconds === 'number' ? live.wallSeconds : (S.result && S.result.timing ? S.result.timing.runWall : null);
             const btn = (label, kind, fn, disabled) => h('button', {
@@ -600,21 +622,34 @@
             }
             const row1 = h('div', { style: 'display:flex;align-items:center;gap:18px;flex-wrap:wrap' },
                 statusEl,
-                h('span', { style: 'font-size:16px' }, '仿真 ' + Number(curT).toFixed(1) + ' / ' + (dur > 0 ? Number(dur).toFixed(1) : '—') + ' s'),
-                h('span', { style: 'font-size:22px;font-weight:700;min-width:86px' }, pctTxt));
+                h('span', { style: 'font-size:16px' }, indet && !curT ? '仿真 —（未开始出数）'
+                    : '仿真 ' + Number(curT).toFixed(1) + ' / ' + (dur > 0 ? Number(dur).toFixed(1) : '—') + ' s'),
+                indet
+                    ? h('span', { style: 'font-size:14px;color:#b45309;min-width:220px' }, '阶段：' + stage + '（无可靠总量，不定进度）')
+                    : h('span', { style: 'font-size:22px;font-weight:700;min-width:86px' }, pctTxt));
+            if (etaTxt) row1.appendChild(h('span', { style: 'font-size:13px;color:' + (S.connLost || ui === 'PAUSED' ? '#b45309' : '#334155') }, etaTxt));
             const track = h('div', { style: 'flex:1;min-width:220px;height:16px;background:#e2e8f0;border-radius:4px;overflow:hidden;position:relative' });
-            track.appendChild(h('div', { style: 'position:absolute;left:0;top:0;bottom:0;width:' + pct + '%;background:#0f766e' }));
+            if (indet) {
+                // 复用 afoIndet 动画(编译遮罩同一节奏);不把 0.0% 当作确定进度
+                track.appendChild(h('div', { style: 'position:absolute;top:0;bottom:0;width:32%;background:#d97706;animation:afoIndet 1.4s linear infinite' }));
+            } else {
+                track.appendChild(h('div', { style: 'position:absolute;left:0;top:0;bottom:0;width:' + pct + '%;background:#0f766e' }));
+            }
             row1.appendChild(track);
             const actions = h('div', { style: 'display:flex;gap:10px;margin-left:12px' });
             const go = ui;
-            if (go === 'RUNNING') { actions.appendChild(btn('暂停', 'wb-btn-primary', () => sendCmd('pause', 0))); actions.appendChild(btn('结束计算', 'wb-btn-outline', () => sendCmd('stop', 0))); }
-            else if (go === 'PAUSE_REQ') { actions.appendChild(btn('暂停请求中…', 'wb-btn-primary', null, true)); actions.appendChild(btn('结束计算', 'wb-btn-outline', () => sendCmd('stop', 0))); }
-            else if (go === 'PAUSED') { actions.appendChild(btn('继续', 'wb-btn-primary', () => sendCmd('resume', 0))); actions.appendChild(btn('结束计算', 'wb-btn-outline', () => sendCmd('stop', 0))); }
-            else if (go === 'RESUME_REQ') { actions.appendChild(btn('继续请求中…', 'wb-btn-primary', null, true)); actions.appendChild(btn('结束计算', 'wb-btn-outline', () => sendCmd('stop', 0))); }
+            // D8:实例失联后不再向无人消费的队列写暂停/继续/结束命令(按钮置灰+说明)
+            const lost = !!S.procLost;
+            const lostTitle = '该实例不能续算：仿真进程心跳已停止，命令不会写入无人消费的队列';
+            if (go === 'RUNNING') { actions.appendChild(btn('暂停', 'wb-btn-primary', () => sendCmd('pause', 0), lost)); actions.appendChild(btn('结束计算', 'wb-btn-outline', () => sendCmd('stop', 0), lost)); }
+            else if (go === 'PAUSE_REQ') { actions.appendChild(btn('暂停请求中…', 'wb-btn-primary', null, true)); actions.appendChild(btn('结束计算', 'wb-btn-outline', () => sendCmd('stop', 0), lost)); }
+            else if (go === 'PAUSED') { actions.appendChild(btn('继续', 'wb-btn-primary', () => sendCmd('resume', 0), lost)); actions.appendChild(btn('结束计算', 'wb-btn-outline', () => sendCmd('stop', 0), lost)); }
+            else if (go === 'RESUME_REQ') { actions.appendChild(btn('继续请求中…', 'wb-btn-primary', null, true)); actions.appendChild(btn('结束计算', 'wb-btn-outline', () => sendCmd('stop', 0), lost)); }
             else if (go === 'STOP_REQ') { actions.appendChild(btn('结束请求中…', 'wb-btn-outline', null, true)); }
             else if (go === 'READY') { actions.appendChild(btn('开始仿真', 'wb-btn-primary', startRun)); actions.appendChild(btn('放弃并关闭', 'wb-btn-outline', closeSession)); }
             else if (go === 'ENDED' || go === 'SAVE_FAILED' || go === 'FAILED') { actions.appendChild(btn('结果与历史', 'wb-btn-primary', () => { S.tab = '__result'; renderAll(); })); actions.appendChild(btn('新建运行(关闭会话)', 'wb-btn-outline', closeSession)); }
             else if (go === 'READONLY') { actions.appendChild(btn('‹ 返回仿真准备', 'wb-btn-outline', exitReadonly)); actions.appendChild(btn('📂 导出Excel', 'wb-btn-outline', () => window.open(excelUrl(S.readonlyRunId), '_blank'))); }
+            if (lost) actions.querySelectorAll('button[disabled]').forEach(b => { b.title = lostTitle; });
             row1.appendChild(actions);
             bar.appendChild(row1);
             // 第二行小字
@@ -622,6 +657,7 @@
             const bits = [];
             bits.push('任务 ' + (runId || '—'));
             if (compiling) bits.push('正在编译模型与初始化求解器(通常1~2分钟),首帧数据到达后自动进入计算');
+            if (S.procLost) bits.push('该实例不能续算：心跳已停止超过60s(进程可能已退出或实例已丢失)，暂停/继续/结束已禁用');
             if (!S.catalog && S.catalogErr) bits.push('通道字典加载失败(重试中): ' + String(S.catalogErr).slice(0, 60));
             if (live.sampleTime != null) bits.push('最新采样 ' + Number(live.sampleTime).toFixed(1) + ' s');
             bits.push('墙钟耗时单独计量' + (wall != null ? ('（' + (wall >= 90 ? Math.floor(wall / 60) + 'm' + Math.round(wall % 60) + 's' : Number(wall).toFixed(1) + 's') + '）') : ''));
@@ -629,10 +665,11 @@
             if (typeof live.publishedSeq === 'number' && typeof live.sampleSeq === 'number' && live.publishedSeq < live.sampleSeq) bits.push('发布积压 ' + (live.sampleSeq - live.publishedSeq) + ' 行');
             if (live.publishError) bits.push('发布错误: ' + String(live.publishError).slice(0, 40));
             if (live.observerError) bits.push('观察回调错误(数值继续)');
-            // 保存状态(规格3.2):计算结束未存完显示"正在保存";仅结果文件保存成功才显示"结果已保存"
+            // 保存状态(规格3.2/D5):只有结果文件保存成功才显示"已保存";未开始不得当成正在保存
             if (save === 'failed') bits.push('保存失败: ' + (live.saveError || ''));
             else if (save === 'saved') bits.push('结果已保存');
-            else if (save === 'writing' || (ui === 'ENDED' && (!save || save === 'not_started'))) bits.push('计算结束，正在保存…');
+            else if (save === 'writing') bits.push('计算结束，正在保存…');
+            else if (ui === 'ENDED') bits.push('等待保存（保存阶段尚未开始）');
             bar.appendChild(h('div', { style: 'font-size:12px;color:#64748b;margin-top:5px;display:flex;gap:16px;flex-wrap:wrap' },
                 bits.map(t => h('span', null, t))));
             return bar;
@@ -758,8 +795,22 @@
             return S._cmpUnits[id];
         }
         /** 命令生效阶梯:初始挡位+已生效 np 命令(挡位百分比)。 */
+        /** D2:Np 基线统一取"带 npRatio 的已冻结/恢复配置",运行中刷新后不回落准备页默认挡位。 */
+        function configBaseline() {
+            const srcs = [S.cfgFrozen, (S.live || {}).initialConfig, (S.result || {}).initialConfig, S.cfg];
+            return srcs.find(x => x && x.npRatio != null) || S.cfg;
+        }
+        /** 设计参考转速来自程序发布的 initialConfig.designNpRpm;sht_afo_prepare 写入。 */
+        function designNpRpm() {
+            const srcs = [S.cfgFrozen, (S.live || {}).initialConfig, (S.result || {}).initialConfig, S.cfg];
+            for (const x of srcs) {
+                if (x && x.designNpRpm != null && isFinite(Number(x.designNpRpm))) return Number(x.designNpRpm);
+            }
+            // 20800 仅为旧结果缺字段时的兜底,不得反向写回配置
+            return 20800;
+        }
         function cmdStepPair(acc) {
-            const cfg0 = (S.result && S.result.initialConfig) || S.cfgFrozen || S.cfg;
+            const cfg0 = configBaseline();
             const events = eventsList();
             const steps = events.filter(e => e.kind === 'np' && e.status === 'applied' && e.appliedTime != null)
                 .sort((a, b) => a.appliedTime - b.appliedTime)
@@ -776,10 +827,8 @@
             return { ts, vs };
         }
         function npDemandPair(acc) {
-            const cfg0 = (S.result && S.result.initialConfig) || S.cfgFrozen || S.cfg;
-            // 设计参考转速来自程序发布的 initialConfig.designNpRpm(sht_afo_prepare 写入);
-            // 20800 仅为旧结果缺字段时的兜底,不得反向写回配置
-            const designNp = (cfg0 && parseFloat(cfg0.designNpRpm)) || 20800;
+            const cfg0 = configBaseline();
+            const designNp = designNpRpm();
             const steps = eventsList().filter(e => e.kind === 'np' && e.status === 'applied' && e.appliedTime != null)
                 .sort((a, b) => a.appliedTime - b.appliedTime)
                 .map(e => ({ t: e.appliedTime, v: parseFloat(e.value) * designNp }));
@@ -795,7 +844,9 @@
             return { ts, vs };
         }
 
-        /** 一图一曲线(用户反馈):多曲线图拆成若干单曲线图,标题带曲线短名便于区分。 */
+        /** 一图一曲线(用户反馈):多曲线图拆成若干单曲线图,标题带曲线短名便于区分。
+         *  【明确例外】这是对 UI_R138 文档版式的明确例外(用户决定,2026-11):保留全局拆分,
+         *  不按文档"一图多曲线"回退;文档本身不修改。 */
         function splitOneSeries(defs) {
             const out = [];
             (defs || []).forEach(def => {
@@ -832,6 +883,14 @@
                     h('span', { style: 'font-weight:700;font-size:14px;color:#0f172a' }, def.t),
                     h('span', { style: 'flex:1' }),
                     unitEl,
+                    h('span', {
+                        style: 'font-size:11px;color:#0f766e;cursor:pointer;margin-left:10px',
+                        title: '复位本图视图(缩放/平移回到初始窗口)',
+                        onclick: () => {
+                            if (ctlRef.ctl && ctlRef.ctl.resetView) ctlRef.ctl.resetView();
+                            else if (ctlRef.redraw) ctlRef.redraw(); // 结果模式控制器尚未就绪时重挂本图
+                        }
+                    }, '复位'),
                     canConv ? h('span', {
                         style: 'font-size:11px;color:#0f766e;cursor:pointer;margin-left:10px',
                         title: '本图单位切换（明确换算 ' + rawBase + '→' + K.convertedUnit(rawBase) + '；切换后本图不再跟随全局单位开关）',
@@ -851,6 +910,12 @@
             const dom = h('div', { style: 'height:' + (def.h || 185) + 'px' });
             card.appendChild(dom);
             host.appendChild(card);
+            // D11:扭矩模式下等效桨距/桨距映射不适用 → 显示"不适用",不画空线或零值
+            if ((def.s || []).some(d => d.id === 'load_02') && loadMode() === 'torque') {
+                dom.style.height = 'auto';
+                dom.appendChild(K.emptyState('不适用', '扭矩模式按扭矩施加负载，不计算等效桨距'));
+                return;
+            }
             const missing = (def.s || []).filter(d => d.id !== NP_DEM && d.id !== CMD_STEP && !chById(d.id)).map(d => d.id);
             if (missing.length === (def.s || []).length && (def.s || []).length) {
                 dom.style.height = 'auto';
@@ -954,7 +1019,7 @@
                 seg('common', '常用'), seg('groups', '全部分组'), seg('custom', '自选'),
                 h('span', { style: 'flex:1' }),
                 h('span', { style: 'font-size:13px;color:#334155' }, '时间窗'),
-                winBtn('30s', '30 s'), winBtn('10s', '10 s'), winBtn('60s', '60 s'), winBtn('all', '全部'),
+                winBtn('30s', '30 s'), winBtn('10s', '10 s'), winBtn('60s', '60 s'), winBtn('all', '全历程'),
                 followEl,
                 h('span', {
                     style: 'font-size:13px;color:#0f766e;cursor:pointer;margin-left:14px',
@@ -1032,7 +1097,10 @@
             if (!resultMode) host.appendChild(h('div', { style: 'font-size:12px;color:#94a3b8;padding:4px 4px 0' },
                 '运行中曲线读取 stream 增量样本块(R065);关闭“跟随最新”仅冻结视图,仿真继续。'));
         }
-        /** 空气三行×八路(用户要求一图一曲线):每张图一个支路,支路显隐联动三行。 */
+        /** 空气三行×八路(用户要求一图一曲线):每张图一个支路,支路显隐联动三行。
+         *  【明确例外】空气页保留"支路总览 + 单支路三图查看"现有版式,这是对 UI_R138 文档的
+         *  明确例外(用户决定,2026-11);不改成图例点选单支路,也不恢复 6 图×4 支路多曲线布局。
+         *  仅修复该支路查看链路的实际功能缺陷,不改版式;文档本身不修改。 */
         function paintAirGrid(host, resultMode) {
             AIR_ROWS.forEach(row => {
                 const unit = S.conv && row.title === '供气压力' ? 'kPa' : row.unit;
@@ -1050,7 +1118,7 @@
                     const conv = v => (S.conv && row.title === '供气压力') ? K.convertSeries(v, 'Pa').values : v;
                     const sUnit = () => (S.conv && row.title === '供气压力') ? 'kPa' : (c.unit || row.unit);
                     if (resultMode && resultAcc) {
-                        if (!resultAcc.has(id)) { dom.appendChild(K.emptyState('本结果未记录(24项为R065新增)', id)); return; }
+                        if (!resultAcc.has(id)) { dom.appendChild(K.emptyState('本结果未记录(25项为R065新增)', id)); return; }
                         K.mount(dom, {
                             time: resultAcc.time,
                             series: [{ name: br, values: conv(resultAcc.series(id)), unit: sUnit(), time: resultAcc.time, color: AIR_BRANCH_COLOR[bi] }],
@@ -1329,7 +1397,11 @@
                 '已请求结束计算；服务点确认前仿真仍可能推进（不强杀进程）。最后活动：样本 '
                 + (live.sampleTime != null ? 't=' + Number(live.sampleTime).toFixed(3) + ' s' : '—')
                 + '（心跳 ' + (live.lastHeartbeat || '—') + '）。'));
-            if (S.connLost) host.appendChild(h('div', { class: 'wb-infobar', style: 'border-left:4px solid #b91c1c;margin-bottom:10px' },
+            if (S.procLost) host.appendChild(h('div', { class: 'wb-infobar', style: 'border-left:4px solid #b91c1c;margin-bottom:10px' },
+                '该实例不能续算：最后心跳 ' + ((S.live || {}).lastHeartbeat || '—')
+                + '，已超过60 s 无更新（进程可能已退出或实例已丢失）。暂停/继续/结束请求不会再写入无人消费的命令队列；'
+                + '曲线保持已到达的样本，不宣称后台仍在运行。'));
+            else if (S.connLost) host.appendChild(h('div', { class: 'wb-infobar', style: 'border-left:4px solid #b91c1c;margin-bottom:10px' },
                 '连接待核查：最后心跳 ' + ((S.live || {}).lastHeartbeat || '—') + '。曲线已冻结，不宣称后台已停止；恢复后自动补读。'));
             if (S.gapNotice) host.appendChild(h('div', { class: 'wb-infobar', style: 'border-left:4px solid #b45309;margin-bottom:10px' }, S.gapNotice));
             if (S.liveErr && runningLike()) host.appendChild(h('div', { class: 'wb-infobar', style: 'border-left:4px solid #b45309;margin-bottom:10px' }, '增量读取异常: ' + S.liveErr + '（保留已有曲线，持续重试）'));
@@ -1421,7 +1493,7 @@
                 };
                 if (lm === 'power') addLoad('功率', 'afo-load-0', 'kW');
                 else if (lm === 'torque') addLoad('扭矩', 'afo-load-0', 'N·m');
-                else if (lm === 'pitch') addLoad('总距角', 'afo-load-0', 'deg');
+                else if (lm === 'pitch') addLoad('总距角', 'afo-load-0', '6~14 deg');
                 else { addLoad('主桨', 'afo-load-0', '6~14'); addLoad('尾桨', 'afo-load-1', '−8~18'); }
                 row2.appendChild(h('button', {
                     // 规格3.3:输入框在有待生效命令时保持可编辑(下一组数值),提交由"施加"按钮统一限制
@@ -1464,7 +1536,10 @@
         }
 
         /* ---------- 准备页(MS-01:编号分区+通栏表单) ---------- */
-        function loadMode() { return (S.result && S.result.config && S.result.config.loadMode) || S.cfg.loadMode; }
+        function loadMode() {
+            // D2:负载模式以冻结配置为准(服务端恢复),避免运行中刷新后按错误量纲换算
+            return (S.cfgFrozen && S.cfgFrozen.loadMode) || (S.result && S.result.config && S.result.config.loadMode) || S.cfg.loadMode;
+        }
         function loadDefault(lm, which) {
             const c = S.cfg;
             if (lm === 'power') return c.powerKw;
@@ -1522,8 +1597,14 @@
             if (lm === 'power') {
                 if (v0 <= 0) { toast('PT功率须为正数', 'error'); return; }
                 value = v0 * 1000; // 界面kW → 程序W
-            } else if (lm === 'torque' || lm === 'pitch') value = v0;
-            else {
+            } else if (lm === 'torque') {
+                if (v0 < 0) { toast('扭矩须为非负数', 'error'); return; }
+                value = v0;
+            } else if (lm === 'pitch') {
+                // D6:与后台/程序一致的 6~14 范围,提交前拦截,避免先 accepted 再被拒
+                if (!(v0 >= 6 && v0 <= 14)) { toast('总距角须在6~14 deg', 'error'); return; }
+                value = v0;
+            } else {
                 const e1 = document.getElementById('afo-load-1');
                 const v1 = e1 ? parseFloat(e1.value) : NaN;
                 if (!(v0 >= 6 && v0 <= 14)) { toast('主桨总距角须在6~14 deg', 'error'); return; }
@@ -1611,7 +1692,7 @@
                 const lm = loadSel.value;
                 if (lm === 'power') mk('PT功率', 'powerKw', 'kW,发送前转W');
                 else if (lm === 'torque') mk('扭矩', 'mkpNm', 'N·m');
-                else if (lm === 'pitch') mk('总距角', 'pitchDeg', 'deg');
+                else if (lm === 'pitch') mk('总距角', 'pitchDeg', '6~14 deg');
                 else {
                     mk('主桨总距角', 'mainPitchDeg', '6~14 deg');
                     mk('尾桨总距角', 'tailPitchDeg', '−8~18 deg,成对提交');
@@ -1628,6 +1709,13 @@
             host.appendChild(formRow('外部空气回灌', sel([['internal', '关闭 · 空气系统仍计算输出'], ['external', '外部8路回灌（经一步延迟生效）']], c.externalAir ? 'external' : 'internal', v => { c.externalAir = v === 'external'; })));
             host.appendChild(formRow('实时发布', sel([['on', '开启 · 运行时增量曲线'], ['off', '关闭 · 仍完整计算并导出Excel']], c.publishLive ? 'on' : 'off', v => { c.publishLive = v === 'on'; })));
             host.appendChild(formRow('任务编号（可选）', inp('runId'), '字母/数字/短横线,≤80字符'));
+            // D12:输出目录只读展示(会话结果/status/inbox 落盘位置;来自 /status.outputDir 或结果 config)
+            const outDir = S.statusOutputDir || (S.result && S.result.config && S.result.config.outputDir)
+                || (S.cfgFrozen && S.cfgFrozen.outputDir) || '';
+            host.appendChild(formRow('输出目录',
+                h('div', { style: 'width:100%;box-sizing:border-box;background:#eef2f7;border:1px solid #e2e8f0;border-radius:4px;padding:7px 10px;font-size:13px;color:#475569;overflow-wrap:anywhere' },
+                    outDir || '准备完成后生成（会话输出目录）'),
+                '只读;结果/状态/命令通道'));
             host.appendChild(sectionHead('3', '核对初态与目标'));
             host.appendChild(h('div', { style: 'font-size:14px;line-height:1.9' },
                 '初始Np、Ng及子系统初态：从配套模型读取，不在准备页虚构数值。',
@@ -1702,7 +1790,9 @@
                                 req.mkpNm = v;
                             } else if (lm === 'pitch') {
                                 const v = parseFloat(f.pitchDeg.value);
+                                // D6:单总距与后台/程序一致的 6~14 范围,提交前拦截
                                 if (!isFinite(v)) throw new Error('总距角须为数值');
+                                if (!(v >= 6 && v <= 14)) throw new Error('总距角须在6~14 deg');
                                 req.pitchDeg = v;
                             } else {
                                 const m = parseFloat(f.mainPitchDeg.value), t2 = parseFloat(f.tailPitchDeg.value);
@@ -1767,7 +1857,13 @@
                 const failed = r.phase === 'FAILED' || r.readonlyFailed === true || String(r.state || '').toLowerCase() === 'failed';
                 host.appendChild(h('div', { style: 'font-weight:700;font-size:15px;margin-bottom:6px' }, '结果摘要'));
                 const early = r.stopReason === 'user_ended_computation';
-                const saveTxt = (S.live && S.live.saveState === 'failed') ? h('span', { style: 'color:#b91c1c' }, '保存失败:' + (S.live.saveError || '') + '(可重试,不重新仿真)') : '已保存';
+                // D5:按 live.saveState 区分等待保存/正在保存/已保存/保存失败;只读历史以结果文件为准
+                const ss = (S.live || {}).saveState;
+                const saveTxt = S.readonlyRunId ? '已保存（历史结果）'
+                    : ss === 'failed' ? h('span', { style: 'color:#b91c1c' }, '保存失败:' + ((S.live || {}).saveError || '') + '(可重试,不重新仿真)')
+                    : ss === 'saved' ? '已保存'
+                    : ss === 'writing' ? '正在保存…'
+                    : '等待保存（计算结束后执行）';
                 // 结束原因:失败给"异常首行+末尾原因"摘要并提供完整报告入口;正常结束把机器码翻成中文
                 let reasonNode;
                 if (failed) {
@@ -1810,37 +1906,79 @@
             } else {
                 host.appendChild(h('div', { class: 'wb-infobar' }, '当前会话尚无结果;运行结束保存后此处显示结果摘要。'));
             }
-            // 历史列表
-            host.appendChild(h('div', { style: 'font-weight:700;font-size:15px;margin:16px 0 6px' }, '历史会话(只读)'));
+            // 历史列表(只保留条数选择,取最新 N 条;查询复用仿真记录的 SQL 记录查询接口 kind=afo)
+            let histSize = S.histSize || 10;
             const listHost = h('div');
+            const headBox = h('div', { class: 'wb-section-head', style: 'margin:16px 0 6px' },
+                h('div', { style: 'font-weight:700;font-size:15px' }, '历史会话(只读)'),
+                h('div', { style: 'display:flex;align-items:center;gap:6px' },
+                    h('span', { class: 'wb-hint', style: 'margin:0' }, '最新'),
+                    h('select', {
+                        title: '最新显示条数',
+                        onchange: (e) => { histSize = parseInt(e.target.value, 10) || 10; S.histSize = histSize; fetchHistory(); }
+                    }, [10, 20, 50].map(n => h('option', Object.assign({ value: String(n) }, n === histSize ? { selected: '' } : {}), n + ' 条')))));
+            host.appendChild(headBox);
             host.appendChild(listHost);
-            api('/sessions').then(resp => {
-                const list = (resp && (resp.success || resp.code === 200) && resp.data) ? resp.data : [];
-                if (!list.length) { listHost.appendChild(h('div', { class: 'wb-hint' }, '暂无历史会话')); return; }
-                const tbl = h('table', { class: 'wb-table' },
-                    h('tr', null, ['运行编号', '状态', '创建时间', '结果', 'Excel', '操作'].map(x => h('th', null, x))));
-                list.slice(0, 30).forEach(ses => {
-                    const rid = ses.runId;
-                    tbl.appendChild(h('tr', null,
-                        h('td', null, rid),
-                        h('td', null, h('span', { class: 'wb-tag wb-tag-' + (ses.phase === 'ENDED' ? 'teal' : ses.phase === 'FAILED' ? 'red' : 'gray') }, ses.phase || '—')),
-                        h('td', { class: 'wb-hint' }, ses.createdAt ? new Date(ses.createdAt).toLocaleString() : '—'),
-                        h('td', null, ses.hasResult ? '√' : '—'),
-                        h('td', null, ses.hasExcel ? '√' : '—'),
-                        h('td', null, h('div', { style: 'display:flex;gap:6px' },
-                            h('button', {
-                                class: 'wb-btn wb-btn-outline', style: 'font-size:12px;padding:2px 10px',
-                                disabled: ses.hasResult ? null : '',
-                                onclick: () => ses.hasResult && loadReadonly(rid)
-                            }, '打开(只读)'),
-                            (S.result && S.readonlyRunId && rid !== S.readonlyRunId && ses.hasResult) ? h('button', {
-                                class: 'wb-btn wb-btn-outline', style: 'font-size:12px;padding:2px 10px',
-                                onclick: () => loadCompare(rid)
-                            }, '作为对比') : null))));
+            function fetchHistory() {
+                listHost.innerHTML = '';
+                listHost.appendChild(h('div', { class: 'wb-hint' }, '历史会话加载中...'));
+                api('/sessions/list', { kind: 'afo', pageNum: 1, pageSize: histSize }).then(resp => {
+                    listHost.innerHTML = '';
+                    const list = (resp && (resp.success || resp.code === 200) && Array.isArray(resp.data)) ? resp.data : [];
+                    if (!list.length) { listHost.appendChild(h('div', { class: 'wb-hint' }, '暂无历史会话')); return; }
+                    const tbl = h('table', { class: 'wb-table' },
+                        h('tr', null, ['运行编号', '状态', '创建时间', '结果', 'Excel', '操作'].map(x => h('th', null, x))));
+                    list.forEach(ses => {
+                        const rid = ses.runId;
+                        tbl.appendChild(h('tr', null,
+                            h('td', null, rid),
+                            h('td', null, h('span', { class: 'wb-tag wb-tag-' + (ses.phase === 'ENDED' ? 'teal' : ses.phase === 'FAILED' ? 'red' : 'gray') }, ses.phase || '—')),
+                            h('td', { class: 'wb-hint' }, ses.createdAt ? new Date(ses.createdAt).toLocaleString() : '—'),
+                            h('td', null, ses.hasResult ? '√' : '—'),
+                            h('td', null, ses.hasExcel ? '√' : '—'),
+                            h('td', null, h('div', { style: 'display:flex;gap:6px' },
+                                h('button', {
+                                    class: 'wb-btn wb-btn-outline', style: 'font-size:12px;padding:2px 10px',
+                                    disabled: ses.hasResult ? null : '',
+                                    onclick: () => ses.hasResult && loadReadonly(rid)
+                                }, '打开(只读)'),
+                                (S.result && S.readonlyRunId && rid !== S.readonlyRunId && ses.hasResult) ? h('button', {
+                                    class: 'wb-btn wb-btn-outline', style: 'font-size:12px;padding:2px 10px',
+                                    onclick: () => loadCompare(rid)
+                                }, '作为对比') : null))));
+                    });
+                    listHost.appendChild(tbl);
+                }).catch(e => {
+                    listHost.innerHTML = '';
+                    listHost.appendChild(h('div', { class: 'wb-hint' }, '历史列表读取失败:' + e.message));
                 });
-                listHost.appendChild(tbl);
-            }).catch(e => listHost.appendChild(h('div', { class: 'wb-hint' }, '历史列表读取失败:' + e.message)));
+            }
+            fetchHistory();
             if (S.compare) paintCompareBar(host);
+        }
+        /** D7:模型/资产身份摘要(name@sha前8位),用于比较页披露。 */
+        function identitySummary(r) {
+            const ids = (r && r.identity) || [];
+            if (!ids.length) return '—';
+            return ids.map(it => {
+                const nm = String((it && it.name) || '');
+                const sha = String((it && it.sha256) || '').slice(0, 8);
+                return nm + (sha ? '@' + sha : '');
+            }).join('；');
+        }
+        /** D7:因单位不一致未叠加的曲线清单(以两份结果文件内字典为准,并合并渲染时记录的 _cmpSkipped)。 */
+        function cmpUnitMismatchList() {
+            const names = new Set();
+            const ca = S.result && S.result.catalog;
+            if (Array.isArray(ca) && S.compare) {
+                ca.forEach(c => {
+                    if (!c || c.unit == null) return;
+                    const ub = compareUnitOf(c.id);
+                    if (ub && ub !== c.unit) names.add((chById(c.id) && chById(c.id).name) || c.id);
+                });
+            }
+            (S._cmpSkipped || new Set()).forEach(id => names.add((chById(id) && chById(id).name) || id));
+            return Array.from(names);
         }
         function paintCompareBar(host) {
             const b = S.compare;
@@ -1860,8 +1998,17 @@
                 tbl.appendChild(h('tr', null, h('td', null, k), h('td', null, String(va)),
                     h('td', { style: String(va) !== String(vb) ? 'color:#b45309;font-weight:600' : '' }, String(vb))));
             });
+            // D7:披露模型/资产身份(identity: name@sha256前8位),避免把不同资产当成同源比较
+            tbl.appendChild(h('tr', null, h('td', null, '模型/资产身份'),
+                h('td', { style: 'max-width:520px;overflow-wrap:anywhere' }, identitySummary(S.result)),
+                h('td', { style: 'max-width:520px;overflow-wrap:anywhere;color:' + (identitySummary(S.result) !== identitySummary(b.result) ? '#b45309' : '') }, identitySummary(b.result))));
             box.appendChild(tbl);
             box.appendChild(h('div', { class: 'wb-hint', style: 'margin-top:4px' }, '采样网格不同则各自按原曲线叠加,不插值不外插。'));
+            // D7:显性展示"因单位不一致未叠加"的曲线清单(原 _cmpSkipped 从未渲染)
+            const skipped = cmpUnitMismatchList();
+            box.appendChild(h('div', { class: 'wb-hint', style: 'margin-top:4px;color:' + (skipped.length ? '#b45309' : '#64748b') },
+                skipped.length ? ('因单位不一致未叠加（' + skipped.length + '项）：' + skipped.join('、'))
+                    : '单位核对：未发现因单位不一致而未叠加的曲线。'));
             host.appendChild(box);
         }
         async function loadCompare(runId) {
@@ -1964,6 +2111,10 @@
         /* ---------- 动作 ---------- */
         async function sendCmd(kind, value) {
             const physical = kind === 'np' || kind === 'load';
+            // D8:实例失联时禁止把暂停/继续/结束写进无人消费的 inbox 队列
+            if (S.procLost && ['pause', 'resume', 'stop'].includes(kind)) {
+                toast('该实例不能续算：进程心跳已停止，命令不会写入无人消费的队列', 'error'); return;
+            }
             // 规格3.3:同一时刻只允许一项未生效物理输入;暂停/继续/结束计算不受此占位限制
             if (physical && physicsLocked()) { toast('已有待生效的物理输入命令，暂不能施加', 'info'); return; }
             if (physical) { S.applyBusy = true; paintApplyButtons(); schedulePatchRunningUi(); } // 提交在途期间同步锁住两个"施加"
@@ -1973,6 +2124,10 @@
                 if (kind === 'resume' && uiState() === 'RESUME_REQ') { toast('继续请求已在处理中', 'info'); return; }
                 if (kind === 'stop' && uiState() === 'STOP_REQ') { toast('结束请求已在处理中', 'info'); return; }
                 const resp = await apiPost('/command', { kind, value });
+                // D13:后端在写 inbox 前校验 Np/负载范围;拒收时不再提示"已提交",直接显示原因
+                if (resp && (resp.success === false || (resp.code != null && Number(resp.code) !== 200))) {
+                    toast('命令被拒绝:' + (resp.message || '参数不合法'), 'error'); return;
+                }
                 const rd = (resp && (resp.data || resp)) || {};
                 if (physical) {
                     // 规格3.3:记录提交编号/请求值;状态由后台pending/events回执驱动,不本地伪造生效
@@ -2021,6 +2176,7 @@
                 S.liveBuf = null; S.sessionId = null; S.catalog = null; S.byId = null;
                 S.dispIds = null; S.dispPos = null; S.liveCols = null;
                 S.gapNotice = ''; S.liveErr = ''; S.connLost = false; S.pauseReqAt = null;
+                S.procLost = false; S.statusOutputDir = null;
                 S.applyBusy = false; S.lastSubmit = null;
                 stopLoops();
                 toast('会话已关闭;可新建运行', 'success');
@@ -2195,6 +2351,40 @@
                 }
             })();
         }
+        /** D2:用服务端会话配置(prepare 请求原样)恢复界面配置与冻结配置。
+         *  运行中刷新/重开页面时,S.cfg 不能回落准备页默认值;功率在服务端是 W,界面是 kW。 */
+        function restoreServerCfg(c) {
+            if (!c || typeof c !== 'object') return;
+            const pw = c.powerW != null && isFinite(Number(c.powerW)) ? String(Number(c.powerW) / 1000) : null;
+            const s = k => (c[k] != null ? String(c[k]) : S.cfg[k]);
+            Object.assign(S.cfg, {
+                engineId: s('engineId'),
+                duration: s('duration'), recordStep: s('recordStep'), pace: s('pace'),
+                loadMode: s('loadMode'),
+                powerKw: pw != null ? pw : s('powerKw'),
+                mkpNm: s('mkpNm'), pitchDeg: s('pitchDeg'),
+                mainPitchDeg: s('mainPitchDeg'), tailPitchDeg: s('tailPitchDeg'),
+                tailToMainPowerRatio: s('tailToMainPowerRatio'), tailDesignPitchDeg: s('tailDesignPitchDeg'),
+                npRatio: s('npRatio'), runId: s('runId'),
+                externalAir: !!c.externalAir,
+                publishLive: c.publishLive !== false
+            });
+            S.cfgFrozen = {
+                duration: parseFloat(c.duration), externalAir: !!c.externalAir,
+                loadMode: c.loadMode || S.cfg.loadMode, npRatio: c.npRatio != null ? String(c.npRatio) : S.cfg.npRatio,
+                designNpRpm: c.designNpRpm,
+                tailToMainPowerRatio: c.tailToMainPowerRatio, tailDesignPitchDeg: c.tailDesignPitchDeg,
+                outputDir: c.outputDir || (S.cfgFrozen && S.cfgFrozen.outputDir) || null
+            };
+        }
+        /** D8:进程消失判定。运行态(非暂停)心跳停止超过 60s → 视为实例失联,不能续算。
+         *  暂停时 status.json 不再随记录步重写,心跳必然变旧,故不把暂停族计入该判定。 */
+        function heartbeatAge() {
+            const hb = S.live && S.live.lastHeartbeat;
+            if (!hb) return null;
+            const t = new Date(String(hb).replace(' ', 'T')).getTime();
+            return isFinite(t) ? Date.now() - t : null;
+        }
         async function refresh() {
             if (statusBusy || S.readonlyRunId) return;
             statusBusy = true;
@@ -2207,16 +2397,18 @@
                 S.live = d.live || null;
                 // 失败原因采集:Java会话error为完整报告(status.json本身不含error)
                 S.error = S.phase === 'FAILED' && d.error != null ? String(d.error) : '';
-                // 冻结配置(规格3.1/4.6):准备完成后固定,运行中显示与校验均以此为准
-                if (!S.cfgFrozen && S.phase === 'READY' && S.cfg) S.cfgFrozen = {
-                    duration: parseFloat(S.cfg.duration), externalAir: !!S.cfg.externalAir,
-                    tailToMainPowerRatio: S.cfg.tailToMainPowerRatio, tailDesignPitchDeg: S.cfg.tailDesignPitchDeg
-                };
+                // D2:有活动会话时一律用服务端配置恢复(不只 READY);运行中刷新/重开不回落默认
+                if (d.config) restoreServerCfg(d.config);
+                if (d.outputDir) S.statusOutputDir = String(d.outputDir);
                 if (S.live && S.live.state === 'running') S.localResume = false;
-                if (S.live && S.live.lastHeartbeat) {
-                    const hb = new Date(String(S.live.lastHeartbeat).replace(' ', 'T')).getTime();
-                    S.connLost = isFinite(hb) && (Date.now() - hb > 12000) && ['RUNNING', 'PAUSED'].includes(S.phase);
-                } else if (runningLike()) S.connLost = true;
+                // 以 uiState 判连接/失联:Java 会话 phase 在暂停期间仍是 RUNNING,
+                // 暂停时 status.json 不再随记录步重写,不能据此误报失联(D3/D8)
+                const uiNow = uiState();
+                const pausedFamily = uiNow === 'PAUSED' || uiNow === 'RESUME_REQ' || uiNow === 'PAUSE_REQ';
+                const hbAge = heartbeatAge();
+                S.connLost = hbAge != null ? (hbAge > 12000 && !pausedFamily && uiNow === 'RUNNING') : runningLike();
+                // D8:运行态(未暂停)长时间无心跳 → 实例失联且不能续算
+                S.procLost = hbAge != null && hbAge > 60000 && uiNow === 'RUNNING';
                 // 字典缺失时任何阶段都重试(准备中channels.json可能还没写出);不然运行期全图"未在字典中"
                 if (!S.catalog && !S._catBusy && !S.readonlyRunId) {
                     S._catBusy = true;

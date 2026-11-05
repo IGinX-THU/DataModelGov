@@ -726,6 +726,8 @@ public class AfoService {
         out.put("message", s.message);
         out.put("error", s.error);
         out.put("config", s.config);
+        // D12:输出目录只读披露(会话结果/status.json/inbox 落盘位置)
+        out.put("outputDir", s.outputDir);
         // 运行中状态以程序原子写的 status.json 为准(含 time/Np/Ng/Wf/events/values)
         File sf = new File(s.outputDir, "status.json");
         if (sf.exists()) {
@@ -869,6 +871,8 @@ public class AfoService {
         if (!java.util.Arrays.asList("np", "load", "pause", "resume", "stop").contains(kind)) {
             throw new IllegalArgumentException("不支持的命令类型: " + kind + "(管理命令save/release/discard走专用端点)");
         }
+        // D13:在返回 accepted 之前按程序合同校验物理输入范围,非法命令直接拒收(不写 inbox)
+        validateCommandValue(s.config, kind, value);
         String id = "cmd_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
         Map<String, Object> cmd = new LinkedHashMap<>();
         cmd.put("id", id);
@@ -896,6 +900,64 @@ public class AfoService {
         out.put("accepted", true);
         out.put("note", "已写入命令通道;回执见processed_commands(Recorder主步服务)");
         return out;
+    }
+
+    /** D13:与 sht_afo_session.local_validate 保持一致的物理输入范围校验。
+     *  非法值在此直接抛出,控制器返回明确的失败结果,前端不会再提示"已提交"。 */
+    private static void validateCommandValue(Map<String, Object> cfg, String kind, Object value) {
+        if (!"np".equals(kind) && !"load".equals(kind)) return;
+        if ("np".equals(kind)) {
+            double np = toDouble(value, "Np挡位");
+            boolean ok = Math.abs(np - 0.8) < 1e-12 || Math.abs(np - 0.9) < 1e-12
+                    || Math.abs(np - 0.95) < 1e-12 || Math.abs(np - 1.0) < 1e-12 || Math.abs(np - 1.05) < 1e-12;
+            if (!ok) throw new IllegalArgumentException("Np挡位仅支持80%/90%/95%/100%/105%");
+            return;
+        }
+        String mode = String.valueOf(cfg != null ? cfg.getOrDefault("loadMode", "power") : "power");
+        if ("dual_pitch".equals(mode)) {
+            if (!(value instanceof java.util.List) || ((java.util.List<?>) value).size() != 2) {
+                throw new IllegalArgumentException("主尾桨总距须成对提交");
+            }
+            java.util.List<?> v = (java.util.List<?>) value;
+            double main = toDouble(v.get(0), "主桨总距角");
+            double tail = toDouble(v.get(1), "尾桨总距角");
+            if (!(main >= 6 && main <= 14)) throw new IllegalArgumentException("主桨总距角须在6~14 deg");
+            if (!(tail >= -8 && tail <= 18)) throw new IllegalArgumentException("尾桨总距角须在−8~18 deg");
+            double ratio = num(cfg.get("tailToMainPowerRatio"), 0.10);
+            double design = num(cfg.get("tailDesignPitchDeg"), 10);
+            if (ratio < 0) throw new IllegalArgumentException("尾/主功率比须为非负数");
+            if (design <= 0) throw new IllegalArgumentException("尾桨设计总距须为正数");
+            double theta = equivalentPitch(main, tail, ratio, design);
+            if (!(theta >= 6 && theta <= 14)) {
+                throw new IllegalArgumentException(String.format("主尾桨合成等效角%.4g超出现有负载模型6~14度范围", theta));
+            }
+            return;
+        }
+        double v = toDouble(value, "负载值");
+        if ("power".equals(mode) || "torque".equals(mode)) {
+            if (!(v >= 0)) throw new IllegalArgumentException("负载须为非负数");
+        } else if ("pitch".equals(mode)) {
+            if (!(v >= 6 && v <= 14)) throw new IllegalArgumentException("总距角须在6~14 deg");
+        } else {
+            throw new IllegalArgumentException("未知负载方式: " + mode);
+        }
+    }
+    private static double toDouble(Object v, String label) {
+        double d = num(v, Double.NaN);
+        if (!Double.isFinite(d)) throw new IllegalArgumentException(label + "须为数值");
+        return d;
+    }
+    private static double num(Object v, double dflt) {
+        if (v instanceof Number) return ((Number) v).doubleValue();
+        if (v == null) return dflt;
+        try { return Double.parseDouble(String.valueOf(v)); } catch (Exception e) { return dflt; }
+    }
+    /** 与 local_equivalent_pitch 同一公式(用于 dual_pitch 等效角范围校验)。 */
+    private static double equivalentPitch(double main, double tail, double ratio, double design) {
+        double f = 1.0 / (1.0 + ratio);
+        double gm = 0.15 + 0.85 * Math.pow(main / 12.0, 1.5);
+        double gt = 0.15 + 0.85 * Math.pow(Math.abs(tail / design), 1.5);
+        return 12.0 * Math.pow((f * gm + (1 - f) * gt - 0.15) / 0.85, 2.0 / 3.0);
     }
 
     /** 会话身份:优先 status.json(高频发布,重试避开替换窗口),回退 channels.json(准备期一次写入)。 */

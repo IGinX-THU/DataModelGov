@@ -152,6 +152,7 @@ public class AfoController {
             @PathVariable("pid") String pid,
             @org.springframework.web.bind.annotation.RequestParam(value = "status", required = false) String status,
             @org.springframework.web.bind.annotation.RequestParam(value = "kw", required = false) String kw,
+            @org.springframework.web.bind.annotation.RequestParam(value = "kind", required = false) String kind,
             @org.springframework.web.bind.annotation.RequestParam(value = "pageNum", required = false, defaultValue = "1") Integer pageNum,
             @org.springframework.web.bind.annotation.RequestParam(value = "pageSize", required = false, defaultValue = "10") Integer pageSize) {
         try {
@@ -159,21 +160,35 @@ public class AfoController {
             String where = sessionsWhere(status, kw);
             int pn = pageNum == null || pageNum < 1 ? 1 : pageNum;
             int ps = pageSize == null || pageSize < 1 ? 10 : Math.min(pageSize, 100);
+            String k = kind == null ? "" : kind.trim();
+            boolean all = k.isEmpty() || "all".equals(k);
+            boolean wantAfo = all || "afo".equals(k);
+            boolean wantFull = all || "fullmode".equals(k);
+            boolean wantSs = all || "startstop".equals(k) || "design_point".equals(k);
+            if (!all && !wantAfo && !wantFull && !wantSs) {
+                throw new IllegalArgumentException("未知记录类型: " + kind);
+            }
             // 两个来源各取前 pn*ps 条(均按 createTime DESC),归并后切片,保证全局排序正确
-            List<com.tsinghua.entity.EngineAfoSessionEntity> a =
-                    afoSessionService.queryFiltered(pid, 1, pn * ps, where);
-            List<com.tsinghua.entity.EngineTestbenchEntity> fFull =
-                    testbenchRecordService.queryFiltered(pid, 1, pn * ps,
-                            joinWhere("kind = 'fullmode'", where));
-            List<com.tsinghua.entity.EngineTestbenchEntity> fDpSs =
-                    testbenchRecordService.queryFiltered(pid, 1, pn * ps,
-                            joinWhere("kind IN ('design_point','startstop')", where));
             List<Map<String, Object>> merged = new java.util.ArrayList<>();
-            for (com.tsinghua.entity.EngineAfoSessionEntity e : a) merged.add(toRow(e, "afo"));
-            for (com.tsinghua.entity.EngineTestbenchEntity e : fFull) merged.add(toRow(e, "fm"));
-            // 起动停工作流归并:设计点校核并入起动停工作流行,一行=一次工作流执行
-            for (com.tsinghua.entity.EngineTestbenchEntity e : mergeTestbenchWorkflow(pid, fDpSs)) {
-                merged.add(toRow(e, "fm"));
+            if (wantAfo) {
+                List<com.tsinghua.entity.EngineAfoSessionEntity> a =
+                        afoSessionService.queryFiltered(pid, 1, pn * ps, where);
+                for (com.tsinghua.entity.EngineAfoSessionEntity e : a) merged.add(toRow(e, "afo"));
+            }
+            if (wantFull) {
+                List<com.tsinghua.entity.EngineTestbenchEntity> fFull =
+                        testbenchRecordService.queryFiltered(pid, 1, pn * ps,
+                                joinWhere("kind = 'fullmode'", where));
+                for (com.tsinghua.entity.EngineTestbenchEntity e : fFull) merged.add(toRow(e, "fm"));
+            }
+            if (wantSs) {
+                List<com.tsinghua.entity.EngineTestbenchEntity> fDpSs =
+                        testbenchRecordService.queryFiltered(pid, 1, pn * ps,
+                                joinWhere("kind IN ('design_point','startstop')", where));
+                // 起动停工作流归并:设计点校核并入起动停工作流行,一行=一次工作流执行
+                for (com.tsinghua.entity.EngineTestbenchEntity e : mergeTestbenchWorkflow(pid, fDpSs)) {
+                    merged.add(toRow(e, "fm"));
+                }
             }
             merged.sort((x, y) -> Long.compare(numOf(y.get("createdAt")), numOf(x.get("createdAt"))));
             int from = Math.min(merged.size(), (pn - 1) * ps);

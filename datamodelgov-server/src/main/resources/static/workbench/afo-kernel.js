@@ -307,6 +307,10 @@ window.AfoKernel = (() => {
             ctl.setAppliedMarks = ms => { ctl.applied = ms || []; paintMarks(); };
             ctl.setCursor = t => { ctl.cursorT = (t == null || !isFinite(t)) ? null : Number(t); paintMarks(); };
             ctl.setCfg = c => { cfg = c; rebuild(); };
+            // D9:每图独立复位视图(缩放/平移回到初始窗口);不触发 onZoom,不影响"跟随最新"全局开关
+            ctl.resetView = () => {
+                try { chart.dispatchAction({ type: 'dataZoom', start: 0, end: 100 }); } catch (e) { /* 图已释放 */ }
+            };
             ctl.exportCsv = () => {
                 // 导出当前视图:存在窗口时按窗口切片(R138 5.2"导出当前视图")
                 const win = cfg.window;
