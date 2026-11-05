@@ -146,7 +146,7 @@
         const apiPost = (p, body) => window.AppConfig.enginePost('projects/' + encodeURIComponent(pid) + '/afo' + p, body || {});
 
         const S = window.__WB_AFO__ = window.__WB_AFO__ || {
-            phase: 'IDLE', message: '', live: null, result: null,
+            phase: 'IDLE', message: '', error: '', live: null, result: null,
             readonlyRunId: null, readonlyLoading: false,
             cfg: {
                 engineId: ctx.project.engineId || 'ENGINE-001', runId: '',
@@ -443,6 +443,115 @@
                 .map(ev => ({ t: ev.appliedTime, label: cmdText(ev) }));
         }
 
+        /* ---------- 失败原因:悬停预览 + 点击查看完整日志 ---------- */
+        let failTipEl = null;
+        /** 失败原因:Java会话error(完整报告) > 实时流error > 只读结果error > stopReason;
+         *  旧版本会话的"原因未记录"占位文案不展示(用户已否决该措辞)。 */
+        function failReasonText() {
+            const cands = [
+                S.error,
+                S.live && S.live.error,
+                S.result && S.result.error,
+                S.result && S.result.state === 'failed' && S.result.stopReason,
+                S.live && S.live.state === 'failed' && S.live.stopReason
+            ];
+            for (const c of cands) {
+                const t = String(c == null ? '' : c).trim();
+                if (t && !t.startsWith('原因未记录')) return t;
+            }
+            return '';
+        }
+        function hideFailTip() {
+            if (failTipEl && failTipEl.parentNode) failTipEl.parentNode.removeChild(failTipEl);
+            failTipEl = null;
+            window.removeEventListener('scroll', hideFailTip, true);
+            window.removeEventListener('resize', hideFailTip);
+        }
+        /** 悬停预览:最多4行/200字,超出以省略提示结尾;完整日志走点击弹窗。 */
+        function showFailTip(anchor, text) {
+            hideFailTip();
+            const src = String(text);
+            const lines = src.split(/\r?\n/);
+            const MAX_LINES = 4, MAX_CHARS = 200;
+            let preview = '', used = 0, cut = false;
+            for (let i = 0; i < lines.length && i < MAX_LINES; i++) {
+                const room = MAX_CHARS - used;
+                let line = lines[i];
+                if (line.length > room) { line = line.slice(0, Math.max(0, room)); cut = true; }
+                preview += (i ? '\n' : '') + line;
+                used += line.length;
+                if (cut || used >= MAX_CHARS) { cut = true; break; }
+            }
+            if (lines.length > MAX_LINES || used >= MAX_CHARS) cut = true;
+            const tip = h('div', {
+                style: 'position:fixed;z-index:99990;visibility:hidden;pointer-events:none;max-width:min(560px,calc(100vw - 24px));'
+                    + 'background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:9px 12px;'
+                    + 'box-shadow:0 8px 28px rgba(15,23,42,.18);font-size:12px;line-height:1.55;color:#334155'
+            });
+            tip.appendChild(h('div', { style: 'max-height:80px;overflow:hidden;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-all' }, preview));
+            if (cut) tip.appendChild(h('div', { style: 'margin-top:4px;font-size:11px;color:#64748b' }, '…点击查看完整日志'));
+            document.body.appendChild(tip);
+            // 默认在文本下方;视口下方放不下则翻到上方,左右也夹在可视区内
+            const r = anchor.getBoundingClientRect();
+            const vw = window.innerWidth || document.documentElement.clientWidth;
+            const vh = window.innerHeight || document.documentElement.clientHeight;
+            const w = tip.offsetWidth, ht = tip.offsetHeight;
+            let left = r.left, top = r.bottom + 6;
+            if (top + ht > vh - 8) top = r.top - ht - 6;
+            if (top < 8) top = 8;
+            if (left + w > vw - 8) left = vw - w - 8;
+            if (left < 8) left = 8;
+            tip.style.left = left + 'px'; tip.style.top = top + 'px'; tip.style.visibility = 'visible';
+            failTipEl = tip;
+            // 浮窗跟随文本位置:页面滚动/尺寸变化时直接收起,避免停留在旧位置
+            window.addEventListener('scroll', hideFailTip, true);
+            window.addEventListener('resize', hideFailTip);
+        }
+        /** 完整失败日志弹窗:沿用工作台 wb-card/遮罩风格;支持滚动、选中复制、ESC/遮罩关闭。 */
+        function openFailLogModal(text) {
+            hideFailTip();
+            const full = String(text);
+            let closed = false;
+            const prevOverflow = document.body.style.overflow;
+            const onKey = e => {
+                if (e.key === 'Escape' || e.key === 'Esc') { e.preventDefault(); e.stopPropagation(); close(); }
+            };
+            const fallbackCopy = t => {
+                try {
+                    const ta = document.createElement('textarea');
+                    ta.value = t; ta.style.position = 'fixed'; ta.style.left = '-9999px'; ta.style.opacity = '0';
+                    document.body.appendChild(ta); ta.select();
+                    const ok = document.execCommand && document.execCommand('copy');
+                    document.body.removeChild(ta);
+                    return !!ok;
+                } catch (e) { return false; }
+            };
+            const copy = () => {
+                const done = ok => toast(ok ? '日志已复制' : '复制失败，请手动选中日志复制', ok ? 'success' : 'error');
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(full).then(() => done(true), () => done(fallbackCopy(full)));
+                } else done(fallbackCopy(full));
+            };
+            const close = () => {
+                if (closed) return;
+                closed = true;
+                document.body.style.overflow = prevOverflow;
+                document.removeEventListener('keydown', onKey, true);
+                if (mask.parentNode) mask.parentNode.removeChild(mask);
+            };
+            const mask = h('div', { style: 'position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:99998;display:flex;align-items:center;justify-content:center;padding:24px' });
+            mask.addEventListener('mousedown', e => { if (e.target === mask) close(); });
+            mask.appendChild(h('div', { class: 'wb-card', style: 'max-width:760px;width:100%;max-height:calc(100vh - 48px);display:flex;flex-direction:column;box-shadow:0 12px 40px rgba(0,0,0,.28)' },
+                h('div', { class: 'wb-section-title', style: 'margin-bottom:10px' }, '计算失败日志'),
+                h('div', { style: 'max-height:60vh;overflow:auto;overscroll-behavior:contain;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:10px 12px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;line-height:1.6;color:#334155;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-all;user-select:text' }, full),
+                h('div', { class: 'wb-actions-row', style: 'margin-top:14px;justify-content:flex-end' },
+                    h('button', { class: 'wb-btn wb-btn-outline', onclick: copy }, '复制日志'),
+                    h('button', { class: 'wb-btn wb-btn-primary', onclick: close }, '关闭'))));
+            document.body.appendChild(mask);
+            document.body.style.overflow = 'hidden'; // 弹窗期间滚轮只滚日志,不滚背景页面
+            document.addEventListener('keydown', onKey, true);
+        }
+
         /* ---------- 共享运行栏(效果图:大字状态+仿真t/T+大百分比+进度条+大按钮) ---------- */
         function runBar() {
             const ui = uiState();
@@ -470,8 +579,22 @@
             }, label);
 
             const bar = h('div', { style: 'background:#fff;border-bottom:1px solid #e5e7eb;padding:10px 18px 8px' });
+            const statusEl = h('span', { class: 'wb-tag wb-tag-' + meta[1], style: 'font-size:14px;padding:3px 12px' }, meta[0]);
+            // 失败态:悬停"计算失败"弹简短预览,点击打开完整日志;原因为空时不响应
+            if (ui === 'FAILED' && failReasonText()) {
+                statusEl.style.cursor = 'pointer';
+                statusEl.addEventListener('mouseenter', () => {
+                    const reason = failReasonText();
+                    if (reason) showFailTip(statusEl, reason);
+                });
+                statusEl.addEventListener('mouseleave', hideFailTip);
+                statusEl.addEventListener('click', () => {
+                    const reason = failReasonText();
+                    if (reason) openFailLogModal(reason);
+                });
+            }
             const row1 = h('div', { style: 'display:flex;align-items:center;gap:18px;flex-wrap:wrap' },
-                h('span', { class: 'wb-tag wb-tag-' + meta[1], style: 'font-size:14px;padding:3px 12px' }, meta[0]),
+                statusEl,
                 h('span', { style: 'font-size:16px' }, '仿真 ' + Number(curT).toFixed(1) + ' / ' + (dur > 0 ? Number(dur).toFixed(1) : '—') + ' s'),
                 h('span', { style: 'font-size:22px;font-weight:700;min-width:86px' }, pctTxt));
             const track = h('div', { style: 'flex:1;min-width:220px;height:16px;background:#e2e8f0;border-radius:4px;overflow:hidden;position:relative' });
@@ -1207,13 +1330,6 @@
                 '已请求结束计算；服务点确认前仿真仍可能推进（不强杀进程）。最后活动：样本 '
                 + (live.sampleTime != null ? 't=' + Number(live.sampleTime).toFixed(3) + ' s' : '—')
                 + '（心跳 ' + (live.lastHeartbeat || '—') + '）。'));
-            if (ui === 'FAILED') {
-                const errText = (live.error || S.error || '原因未记录，请查看服务端日志');
-                const eb = h('div', { class: 'wb-infobar', style: 'border-left:4px solid #b91c1c;margin-bottom:10px' });
-                eb.appendChild(h('div', { style: 'font-weight:600;margin-bottom:4px' }, '计算失败，原因如下：'));
-                eb.appendChild(h('pre', { style: 'white-space:pre-wrap;word-break:break-all;margin:0;font-size:12px;line-height:1.5;max-height:220px;overflow:auto' }, String(errText)));
-                host.appendChild(eb);
-            }
             if (S.connLost) host.appendChild(h('div', { class: 'wb-infobar', style: 'border-left:4px solid #b91c1c;margin-bottom:10px' },
                 '连接待核查：最后心跳 ' + ((S.live || {}).lastHeartbeat || '—') + '。曲线已冻结，不宣称后台已停止；恢复后自动补读。'));
             if (S.gapNotice) host.appendChild(h('div', { class: 'wb-infobar', style: 'border-left:4px solid #b45309;margin-bottom:10px' }, S.gapNotice));
@@ -1688,6 +1804,7 @@
             paintBar();
         }
         function paintBar() {
+            hideFailTip(); // 运行栏重建时收起悬停浮窗,避免残留
             barHost.innerHTML = '';
             if (uiState() !== 'IDLE' && uiState() !== 'VALIDATE_FAILED') barHost.appendChild(runBar());
         }
@@ -1747,7 +1864,7 @@
             if (!okc) return;
             try {
                 await apiPost('/close', {});
-                S.phase = 'IDLE'; S.live = null; S.result = null; S.message = '';
+                S.phase = 'IDLE'; S.live = null; S.result = null; S.message = ''; S.error = '';
                 S.cfgFrozen = null; S.tab = 'main';
                 S.compare = null; S.compareOverlay = false;
                 S.liveBuf = null; S.sessionId = null; S.catalog = null; S.byId = null;
@@ -1760,7 +1877,7 @@
         }
         function exitReadonly() {
             S.readonlyRunId = null; S.readonlyFailed = false; S.result = null; resultAcc = null; S.tab = 'main'; S.phase = 'IDLE';
-            S.live = null; S.message = ''; S.compare = null; S.compareOverlay = false;
+            S.live = null; S.message = ''; S.error = ''; S.compare = null; S.compareOverlay = false;
             renderAll();
             refresh();
         }
@@ -1935,6 +2052,8 @@
                 S.phase = d.phase || 'IDLE';
                 S.message = d.message || '';
                 S.live = d.live || null;
+                // 失败原因采集:Java会话error为完整报告(status.json本身不含error)
+                S.error = S.phase === 'FAILED' && d.error != null ? String(d.error) : '';
                 // 冻结配置(规格3.1/4.6):准备完成后固定,运行中显示与校验均以此为准
                 if (!S.cfgFrozen && S.phase === 'READY' && S.cfg) S.cfgFrozen = {
                     duration: parseFloat(S.cfg.duration), externalAir: !!S.cfg.externalAir,
@@ -2050,6 +2169,7 @@
             S.readonlyFailed = false;
             S.readonlyLoading = true;
             S.result = null; resultAcc = null;
+            S.error = '';
             S.tab = 'main';
             S.compare = null; S.compareOverlay = false;
             stopLoops();
@@ -2060,9 +2180,9 @@
                 if (resp && (resp.success || resp.code === 200) && resp.data) {
                     S.result = resp.data;
                     if (resp.data.readonlyFailed || resp.data.phase === 'FAILED') {
-                        // 失败会话只读:进入失败页面展示原因(横幅读取 live.error);曲线用stream部分采样
+                        // 失败会话只读:保留失败状态,并采集error供运行栏悬停浮窗使用
                         S.readonlyFailed = true;
-                        S.live = Object.assign({}, S.live || {}, { error: resp.data.error || '原因未记录' });
+                        S.error = resp.data.error == null ? '' : String(resp.data.error);
                         await loadCatalog();
                         refreshAcc();
                     } else {
