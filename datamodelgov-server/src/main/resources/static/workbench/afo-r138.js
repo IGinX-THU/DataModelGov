@@ -2239,6 +2239,7 @@
             if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
             stopLiveChannel();
             if (S.sseRetry) { clearInterval(S.sseRetry); S.sseRetry = null; }
+            if (S.stsRetry) { clearInterval(S.stsRetry); S.stsRetry = null; }
             if (S.stsEs) { try { S.stsEs.close(); } catch (e) { /* 已关 */ } S.stsEs = null; }
         }
         /** 状态通知通道(全生命周期):准备期阶段迁移(IDLE/PREPARING/READY)由此推送,5s轮询降为断链兜底。 */
@@ -2250,6 +2251,11 @@
                     + encodeURIComponent(cfg0.getToken() || '');
                 const es = new EventSource(url);
                 S.stsEs = es;
+                es.onopen = () => {
+                    // 状态SSE就绪:退掉5s兜底轮询与本通道的重试(chg驱动阶段迁移,live帧驱动数据)
+                    stopBootstrapPoll();
+                    if (S.stsRetry) { clearInterval(S.stsRetry); S.stsRetry = null; }
+                };
                 es.addEventListener('chg', () => {
                     refresh();
                     // 状态通道已覆盖阶段迁移:停5s引导轮询(数据通道就绪后由live帧接管S.live明细)
@@ -2259,6 +2265,12 @@
                     try { es.close(); } catch (e) { /* 已关 */ }
                     if (S.stsEs === es) S.stsEs = null;
                     startBootstrapPoll(); // 断链兜底
+                    // EventSource已被close,不会有自动重连:必须自愈重订阅,
+                    // 否则一次断链后永久停在5s /status轮询,与live推送形成双通道
+                    if (!S.stsRetry) S.stsRetry = setInterval(() => {
+                        if (S.stsEs || S.readonlyRunId) { clearInterval(S.stsRetry); S.stsRetry = null; return; }
+                        startStatusStream(); // 失败再次进入onerror,重试间隔仍在,不叠加
+                    }, 5000);
                 };
             } catch (e) { /* 保持轮询兜底 */ }
         }
