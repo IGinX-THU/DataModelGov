@@ -382,6 +382,8 @@
         }
         const runningLike = () => ['RUNNING', 'PAUSE_REQ', 'PAUSED', 'RESUME_REQ', 'STOP_REQ'].includes(uiState());
         const canCmdPhysics = () => ['RUNNING', 'PAUSED'].includes(uiState());
+        /** 暂停/继续族状态:这些迁移只做就地补丁,不重建主面板/图表。 */
+        const isPauseUi = u => ['RUNNING', 'PAUSE_REQ', 'PAUSED', 'RESUME_REQ'].includes(u);
         /** 运行中但还没收到任何样本:sim() 正在编译/初始化模型,不是"计算中"。 */
         const isCompiling = () => uiState() === 'RUNNING' && !(
             (S.liveBuf && S.liveBuf.time && S.liveBuf.time.length > 0)
@@ -1253,6 +1255,68 @@
             host.appendChild(rm);
         }
 
+        /** Np 操作条待生效提示文案(与主面板渲染共用)。 */
+        function pendingHintText(live) {
+            const pending = (live || {}).pending;
+            return '待施加命令：最多1项' + (pending ? '（当前:' + (pending.kind || '') + '）' : '')
+                + (uiState() === 'PAUSED' ? '；暂停中提交在继续后施加' : '');
+        }
+        /** 填充状态提示条(暂停/暂停请求/结束请求/断连/增量异常)。 */
+        function fillStateNotices(host, live) {
+            host.innerHTML = '';
+            const ui = uiState();
+            if (ui === 'PAUSED') host.appendChild(h('div', { class: 'wb-infobar', style: 'border-left:4px solid #0f766e;margin-bottom:10px' },
+                '已暂停：原实例保留，可检查历史，仿真时间不再推进。任一运行阶段都可请求结束计算；这不是发动机物理停车。'));
+            // L3(规格6.2):暂停请求横幅持久显示,含最后活动信息;等待超30s追加延迟提示
+            if (ui === 'PAUSE_REQ') {
+                const waitS = S.pauseReqAt ? Math.round((Date.now() - S.pauseReqAt) / 1000) : 0;
+                host.appendChild(h('div', { class: 'wb-infobar', style: 'border-left:4px solid #b45309;margin-bottom:10px' },
+                    '暂停请求已提交，等待安全响应点；最后活动：样本 '
+                    + (live.sampleTime != null ? 't=' + Number(live.sampleTime).toFixed(3) + ' s' : '—')
+                    + '（心跳 ' + (live.lastHeartbeat || '—') + '）'
+                    + (waitS > 30 ? '。响应延迟较长，请耐心等待或查看日志' : '')));
+            }
+            // L3:结束请求横幅同样补最后活动信息
+            if (ui === 'STOP_REQ') host.appendChild(h('div', { class: 'wb-infobar', style: 'margin-bottom:10px' },
+                '已请求结束计算；服务点确认前仿真仍可能推进（不强杀进程）。最后活动：样本 '
+                + (live.sampleTime != null ? 't=' + Number(live.sampleTime).toFixed(3) + ' s' : '—')
+                + '（心跳 ' + (live.lastHeartbeat || '—') + '）。'));
+            if (S.connLost) host.appendChild(h('div', { class: 'wb-infobar', style: 'border-left:4px solid #b91c1c;margin-bottom:10px' },
+                '连接待核查：最后心跳 ' + ((S.live || {}).lastHeartbeat || '—') + '。曲线已冻结，不宣称后台已停止；恢复后自动补读。'));
+            if (S.gapNotice) host.appendChild(h('div', { class: 'wb-infobar', style: 'border-left:4px solid #b45309;margin-bottom:10px' }, S.gapNotice));
+            if (S.liveErr && runningLike()) host.appendChild(h('div', { class: 'wb-infobar', style: 'border-left:4px solid #b45309;margin-bottom:10px' }, '增量读取异常: ' + S.liveErr + '（保留已有曲线，持续重试）'));
+        }
+        /** 合并"命令回执刷新 + SSE状态推送"产生的重复补丁,同一轮只渲染一次运行栏。 */
+        let patchTimer = null;
+        function schedulePatchRunningUi() {
+            if (patchTimer) return;
+            patchTimer = setTimeout(() => { patchTimer = null; patchRunningUi(); }, 60);
+        }
+        /** 暂停/继续族状态迁移:就地补丁运行栏、操作条、提示条;不重建主面板、不动 ECharts 实例。 */
+        function patchRunningUi() {
+            paintBar();
+            const live = S.live || {};
+            const strip = body.querySelector('[data-afo="op-strip"]');
+            // 极端场景:主面板渲染时不可操作(无操作条),之后再进入可操作态,补一次主面板渲染
+            if (!strip && S.tab === 'main' && canCmdPhysics()) { paintBody(); return; }
+            if (strip) strip.style.display = canCmdPhysics() ? '' : 'none';
+            const appliedEl = body.querySelector('[data-afo="applied-text"]');
+            if (appliedEl) appliedEl.textContent = '当前采用值与编辑值分开（当前采用: ' + appliedText() + '）';
+            const hintEl = body.querySelector('[data-afo="pending-hint"]');
+            if (hintEl) hintEl.textContent = pendingHintText(live);
+            const applyBtn = body.querySelector('[data-afo="apply-load"]');
+            if (applyBtn) {
+                const locked = !!live.pending;
+                applyBtn.disabled = locked;
+                applyBtn.textContent = locked ? '有待生效命令' : '施加';
+            }
+            const notice = body.querySelector('.afo-state-notice');
+            if (notice) fillStateNotices(notice, live);
+            // 命令记录小表就地重建,避免为一条事件重建整个主面板与图表
+            const evHost = body.querySelector('[data-afo="events"]');
+            if (evHost) { evHost.innerHTML = ''; evHost.appendChild(eventsTable()); }
+        }
+
         /* ---------- 总控页(MS-02) ---------- */
         function paintMain() {
             const ui = uiState();
@@ -1276,11 +1340,10 @@
             const live = S.live || {};
             const pending = live.pending;
             if (canCmdPhysics()) {
-                const paused = ui === 'PAUSED';
                 const locked = !!pending;
                 S.npDraft = S.npDraft || S.cfg.npRatio || '1';
                 const lm = loadMode();
-                const strip = h('div', { style: 'background:#f0fdf9;border-radius:6px;padding:10px 16px;margin-bottom:14px' });
+                const strip = h('div', { 'data-afo': 'op-strip', style: 'background:#f0fdf9;border-radius:6px;padding:10px 16px;margin-bottom:14px' });
                 const row1 = h('div', { style: 'display:flex;align-items:center;gap:10px;flex-wrap:wrap' },
                     h('span', { style: 'font-weight:600;font-size:14px' }, 'Np挡位'));
                 [['0.8', '80%'], ['0.9', '90%'], ['0.95', '95%'], ['1', '100%'], ['1.05', '105%']].forEach(([val, label]) => {
@@ -1292,7 +1355,7 @@
                     }, label));
                 });
                 row1.appendChild(h('span', { style: 'flex:1' }));
-                row1.appendChild(h('span', { style: 'font-size:13px;color:#0f766e' }, '当前采用值与编辑值分开（当前采用: ' + appliedText() + '）'));
+                row1.appendChild(h('span', { 'data-afo': 'applied-text', style: 'font-size:13px;color:#0f766e' }, '当前采用值与编辑值分开（当前采用: ' + appliedText() + '）'));
                 strip.appendChild(row1);
                 const row2 = h('div', { style: 'display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px' },
                     h('span', { style: 'font-size:13px' }, '负载：按选定模式填常值 → 施加 → 等待实际生效'));
@@ -1308,34 +1371,18 @@
                 else if (lm === 'pitch') addLoad('总距角', 'afo-load-0', 'deg');
                 else { addLoad('主桨', 'afo-load-0', '6~14'); addLoad('尾桨', 'afo-load-1', '−8~18'); }
                 row2.appendChild(h('button', {
-                    class: 'wb-btn wb-btn-outline', disabled: locked ? '' : null, style: 'padding:4px 16px',
+                    'data-afo': 'apply-load', class: 'wb-btn wb-btn-outline', disabled: locked ? '' : null, style: 'padding:4px 16px',
                     onclick: () => applyLoad(lm)
                 }, locked ? '有待生效命令' : '施加'));
                 row2.appendChild(h('span', { style: 'flex:1' }));
-                row2.appendChild(h('span', { style: 'font-size:13px;color:#334155' }, '待施加命令：最多1项' + (pending ? '（当前:' + (pending.kind || '') + '）' : '') + (paused ? '；暂停中提交在继续后施加' : '')));
+                row2.appendChild(h('span', { 'data-afo': 'pending-hint', style: 'font-size:13px;color:#334155' }, pendingHintText(live)));
                 strip.appendChild(row2);
                 host.appendChild(strip);
             }
-            if (ui === 'PAUSED') host.appendChild(h('div', { class: 'wb-infobar', style: 'border-left:4px solid #0f766e;margin-bottom:10px' },
-                '已暂停：原实例保留，可检查历史，仿真时间不再推进。任一运行阶段都可请求结束计算；这不是发动机物理停车。'));
-            // L3(规格6.2):暂停请求横幅持久显示,含最后活动信息;等待超30s追加延迟提示
-            if (ui === 'PAUSE_REQ') {
-                const waitS = S.pauseReqAt ? Math.round((Date.now() - S.pauseReqAt) / 1000) : 0;
-                host.appendChild(h('div', { class: 'wb-infobar', style: 'border-left:4px solid #b45309;margin-bottom:10px' },
-                    '暂停请求已提交，等待安全响应点；最后活动：样本 '
-                    + (live.sampleTime != null ? 't=' + Number(live.sampleTime).toFixed(3) + ' s' : '—')
-                    + '（心跳 ' + (live.lastHeartbeat || '—') + '）'
-                    + (waitS > 30 ? '。响应延迟较长，请耐心等待或查看日志' : '')));
-            }
-            // L3:结束请求横幅同样补最后活动信息
-            if (ui === 'STOP_REQ') host.appendChild(h('div', { class: 'wb-infobar', style: 'margin-bottom:10px' },
-                '已请求结束计算；服务点确认前仿真仍可能推进（不强杀进程）。最后活动：样本 '
-                + (live.sampleTime != null ? 't=' + Number(live.sampleTime).toFixed(3) + ' s' : '—')
-                + '（心跳 ' + (live.lastHeartbeat || '—') + '）。'));
-            if (S.connLost) host.appendChild(h('div', { class: 'wb-infobar', style: 'border-left:4px solid #b91c1c;margin-bottom:10px' },
-                '连接待核查：最后心跳 ' + ((S.live || {}).lastHeartbeat || '—') + '。曲线已冻结，不宣称后台已停止；恢复后自动补读。'));
-            if (S.gapNotice) host.appendChild(h('div', { class: 'wb-infobar', style: 'border-left:4px solid #b45309;margin-bottom:10px' }, S.gapNotice));
-            if (S.liveErr && runningLike()) host.appendChild(h('div', { class: 'wb-infobar', style: 'border-left:4px solid #b45309;margin-bottom:10px' }, '增量读取异常: ' + S.liveErr + '（保留已有曲线，持续重试）'));
+            // 状态提示条独立宿主:暂停/继续迁移时就地更新,不必重建整个主面板
+            const noticeHost = h('div', { class: 'afo-state-notice' });
+            fillStateNotices(noticeHost, live);
+            host.appendChild(noticeHost);
             // 四图 2×2(效果图 MS-02:轴速/燃油/负载功率/轴承腔出口油温)
             const gr = h('div', { class: 'wb-chart', style: 'display:grid;grid-template-columns:1fr 1fr;gap:8px 22px' });
             host.appendChild(gr);
@@ -1353,7 +1400,9 @@
                 h('button', { class: 'wb-btn wb-btn-outline', onclick: () => window.open(excelUrl((S.live && S.live.runId) || S.readonlyRunId || ''), '_blank') }, '📂 导出Excel')));
             // 命令记录
             host.appendChild(h('div', { style: 'font-weight:700;font-size:14px;margin:16px 0 6px' }, '命令记录'));
-            host.appendChild(eventsTable());
+            const evHost = h('div', { 'data-afo': 'events' });
+            evHost.appendChild(eventsTable());
+            host.appendChild(evHost);
         }
 
         /* ---------- 准备页(MS-01:编号分区+通栏表单) ---------- */
@@ -1824,6 +1873,7 @@
             if (uiState() !== 'IDLE' && uiState() !== 'VALIDATE_FAILED') barHost.appendChild(runBar());
         }
         function renderAll() {
+            if (patchTimer) { clearTimeout(patchTimer); patchTimer = null; } // 全量渲染后丢弃挂起的局部补丁
             paintBar();
             paintTabs();
             paintBody();
@@ -2088,8 +2138,14 @@
                 if (S.catalog && !S.es && S.streamMode !== 'pull') startLiveChannel();
                 if ((S.phase === 'ENDED' || S.phase === 'FAILED') && !S.result) ensureSessionResult();
                 const now = uiState();
-                if (now !== prev) renderAll();
-                else lightUpdate();
+                if (now !== prev) {
+                    // 暂停/继续族迁移:只做就地补丁,避免"命令回执 + 状态轮询"各重建一次造成双闪
+                    if (isPauseUi(prev) && isPauseUi(now)) schedulePatchRunningUi();
+                    else renderAll();
+                } else if (isPauseUi(now)) {
+                    // 同状态轮询:就地补丁(含命令记录小表),不重建主面板/图表
+                    schedulePatchRunningUi();
+                } else lightUpdate();
             } catch (e) { /* 轮询容错 */ }
             statusBusy = false;
         }
@@ -2138,8 +2194,15 @@
                 if (S._followEl) { S._followEl.textContent = '跟随最新：关（新数据已到达）'; S._followEl.style.color = '#b45309'; }
             }
             if (added > 0 || d.hasMore || eventsChanged) refreshRuntimeCharts();
+            // 命令回执新增/状态变化:只就地刷新运行栏与命令记录,不整页重绘
+            if (eventsChanged && isPauseUi(uiState())) schedulePatchRunningUi();
             if (d.isFinal) S.liveBuf.isFinal = true; // 通道保持开启:保存状态仍会变化
-            if (phaseChanged || uiState() !== prevUi) renderAll(); // 按钮态迁移(暂停/继续/结束)
+            if (phaseChanged || uiState() !== prevUi) {
+                const next = uiState();
+                // 暂停/继续迁移就地补丁:不 disposeCharts、不重建主面板,避免曲线闪断/滚动回顶
+                if (isPauseUi(prevUi) && isPauseUi(next)) schedulePatchRunningUi();
+                else renderAll(); // 按钮态迁移(准备完成/结束等)
+            }
             else if (wasCompiling && added > 0 && !isCompiling()) exitCompileOverlay(); // 编译期结束:只摘遮罩+刷新,不整页重建
             else if (runningLike()) {
                 // SSE稳态运行:进度/仿真时间随数据轻量刷新(图表由refreshRuntimeCharts负责),400ms节流
