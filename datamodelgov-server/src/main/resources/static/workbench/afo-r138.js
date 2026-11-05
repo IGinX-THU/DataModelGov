@@ -1708,7 +1708,9 @@
             host.appendChild(loadBox);
             host.appendChild(formRow('外部空气回灌', sel([['internal', '关闭 · 空气系统仍计算输出'], ['external', '外部8路回灌（经一步延迟生效）']], c.externalAir ? 'external' : 'internal', v => { c.externalAir = v === 'external'; })));
             host.appendChild(formRow('实时发布', sel([['on', '开启 · 运行时增量曲线'], ['off', '关闭 · 仍完整计算并导出Excel']], c.publishLive ? 'on' : 'off', v => { c.publishLive = v === 'on'; })));
-            host.appendChild(formRow('任务编号（可选）', inp('runId'), '字母/数字/短横线,≤80字符'));
+            // 任务编号输入框已按 UI_R138 移除:MS-01 准备页无此字段,规格定位 runId 为
+            // 系统生成的运行标识(运行栏展示;历史复用"新建运行"时生成新编号),不由用户手填。
+            // 曾因此输入框被旧 runId 预填,导致第二次准备撞"结果目录已存在"失败。
             // D12:输出目录只读展示(会话结果/status/inbox 落盘位置;来自 /status.outputDir 或结果 config)
             const outDir = S.statusOutputDir || (S.result && S.result.config && S.result.config.outputDir)
                 || (S.cfgFrozen && S.cfgFrozen.outputDir) || '';
@@ -1764,14 +1766,12 @@
                             const np0 = c.npRatio;
                             const step = parseFloat(f.recordStep.value);
                             const dur = parseFloat(f.duration.value);
-                            const rid = (f.runId.value || '').trim();
                             const trans = document.getElementById('afo-trans').checked;
                             if (!isFinite(dur) || dur <= 0) throw new Error('终止时间须为正数');
                             // M1:终止时间对齐固定步长网格,与服务端 SimTimeUtil.alignToStep 约定一致
                             if (Math.abs(dur / 0.025 - Math.round(dur / 0.025)) >= 1e-9) throw new Error('终止时间需为0.025 s计算网格的整数倍');
                             if (!isFinite(step) || step <= 0) throw new Error('记录周期须为正数');
                             if (Math.abs(step / 0.025 - Math.round(step / 0.025)) > 1e-6) throw new Error('记录周期须为0.025 s整数倍(当前 ' + step + ')');
-                            if (rid && !/^[A-Za-z0-9_\-]{1,80}$/.test(rid)) throw new Error('任务编号仅限字母/数字/短横线/下划线,≤80字符');
                             if (np0 !== '1' && !trans) throw new Error('Np初值挡位≠100%(与配套初态不同),请先勾选初态确认');
                             const req = {
                                 engineId: c.engineId || ctx.project.engineId || 'ENGINE-001',
@@ -1808,7 +1808,7 @@
                                 req.tailToMainPowerRatio = tr; req.tailDesignPitchDeg = td;
                                 req.mainPitchDeg = m; req.tailPitchDeg = t2;
                             }
-                            if (rid) req.runId = rid;
+                            // 不传 runId:由服务端自动生成新编号(UI_R138,runId非用户输入)
                             // 回写仅读当前模式实际渲染的输入;未渲染模式回退到既有状态值
                             const fv = k => (f[k] && f[k].value != null) ? f[k].value : (c[k] != null ? String(c[k]) : '');
                             S.cfg = Object.assign({}, S.cfg, {
@@ -1817,7 +1817,7 @@
                                 mainPitchDeg: fv('mainPitchDeg'), tailPitchDeg: fv('tailPitchDeg'),
                                 // M2:双总距固定映射参数写入本地配置(随 prepare 请求原样透传给程序)
                                 tailToMainPowerRatio: fv('tailToMainPowerRatio'), tailDesignPitchDeg: fv('tailDesignPitchDeg'),
-                                externalAir: req.externalAir, npRatio: np0, runId: rid,
+                                externalAir: req.externalAir, npRatio: np0, runId: '',
                                 publishLive: req.publishLive, initialTransitionConfirmed: trans
                             });
                             // 乐观过渡态:点击即锁界面,失败回退(R138 6.1"准备中"不可操作)
@@ -2365,7 +2365,11 @@
                 mkpNm: s('mkpNm'), pitchDeg: s('pitchDeg'),
                 mainPitchDeg: s('mainPitchDeg'), tailPitchDeg: s('tailPitchDeg'),
                 tailToMainPowerRatio: s('tailToMainPowerRatio'), tailDesignPitchDeg: s('tailDesignPitchDeg'),
-                npRatio: s('npRatio'), runId: s('runId'),
+                npRatio: s('npRatio'),
+                // 任务编号不回填:服务端 config 里的 runId 是上一次运行的身份,
+                // 带回表单会导致第二次准备沿用旧编号,MATLAB 合同断言"结果目录已存在,不覆盖"直接失败
+                // (与 reuseFrom/__WB_AFO_REUSE__ 的 runId:'' 约定一致)
+                runId: '',
                 externalAir: !!c.externalAir,
                 publishLive: c.publishLive !== false
             });

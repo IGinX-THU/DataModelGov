@@ -762,6 +762,13 @@ public class AfoService {
             // (其断言"结果目录已存在,不覆盖");Java 侧 adapter/config 放旁边的
             // 临时工作区 _work_<runId>,不触碰合同目录
             File outputDir = store.afoWorkDir(projectId, runId);
+            // 与 sht_afo_prepare 的"结果目录已存在,不覆盖"断言一致,提前拦截:
+            // 免得白启一台引擎后才收到顶层"dmg_afo_task",用户看不到真实原因
+            if (outputDir.exists()) {
+                throw new IllegalStateException("任务编号 " + runId + " 的结果目录已存在(上一次运行成果),"
+                        + "MATLAB合同不覆盖已有结果;请更换任务编号或清理该目录后重新发起: "
+                        + outputDir.getAbsolutePath());
+            }
             File workTmp = new File(store.afoWorkDir(projectId, "_work_" + runId), "adapter");
             if (!workTmp.exists() && !workTmp.mkdirs()) throw new IOException("无法创建AFO适配器临时目录: " + workTmp);
 
@@ -816,7 +823,15 @@ public class AfoService {
         } catch (Exception e) {
             log.error("AFO准备失败: {}", s.runId, e);
             s.phase = "FAILED";
-            s.error = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+            // 引擎异常顶层message通常只有"dmg_afo_task",真实原因在最内层cause
+            // (如"结果目录已存在,不覆盖");沿cause链取最后一个非空message透传到界面
+            String detail = e.getMessage();
+            Throwable cur = e;
+            while (cur.getCause() != null && cur.getCause() != cur) {
+                cur = cur.getCause();
+                if (cur.getMessage() != null && !cur.getMessage().isEmpty()) detail = cur.getMessage();
+            }
+            s.error = detail == null ? e.getClass().getSimpleName() : detail;
             s.message = "准备失败";
             closeEngine(s);
             writeSessionIndex(s);
