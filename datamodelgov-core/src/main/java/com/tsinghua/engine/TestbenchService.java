@@ -107,6 +107,17 @@ public class TestbenchService {
 
     private volatile com.tsinghua.matlab.MatlabEnginePool enginePool;
 
+    /** 一次性任务引擎池(懒加载,尚未创建时为 null),供工作台状态聚合读取。 */
+    public com.tsinghua.matlab.MatlabEnginePool enginePoolRef() {
+        return enginePool;
+    }
+
+    /** 全模式会话当前独占的引擎数(0/1),该引擎不走共享池。 */
+    public int sessionEngineCount() {
+        FullmodeSession s = fmSession;
+        return s != null && s.engine != null ? 1 : 0;
+    }
+
     private synchronized ExecutorService taskExecutor() {
         if (taskExecutor == null) {
             taskExecutor = Executors.newFixedThreadPool(Math.max(2, enginePoolSize));

@@ -77,6 +77,11 @@ public class Tc24Service {
         }
     }
 
+    /** 新版接入层引擎池(引擎被禁用时为 null),供工作台状态聚合读取空闲/已建/上限/排队。 */
+    public MatlabEnginePool enginePoolRef() {
+        return enginePool;
+    }
+
     private static final String R06_IN_CLASSPATH = "matlab/delivery/programs";
 
     /** 交付树根可配置解析(engine.r06.root):磁盘路径优先,classpath/内置资源/jar 兜底。 */

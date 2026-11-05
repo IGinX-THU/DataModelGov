@@ -161,6 +161,14 @@ public class AfoService {
         }
     }
 
+    /** AFO 专属引擎数(预热待命 + 会话独占),这两类都不进共享池,供工作台状态聚合读取。 */
+    public int dedicatedEngineCount() {
+        int n = warmEngine != null ? 1 : 0;
+        AfoSession s = session;
+        if (s != null && s.engine != null) n++;
+        return n;
+    }
+
     /** 取预热引擎;未就绪时同步冷启兜底(prepare 不因此失败两次)。 */
     private synchronized MatlabEngine takeWarmEngine() throws Exception {
         MatlabEngine e = warmEngine;

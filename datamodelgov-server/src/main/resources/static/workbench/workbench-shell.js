@@ -92,7 +92,7 @@
             if (first) this._navigate(first.key);
         }
 
-        /** 状态栏轮询(单例):MATLAB日志尾(/engine-log)+引擎状态(/api/program/engine-status)。
+        /** 状态栏轮询(单例):MATLAB日志尾(/api/engine/engine-log)+新版接入层引擎状态(/api/engine/engine-status)。
          *  仅当工作台内有活动任务/会话时轮询(各页面通过 __WB_ENGINE_POLL_UNTIL__ 心跳续期);
          *  空闲时零请求。 */
         _startEngineStatusPolling() {
@@ -118,9 +118,8 @@
                 if (sts.length) {
                     let msg = 'MATLAB 引擎状态未知';
                     try {
-                        const resp = await window.AppConfig.request(
-                            window.AppConfig.getApiUrl('program', 'engine-status'));
-                        if (resp && resp.code === 200 && resp.data && resp.data.message) msg = resp.data.message;
+                        const resp = await window.AppConfig.engineGet('engine-status');
+                        if (resp && (resp.success || resp.code === 200) && resp.data && resp.data.message) msg = resp.data.message;
                     } catch (e) { /* 保持未知 */ }
                     sts.forEach(el => { el.textContent = msg; });
                 }
@@ -148,7 +147,7 @@
             try {
                 if (typeof EventSource === 'undefined') { startEngFallback(); return; }
                 const cfg0 = window.AppConfig;
-                const es = new EventSource(cfg0.api.baseURL + '/api/program/engine-status-stream?token='
+                const es = new EventSource(cfg0.api.baseURL + '/api/engine/engine-status-stream?token='
                     + encodeURIComponent(cfg0.getToken() || ''));
                 window.__WB_ENGINE_ES__ = es;
                 es.addEventListener('chg', ev => { try { applyEng(JSON.parse(ev.data)); } catch (e) { /* 坏帧忽略 */ } });

@@ -89,6 +89,9 @@ public class EngineWorkbenchController {
     private com.tsinghua.engine.EngineProjectMetaService metaService;
 
     @Autowired
+    private com.tsinghua.service.ProgramService programService;
+
+    @Autowired
     private cn.edu.tsinghua.iginx.session_v2.IginXClient iginxClient;
 
     /* ---------- 项目 ---------- */
@@ -1446,6 +1449,132 @@ public class EngineWorkbenchController {
     @RequirePermission(Permission.READ)
     public Result<List<String>> engineLog(@RequestParam(value = "n", defaultValue = "20") int n) {
         return Result.success(com.tsinghua.engine.MatlabLogRing.tail(Math.min(Math.max(n, 1), 300)));
+    }
+
+    /* ---------- 新版接入层引擎状态(工作台 footer;共享池聚合 + 专属引擎) ---------- */
+
+    private static final com.fasterxml.jackson.databind.ObjectMapper OM_ENG_STATUS =
+            new com.fasterxml.jackson.databind.ObjectMapper();
+    private static final java.util.List<Object[]> engStatusSubs =
+            new java.util.concurrent.CopyOnWriteArrayList<>();
+    private final java.util.concurrent.ScheduledExecutorService engStatusPump =
+            java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r -> {
+                Thread t = new Thread(r, "engine-status-pump");
+                t.setDaemon(true);
+                return t;
+            });
+    private volatile boolean engStatusPumpStarted = false;
+
+    @ApiOperation("新版接入层 MATLAB 引擎状态(工作台底部状态栏)")
+    @GetMapping("/engine-status")
+    @RequirePermission(Permission.READ)
+    public Result<Map<String, Object>> engineStatus() {
+        return Result.success(aggregateEngineStatus());
+    }
+
+    @ApiOperation("引擎状态与日志SSE通知流(工作台;指纹变化才推chg,前端轮询兜底)")
+    @GetMapping(value = "/engine-status-stream", produces = org.springframework.http.MediaType.TEXT_EVENT_STREAM_VALUE)
+    @RequirePermission(Permission.READ)
+    public SseEmitter engineStatusStream() {
+        SseEmitter em = new SseEmitter(0L);
+        Object[] sub = new Object[]{em, ""};
+        engStatusSubs.add(sub);
+        em.onCompletion(() -> engStatusSubs.remove(sub));
+        em.onTimeout(() -> { engStatusSubs.remove(sub); try { em.complete(); } catch (Exception ignore) { } });
+        ensureEngStatusPump();
+        return em;
+    }
+
+    private synchronized void ensureEngStatusPump() {
+        if (!engStatusPumpStarted) {
+            engStatusPumpStarted = true;
+            engStatusPump.scheduleWithFixedDelay(this::pumpEngineStatus, 3000, 3000,
+                    java.util.concurrent.TimeUnit.MILLISECONDS);
+        }
+    }
+
+    private void pumpEngineStatus() {
+        for (Object[] sub : engStatusSubs) {
+            SseEmitter em = (SseEmitter) sub[0];
+            try {
+                Map<String, Object> status = aggregateEngineStatus();
+                List<String> tail = com.tsinghua.engine.MatlabLogRing.tail(20);
+                String fp = String.valueOf(String.valueOf(status.get("message")).hashCode())
+                        + ':' + (tail.isEmpty() ? "" : tail.get(tail.size() - 1)).hashCode() + ':' + tail.size();
+                if (!fp.equals((String) sub[1])) {
+                    sub[1] = fp;
+                    Map<String, Object> payload = new LinkedHashMap<>();
+                    payload.put("status", status.get("message"));
+                    payload.put("logTail", tail);
+                    em.send(SseEmitter.event().name("chg").data(OM_ENG_STATUS.writeValueAsString(payload)));
+                }
+            } catch (IOException io) {
+                engStatusSubs.remove(sub);
+                try { em.complete(); } catch (Exception ignore) { }
+            } catch (Exception e) {
+                log.debug("引擎状态SSE泵异常(下周期重试): {}", e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * 聚合新版工作台实际使用的引擎:
+     * 共享池 = 个性化建模(TC24)池 + 试车台一次性任务池 + 飞参/自演化复用的 program 池;
+     * 专属引擎 = AFO 预热/会话 + 全模式会话(不走共享池,只计入"专属")。
+     */
+    private Map<String, Object> aggregateEngineStatus() {
+        Map<String, Object> data = new LinkedHashMap<>();
+        if (!programService.isMatlabEngineEnabled()) {
+            data.put("status", "disabled");
+            data.put("message", "[MATLAB] 引擎模式未启用（matlab.engine.enabled=false）");
+            return data;
+        }
+        List<com.tsinghua.matlab.MatlabEnginePool> pools = new ArrayList<>();
+        addPool(pools, programService.enginePool());
+        addPool(pools, tc24Service.enginePoolRef());
+        addPool(pools, testbenchService.enginePoolRef());
+
+        int idle = 0, total = 0, max = 0, waiting = 0;
+        boolean ready = false, starting = false, failed = !pools.isEmpty();
+        for (com.tsinghua.matlab.MatlabEnginePool p : pools) {
+            idle += p.idleCount();
+            total += p.totalCount();
+            max += p.maxEngines();
+            waiting += p.waitingCount();
+            ready |= p.isReady();
+            starting |= p.isStarting();
+            failed &= p.isFailed();
+        }
+        int dedicated = afoService.dedicatedEngineCount() + testbenchService.sessionEngineCount();
+
+        if (ready) {
+            String msg = "[MATLAB] 引擎已就绪（空闲 " + idle + " / 已建 " + total
+                    + " · 上限 " + max + " · 排队 " + waiting;
+            if (dedicated > 0) msg += " · 专属 " + dedicated;
+            msg += "）";
+            data.put("status", "ready");
+            data.put("message", msg);
+            data.put("idle", idle);
+            data.put("total", total);
+            data.put("max", max);
+            data.put("waiting", waiting);
+            data.put("dedicated", dedicated);
+        } else if (starting) {
+            data.put("status", "starting");
+            data.put("message", "[MATLAB] 引擎启动中...（已建 " + total + " / 上限 " + max + "）");
+        } else if (failed) {
+            data.put("status", "failed");
+            data.put("message", "[MATLAB] 引擎启动失败，仿真无法运行");
+        } else {
+            data.put("status", "starting");
+            data.put("message", "[MATLAB] 引擎启动中...");
+        }
+        return data;
+    }
+
+    private static void addPool(List<com.tsinghua.matlab.MatlabEnginePool> pools,
+                                com.tsinghua.matlab.MatlabEnginePool p) {
+        if (p != null) pools.add(p);
     }
 
     @ApiOperation("请求停止辨识")
