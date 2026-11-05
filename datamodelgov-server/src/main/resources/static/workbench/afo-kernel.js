@@ -84,6 +84,19 @@ window.AfoKernel = (() => {
         return v.toFixed(4);
     }
 
+    /** 轴刻度短格式:避免大数/极小值产生超长标签被裁切。 */
+    function axisNum(v) {
+        if (!isFinite(v)) return '';
+        const a = Math.abs(v);
+        if (a === 0) return '0';
+        if (a >= 1e6) return (v / 1e6).toFixed(2) + 'M';
+        if (a >= 1e4) return (v / 1e3).toFixed(1) + 'k';
+        if (a >= 100) return String(Math.round(v));
+        if (a >= 1) return String(Math.round(v * 100) / 100);
+        if (a >= 1e-3) return v.toFixed(4);
+        return v.toExponential(1);
+    }
+
     /* ---------- LiveBuffer:运行时增量缓存(R138 7.3) ----------
      * 服务端 /afo/live 返回 sampleSeqList/sampleTimeList/values[n×W]/quality[n×W],
      * values 列与请求时的 columns(目录0基下标)一一对应。按游标追加;缺口不拼接,
@@ -189,6 +202,20 @@ window.AfoKernel = (() => {
         });
         const unitMap = {};
         lineSeries.forEach(s => { unitMap[s.name] = s._unit || ''; });
+        // 近常量序列(如稳态Np):ECharts默认把y轴缩到1e-6量级,刻度变成超长小数并被标签区裁掉;
+        // 跨度不足量级0.5%时主动撑开,保证刻度可读
+        const leftVals = [];
+        lineSeries.forEach(s => { if (s.yAxisIndex === 0) s.data.forEach(p => { if (p[1] != null && isFinite(p[1])) leftVals.push(p[1]); }); });
+        let yMin = null, yMax = null;
+        if (leftVals.length) {
+            let mn = leftVals[0], mx = leftVals[0];
+            for (const v of leftVals) { if (v < mn) mn = v; if (v > mx) mx = v; }
+            const mag = Math.max(Math.abs(mn), Math.abs(mx));
+            if (mx - mn < mag * 0.005) {
+                const pad = Math.max(mag * 0.0025, 1e-9);
+                yMin = mn - pad; yMax = mx + pad;
+            }
+        }
         const yName = s => s && s.length ? (s[0].unit || '') : '';
         return {
             animation: false,
@@ -221,11 +248,14 @@ window.AfoKernel = (() => {
             },
             yAxis: [{
                 type: 'value', scale: true, name: yName(leftSeries),
-                nameTextStyle: { fontSize: 11, align: 'left' }, axisLabel: { fontSize: 10 },
+                min: yMin == null ? null : yMin, max: yMax == null ? null : yMax,
+                nameTextStyle: { fontSize: 11, align: 'left' },
+                axisLabel: { fontSize: 10, formatter: axisNum },
                 splitLine: { lineStyle: { color: '#f1f5f9' } }
             }].concat(hasY2 ? [{
                 type: 'value', scale: true, name: cfg.y2Title || yName((cfg.series || []).filter(s => s.axis === 'right')),
-                nameTextStyle: { fontSize: 11, align: 'right' }, axisLabel: { fontSize: 10 },
+                nameTextStyle: { fontSize: 11, align: 'right' },
+                axisLabel: { fontSize: 10, formatter: axisNum },
                 splitLine: { show: false }
             }] : []),
             dataZoom: cfg.zoom === false ? [] : [{ type: 'inside', filterMode: 'none' }],
@@ -380,16 +410,20 @@ window.AfoKernel = (() => {
             }
             if (cur) segs.push({ a: cur.t, b: t1, v: cur.v });
             segs.forEach(s => {
-                if (s.v === 1 || s.v === true) {
-                    const seg = document.createElement('div');
-                    seg.style.cssText = 'position:absolute;top:0;bottom:0;background:' + (r.color || '#0e7490')
-                        + ';left:' + (100 * (s.a - t0) / (t1 - t0)) + '%;width:' + Math.max(0.4, 100 * (s.b - s.a) / (t1 - t0)) + '%';
-                    track.appendChild(seg);
-                }
+                const seg = document.createElement('div');
+                const on = (s.v === 1 || s.v === true);
+                // 状态为0(正常工况)也画一条浅色基线,否则全程0会看起来像"没有数据"
+                seg.style.cssText = 'position:absolute;'
+                    + (on ? 'top:0;bottom:0;background:' + (r.color || '#0e7490')
+                           : 'top:50%;height:2px;background:' + (r.color || '#0e7490') + '55')
+                    + ';left:' + (100 * (s.a - t0) / (t1 - t0)) + '%;width:' + Math.max(0.4, 100 * (s.b - s.a) / (t1 - t0)) + '%';
+                track.appendChild(seg);
             });
+            const last = (r.values || []).length ? r.values[r.values.length - 1] : null;
             const scale = document.createElement('div');
-            scale.style.cssText = 'width:34px;font-size:11px;color:#64748b;flex:none';
-            scale.appendChild(document.createTextNode('0 → 1'));
+            scale.style.cssText = 'width:64px;font-size:11px;color:#64748b;flex:none';
+            const txt = last == null ? '—' : (last === 1 || last === true) ? '1 触发' : '0 正常';
+            scale.appendChild(document.createTextNode(txt));
             line.appendChild(lab); line.appendChild(track); line.appendChild(scale);
             wrap.appendChild(line);
         });

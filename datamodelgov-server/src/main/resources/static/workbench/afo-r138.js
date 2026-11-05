@@ -86,7 +86,7 @@
         air: {
             title: '空气·八路质量流量 供气温度 供气压力',
             notice: 'R065已采集24项；回灌关闭仍计算。温压为保护前供气边界状态。',
-            footnote: '同源温压重合，以交替颜色示意；可单独显隐。界面不展示模板、合并或延迟副本。原空气选择器第10输入未接线等历史限制保留。'
+            footnote: '每图一个支路(温度/压力同源)，支路可单独显隐。界面不展示模板、合并或延迟副本。原空气选择器第10输入未接线等历史限制保留。'
         }
     };
     // 全部分组(展开其余通道;名称取自字典)
@@ -199,7 +199,8 @@
         }
 
         /* ---------- 目录加载 ---------- */
-        async function loadCatalog() {
+        async function loadCatalog(attempt) {
+            attempt = attempt || 1;
             let cat = null, hash = null, sid = null;
             if (!S.readonlyRunId) {
                 // 只读回看不用当前活动会话的通道目录,统一走结果自带目录
@@ -207,14 +208,28 @@
                     const resp = await api('/channels');
                     if (resp && (resp.success || resp.code === 200) && resp.data && Array.isArray(resp.data.channels)) {
                         cat = resp.data.channels; hash = resp.data.channelCatalogHash || null; sid = resp.data.sessionId || null;
+                        S.catalogErr = '';
+                    } else {
+                        S.catalogErr = (resp && resp.message) || '通道字典返回为空';
                     }
-                } catch (e) { /* 回退 */ }
+                } catch (e) {
+                    // 准备阶段channels.json可能尚未写出:重试几次再报错,不能静默吞掉(否则运行期全图"未在字典中")
+                    S.catalogErr = e.message || String(e);
+                }
             }
             if (!cat && S.result) {
                 if (Array.isArray(S.result.catalog)) { cat = S.result.catalog; hash = S.result.channelCatalogHash || null; sid = S.result.sessionId || null; }
                 else if (Array.isArray(S.result.channels)) cat = specToCatalog(S.result.channels);
             }
-            if (!cat) return;
+            if (!cat) {
+                if (attempt < 4 && !S.readonlyRunId && !S._catBusyRetry) {
+                    S._catBusyRetry = true;
+                    setTimeout(() => { S._catBusyRetry = false; loadCatalog(attempt + 1).then(ok => { if (ok) renderAll(); }); }, 1200);
+                } else if (attempt >= 4) {
+                    console.warn('通道字典加载失败:', S.catalogErr);
+                }
+                return false;
+            }
             S.catalog = cat; S.catalogHash = hash;
             if (sid && !S.sessionId) S.sessionId = sid;
             const byId = {}, dispIds = [], dispPos = [];
@@ -225,6 +240,7 @@
             S.byId = byId; S.dispIds = dispIds; S.dispPos = dispPos;
             if (!S.liveBuf) S.liveBuf = K.LiveBuffer();
             if (!S.liveCols) S.liveCols = dispPos.slice();
+            return true;
         }
         function specToCatalog(specs) {
             const out = [];
@@ -269,14 +285,31 @@
             if (vals.length === 1 && Array.isArray(vals[0]) && Array.isArray(vals[0][0])) vals = vals[0];
             const time = (result && result.time) || [];
             const n = time.length;
-            const w0 = Array.isArray(vals[0]) ? vals[0].length : -1;
-            const colMajor = n > 0 && vals.length > n && Array.isArray(vals[1]) && vals[1].length === w0;
+            // 组×时刻展平(列优先,MATLAB jsonencode 常见):长度 = 组数×时刻数,远大于时刻数
+            const colMajor = n > 0 && vals.length > n;
             const idx = {};
-            (result.channels || []).forEach((spec, gi) => (spec.names || []).forEach((nm, j) => {
-                const isFlat = /^fuel_proxy_|^air_g/.test(spec.id);
-                const id = isFlat ? spec.id : spec.id + '_' + String(j + 1).padStart(2, '0');
-                idx[id] = { gi, j };
-            }));
+            (result.channels || []).forEach((spec, gi) => {
+                if (Array.isArray(spec.names) && spec.names.length) {
+                    // 分组spec(正常result.json):通道id = spec.id_NNN,fuel_proxy_/air_g_用spec.id本身
+                    const isFlat = /^fuel_proxy_|^air_g/.test(spec.id);
+                    spec.names.forEach((nm, j) => {
+                        const id = isFlat ? spec.id : spec.id + '_' + String(j + 1).padStart(2, '0');
+                        idx[id] = { gi, j };
+                    });
+                } else if (spec.id) {
+                    // 平铺spec(失败会话合成结果,每spec单值):id即通道
+                    idx[spec.id] = { gi, j: 0 };
+                }
+            });
+            // 单通道组(names只有1项)在result.json里被jsonencode降维成标量(不是数组),
+            // 必须按标量取该组唯一值,否则所有单通道量(燃油/滑油/空气/控制燃油等)全读成null
+            const pick = (g, j) => {
+                if (g == null) return null;
+                if (typeof g === 'number') return j === 0 ? g : null;
+                if (!Array.isArray(g)) return null;
+                const x = g[j];
+                return x == null ? null : x;
+            };
             return {
                 time,
                 has: id => !!idx[id],
@@ -285,8 +318,8 @@
                     const out = new Array(n).fill(null);
                     if (!m) return out;
                     for (let i = 0; i < n; i++) {
-                        if (colMajor) { const row = vals[i + m.gi * n]; out[i] = row ? row[m.j] : null; }
-                        else { const row = vals[i]; const g = row ? row[m.gi] : null; out[i] = g ? (g[m.j] == null ? null : g[m.j]) : null; }
+                        if (colMajor) out[i] = pick(vals[i + m.gi * n], m.j);
+                        else { const row = vals[i]; out[i] = pick(row ? row[m.gi] : null, m.j); }
                     }
                     return out;
                 }
@@ -461,6 +494,7 @@
             const bits = [];
             bits.push('任务 ' + (runId || '—'));
             if (compiling) bits.push('正在编译模型与初始化求解器(通常1~2分钟),首帧数据到达后自动进入计算');
+            if (!S.catalog && S.catalogErr) bits.push('通道字典加载失败(重试中): ' + String(S.catalogErr).slice(0, 60));
             if (live.sampleTime != null) bits.push('最新采样 ' + Number(live.sampleTime).toFixed(1) + ' s');
             bits.push('墙钟耗时单独计量' + (wall != null ? ('（' + (wall >= 90 ? Math.floor(wall / 60) + 'm' + Math.round(wall % 60) + 's' : Number(wall).toFixed(1) + 's') + '）') : ''));
             if (live.publishLive === false) bits.push('实时发布已关闭（Excel仍完整保存）');
@@ -474,6 +508,17 @@
             bar.appendChild(h('div', { style: 'font-size:12px;color:#64748b;margin-top:5px;display:flex;gap:16px;flex-wrap:wrap' },
                 bits.map(t => h('span', null, t))));
             return bar;
+        }
+
+        /* ---------- 编译期过渡(图表提前渲染,只叠动画与提示条) ---------- */
+        if (!document.getElementById('afo-r138-style')) {
+            const st = document.createElement('style');
+            st.id = 'afo-r138-style';
+            st.textContent = '@keyframes afoIndet{0%{left:-32%}100%{left:100%}}'
+                + '@keyframes afoBreath{0%,100%{opacity:.45}50%{opacity:.75}}'
+                + '.wb-chart{transition:opacity .45s ease}'
+                + '.afo-compiling .wb-chart{animation:afoBreath 2s ease-in-out infinite}';
+            document.head.appendChild(st);
         }
 
         /* ---------- 页面骨架 ---------- */
@@ -622,6 +667,20 @@
             return { ts, vs };
         }
 
+        /** 一图一曲线(用户反馈):多曲线图拆成若干单曲线图,标题带曲线短名便于区分。 */
+        function splitOneSeries(defs) {
+            const out = [];
+            (defs || []).forEach(def => {
+                const list = def.s || [];
+                if (list.length <= 1) { out.push(def); return; }
+                list.forEach(one => out.push(Object.assign({}, def, {
+                    t: (def.t ? def.t + '·' : '') + (one.name || one.id),
+                    s: [one]
+                })));
+            });
+            return out;
+        }
+
         /** 图卡(效果图:标题左上/单位右上/图区/图例在图内底部;标题行含单位切换与导出当前视图)。 */
         function chartCard(host, def, resultMode) {
             // 单位:常用图按图组目标单位(def.u,如发动机温度K、滑油/总控油温℃);"原单位"开关切回。
@@ -667,7 +726,9 @@
             const missing = (def.s || []).filter(d => d.id !== NP_DEM && d.id !== CMD_STEP && !chById(d.id)).map(d => d.id);
             if (missing.length === (def.s || []).length && (def.s || []).length) {
                 dom.style.height = 'auto';
-                dom.appendChild(K.emptyState('通道未在本次字典中', missing.join(', ')));
+                dom.appendChild(isCompiling()
+                    ? K.emptyState('等待首帧样本…', '模型编译完成后自动开始绘制')
+                    : K.emptyState('通道未在本次字典中', missing.join(', ')));
                 return;
             }
             if (missing.length) {
@@ -817,11 +878,11 @@
                 return;
             }
             if (S.viewMode === 'common') {
-                const gr = h('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:10px 22px' });
+                const gr = h('div', { class: 'wb-chart', style: 'display:grid;grid-template-columns:1fr 1fr;gap:10px 22px' });
                 host.appendChild(gr);
                 (L.charts || []).forEach(def => {
                     if (def.state) stateCard(gr, def, resultMode);
-                    else chartCard(gr, def, resultMode);
+                    else splitOneSeries([def]).forEach(d => chartCard(gr, d, resultMode));
                 });
                 if (sys === 'air') paintAirGrid(gr, resultMode);
             } else {
@@ -830,68 +891,63 @@
                     host.appendChild(h('div', { style: 'font-weight:700;margin:12px 0 2px' }, g.t,
                         h('span', { style: 'font-weight:400;font-size:12px;color:#64748b;margin-left:10px' }, g.note || '')));
                     if (g.events) { host.appendChild(eventsTable()); return; }
-                    const gr = h('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:10px 22px' });
+                    const gr = h('div', { class: 'wb-chart', style: 'display:grid;grid-template-columns:1fr 1fr;gap:10px 22px' });
                     host.appendChild(gr);
-                    (g.charts || []).forEach(ch => chartCard(gr, { t: '', u: '', s: ch }, resultMode));
+                    (g.charts || []).forEach(ch => splitOneSeries([{ t: g.t, u: '', s: ch }])
+                        .forEach(d => chartCard(gr, Object.assign({}, d, { t: g.t ? d.t.replace(/^·/, '') : (d.s[0].name || d.s[0].id) }), resultMode)));
                     if (g.state) stateCard(gr, { t: g.t, state: g.state }, resultMode);
                 });
-                if (sys === 'air') { const gr2 = h('div'); host.appendChild(gr2); paintAirGrid(gr2, resultMode); }
+                if (sys === 'air') { const gr2 = h('div', { class: 'wb-chart' }); host.appendChild(gr2); paintAirGrid(gr2, resultMode); }
             }
             if (sys === 'air' && S.viewMode === 'groups') rowc.appendChild(channelTreePanel());
             if (L.footnote) host.appendChild(h('div', { style: 'font-size:13px;color:#334155;padding:10px 4px 0' }, L.footnote));
             if (!resultMode) host.appendChild(h('div', { style: 'font-size:12px;color:#94a3b8;padding:4px 4px 0' },
                 '运行中曲线读取 stream 增量样本块(R065);关闭“跟随最新”仅冻结视图,仿真继续。'));
         }
-        /** 空气三行两列(MS-07):每图四条,同支路三行同色,支路显隐三行联动。 */
+        /** 空气三行×八路(用户要求一图一曲线):每张图一个支路,支路显隐联动三行。 */
         function paintAirGrid(host, resultMode) {
             AIR_ROWS.forEach(row => {
-                [[0, 4], [4, 8]].forEach(([a, b]) => {
-                    const defs = row.ids.slice(a, b)
-                        .map((id, k) => ({ id, bi: a + k }))
-                        .filter(x => !S.airHide[AIR_BRANCH[x.bi]])
-                        .map(x => S_(x.id, { name: AIR_BRANCH[x.bi], color: AIR_BRANCH_COLOR[x.bi] }));
-                    const unit = S.conv && row.title === '供气压力' ? 'kPa' : row.unit;
+                const unit = S.conv && row.title === '供气压力' ? 'kPa' : row.unit;
+                AIR_BRANCH.forEach((br, bi) => {
+                    if (S.airHide[br]) return;
+                    const id = row.ids[bi];
                     const head = h('div', { style: 'display:flex;align-items:baseline;padding:6px 4px 0' },
-                        h('span', { style: 'font-weight:700;font-size:14px;color:#0f172a' }, row.title + ' ' + AIR_BRANCH[a] + '至' + AIR_BRANCH[b - 1]),
+                        h('span', { style: 'font-weight:700;font-size:14px;color:#0f172a' }, row.title + ' ' + br),
                         h('span', { style: 'flex:1' }),
                         h('span', { style: 'font-size:12px;color:#64748b' }, unit));
-                    const dom = h('div', { style: 'height:170px' });
-                    const wrapc = h('div', null, head, dom);
-                    host.appendChild(wrapc);
-                    if (!defs.length) { dom.appendChild(K.emptyState('全部支路已隐藏')); return; }
-                    const missing = defs.filter(d => !chById(d.id));
-                    if (missing.length === defs.length) { dom.appendChild(K.emptyState('本结果未记录', AIR_BRANCH.slice(a, b).join(', '))); return; }
-                    if (isResultMode() && resultAcc) {
-                        const series = defs.map(d => {
-                            const c = chById(d.id); if (!c || !resultAcc.has(d.id)) return null;
-                            const conv = S.conv && row.title === '供气压力' ? K.convertSeries(resultAcc.series(d.id), 'Pa').values : resultAcc.series(d.id);
-                            return { name: d.name, values: conv, unit: S.conv && row.title === '供气压力' ? 'kPa' : (c.unit || row.unit), time: resultAcc.time, color: d.color };
-                        }).filter(Boolean);
-                        if (!series.length) { dom.appendChild(K.emptyState('本结果未记录(24项为R065新增)')); return; }
-                        K.mount(dom, { time: resultAcc.time, series, window: windowRange(resultAcc.time), marks: appliedMarks() })
-                            .then(c => staticCharts.push(c)).catch(() => { });
+                    const dom = h('div', { style: 'height:150px' });
+                    host.appendChild(h('div', null, head, dom));
+                    const c = chById(id);
+                    if (!c) { dom.appendChild(K.emptyState('本结果未记录', id)); return; }
+                    const conv = v => (S.conv && row.title === '供气压力') ? K.convertSeries(v, 'Pa').values : v;
+                    const sUnit = () => (S.conv && row.title === '供气压力') ? 'kPa' : (c.unit || row.unit);
+                    if (resultMode && resultAcc) {
+                        if (!resultAcc.has(id)) { dom.appendChild(K.emptyState('本结果未记录(24项为R065新增)', id)); return; }
+                        K.mount(dom, {
+                            time: resultAcc.time,
+                            series: [{ name: br, values: conv(resultAcc.series(id)), unit: sUnit(), time: resultAcc.time, color: AIR_BRANCH_COLOR[bi] }],
+                            window: windowRange(resultAcc.time), marks: appliedMarks()
+                        }).then(ctl => staticCharts.push(ctl)).catch(() => { });
                     } else {
                         const meta = {
                             ctl: null,
                             makeCfg() {
-                                const t = S.liveBuf ? S.liveBuf.time : [];
-                                const series = defs.map(d => {
-                                    const c = chById(d.id); if (!c) return null;
-                                    const s = liveSeries(d.id);
-                                    const conv = S.conv && row.title === '供气压力' ? K.convertSeries(s.v, 'Pa').values : s.v;
-                                    return { name: d.name, values: conv, unit: S.conv && row.title === '供气压力' ? 'kPa' : (c.unit || row.unit), time: s.time, color: d.color };
-                                }).filter(Boolean);
-                                return { time: t, series, window: windowRange(t), marks: appliedMarks() };
+                                const s = liveSeries(id);
+                                return {
+                                    time: s.time,
+                                    series: [{ name: br, values: conv(s.v), unit: sUnit(), time: s.time, color: AIR_BRANCH_COLOR[bi] }],
+                                    window: windowRange(s.time), marks: appliedMarks()
+                                };
                             },
                             refresh() { if (this.ctl && !this.ctl.disposed) this.ctl.setCfg(this.makeCfg()); }
                         };
                         charts.push(meta);
-                        K.mount(dom, meta.makeCfg()).then(c => { meta.ctl = c; }).catch(() => { });
+                        K.mount(dom, meta.makeCfg()).then(ctl => { meta.ctl = ctl; }).catch(() => { });
                     }
                 });
             });
             host.appendChild(h('div', { style: 'font-size:13px;color:#334155;padding:8px 4px 0' },
-                '同源温压重合，以交替颜色示意；可单独显隐。界面不展示模板、合并或延迟副本。原空气选择器第10输入未接线等历史限制保留。'));
+                '每图一个支路(温度/压力同源)，支路可单独显隐。界面不展示模板、合并或延迟副本。原空气选择器第10输入未接线等历史限制保留。'));
             const chips = h('div', { style: 'display:flex;gap:6px;padding:6px 0 0;flex-wrap:wrap' });
             AIR_BRANCH.forEach((g, i) => {
                 chips.appendChild(h('button', {
@@ -921,7 +977,7 @@
                 h('span', { style: 'font-weight:700;font-size:15px;color:#0f172a' },
                     g + ' 单支路三图（质量流量 / 供气温度 / 供气压力）')));
             const rows = [AIR_ROWS[0], AIR_ROWS[1], AIR_ROWS[2]];
-            const gr = h('div', { style: 'display:grid;grid-template-columns:1fr;gap:10px' });
+            const gr = h('div', { class: 'wb-chart', style: 'display:grid;grid-template-columns:1fr;gap:10px' });
             host.appendChild(gr);
             rows.forEach(row => {
                 const id = row.ids[bi];
@@ -1051,7 +1107,7 @@
                 if (!b) { b = { key, items: [] }; buckets.push(b); }
                 b.items.push(id);
             });
-            const gr = h('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:10px 22px' });
+            const gr = h('div', { class: 'wb-chart', style: 'display:grid;grid-template-columns:1fr 1fr;gap:10px 22px' });
             host.appendChild(gr);
             buckets.forEach(bk => {
                 const defs = bk.items.map(id => {
@@ -1059,7 +1115,9 @@
                     const converted = S.conv && !K.isUnconfirmedUnit(c.unit) && K.convertedUnit(c.unit);
                     return S_(id, { name: qualName(id), unit: converted || c.unit, rawUnit: converted ? c.unit : undefined });
                 });
-                chartCard(gr, { t: bk.key === '__unc__' ? '未确认单位（原值）' : bk.key, u: bk.key === '__unc__' ? '' : bk.key, s: defs }, resultMode);
+                // 一图一曲线(用户反馈):自选工作区同样按通道拆分
+                splitOneSeries([{ t: bk.key === '__unc__' ? '未确认单位（原值）' : bk.key, u: bk.key === '__unc__' ? '' : bk.key, s: defs }])
+                    .forEach(d => chartCard(gr, d, resultMode));
             });
             host.appendChild(sampleTable(ids.slice()));
             const rm = h('div', { style: 'margin-top:10px;display:flex;gap:6px;flex-wrap:wrap' });
@@ -1149,8 +1207,6 @@
                 '已请求结束计算；服务点确认前仿真仍可能推进（不强杀进程）。最后活动：样本 '
                 + (live.sampleTime != null ? 't=' + Number(live.sampleTime).toFixed(3) + ' s' : '—')
                 + '（心跳 ' + (live.lastHeartbeat || '—') + '）。'));
-            if (isCompiling()) host.appendChild(h('div', { class: 'wb-infobar', style: 'border-left:4px solid #b45309;margin-bottom:10px' },
-                '模型编译初始化中：仿真内核正在编译模型与加载求解器（通常1~2分钟），此阶段尚无数据流，属正常等待，无需重复操作。此时提交的暂停/结束将在编译完成后的首个安全点生效。'));
             if (ui === 'FAILED') {
                 const errText = (live.error || S.error || '原因未记录，请查看服务端日志');
                 const eb = h('div', { class: 'wb-infobar', style: 'border-left:4px solid #b91c1c;margin-bottom:10px' });
@@ -1163,14 +1219,14 @@
             if (S.gapNotice) host.appendChild(h('div', { class: 'wb-infobar', style: 'border-left:4px solid #b45309;margin-bottom:10px' }, S.gapNotice));
             if (S.liveErr && runningLike()) host.appendChild(h('div', { class: 'wb-infobar', style: 'border-left:4px solid #b45309;margin-bottom:10px' }, '增量读取异常: ' + S.liveErr + '（保留已有曲线，持续重试）'));
             // 四图 2×2(效果图 MS-02:轴速/燃油/负载功率/轴承腔出口油温)
-            const gr = h('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:8px 22px' });
+            const gr = h('div', { class: 'wb-chart', style: 'display:grid;grid-template-columns:1fr 1fr;gap:8px 22px' });
             host.appendChild(gr);
             [
                 { t: '轴速', u: 'rpm', s: [S_('engine_09', { name: 'Np' }), S_('engine_10', { name: 'Ng' })] },
                 { t: '燃油', u: 'kg/s', s: [S_('fuel_command_01', { name: '指令' }), S_('fuel_engine_01', { name: '发动机采用' })] },
                 { t: '负载功率', u: 'kW', s: [S_('load_05', { name: '实际负载' })] },
                 { t: '轴承腔出口油温', u: '℃', s: [S_('oil09_01', { name: '甲腔' }), S_('oil10_01', { name: '乙腔' })] }
-            ].forEach(def => chartCard(gr, def, isResultMode()));
+            ].forEach(def => splitOneSeries([def]).forEach(d => chartCard(gr, d, isResultMode())));
             host.appendChild(h('div', { style: 'font-size:13px;color:#334155;padding:8px 4px 0' },
                 '事件：请求已接受不等于已经施加；按实际生效仿真时间在曲线标记。'));
             // 入口行
@@ -1571,19 +1627,50 @@
         }
 
         /* ---------- 渲染 ---------- */
+        /** 编译期过渡条:图表已提前铺好,这里只给一行状态+不确定进度动画,首帧样本到达后消失。 */
+        function compileStrip() {
+            const bar = h('div', {
+                style: 'margin:0 18px 10px;padding:8px 14px;border-radius:6px;background:#f0fdfa;'
+                    + 'border-left:4px solid #b45309;display:flex;align-items:center;gap:12px;font-size:13px;color:#334155'
+            });
+            bar.appendChild(h('span', { style: 'flex:none;font-weight:600;color:#0f766e' }, '模型编译初始化中'));
+            const track = h('div', { style: 'flex:1;min-width:160px;height:6px;background:#e2e8f0;border-radius:3px;position:relative;overflow:hidden' });
+            track.appendChild(h('div', {
+                style: 'position:absolute;top:0;bottom:0;width:32%;border-radius:3px;'
+                    + 'background:linear-gradient(90deg,#0e7490,#22d3ee);animation:afoIndet 1.4s ease-in-out infinite'
+            }));
+            bar.appendChild(track);
+            bar.appendChild(h('span', { style: 'flex:none;color:#64748b' },
+                '通常 1~2 分钟；首帧样本到达后自动进入计算，此时提交的暂停/结束在首个安全点生效'));
+            return bar;
+        }
         function paintBody() {
             killCharts();
-            body.innerHTML = '';
             if (S.readonlyLoading) {
+                body.innerHTML = '';
                 body.appendChild(h('div', { class: 'wb-empty' }, '正在加载历史结果(不启动MATLAB/DLL)…'));
                 return;
             }
+            // 编译期:图表照常提前渲染(空态),只叠过渡动画;同一页签已渲染则保持,避免轮询重启动画
+            const chartTab = (S.tab === 'main' || sysOfTab[S.tab]);
+            const compiling = chartTab && isCompiling() && !S.readonlyRunId;
+            if (compiling && body.dataset.compile === '1' && body.dataset.compileTab === S.tab) return;
+            delete body.dataset.compile;
+            delete body.dataset.compileTab;
+            body.innerHTML = '';
             refreshAcc();
             if (S.tab === 'main') paintMain();
             else if (S.tab === '__result') paintResultTab();
             else {
                 const sys = sysOfTab[S.tab];
                 if (sys) paintSystemTab(sys);
+            }
+            body.classList.toggle('afo-compiling', compiling);
+            if (compiling) {
+                body.dataset.compile = '1';
+                body.dataset.compileTab = S.tab;
+                // 放在页面大标题之后,不抢标题位置
+                body.insertBefore(compileStrip(), body.children[1] || null);
             }
         }
         function paintBar() {
@@ -1761,8 +1848,19 @@
                     + '&columns=' + S.liveCols.join(',');
                 const es = new EventSource(url);
                 S.es = es; S.streamMode = 'sse';
+                S._liveFrames = 0;
+                // watchdog:连接活着但6s收不到任何live帧(典型:nginx等代理缓冲SSE)→强制降级轮询,
+                // 否则"状态流通(chg停轮询)+数据流被缓冲"的组合会让运行期全程盲跑
+                S._liveWatch = setTimeout(() => {
+                    if (S.es === es && S.streamMode === 'sse' && !S._liveFrames && !S.liveBuf.isFinal) {
+                        console.warn('AFO实时流6s无数据帧(疑似代理缓冲),降级为轮询拉取');
+                        stopLiveChannel();
+                        fallbackPull();
+                    }
+                }, 6000);
                 es.addEventListener('live', ev => {
                     try {
+                        S._liveFrames++;
                         ingestLive(JSON.parse(ev.data));
                         // SSE 活跃:停引导轮询与兜底(状态/事件/阶段已由通道覆盖,零轮询)
                         stopBootstrapPoll();
@@ -1802,6 +1900,7 @@
         function stopLiveChannel() {
             if (S.es) { try { S.es.close(); } catch (e) { /* 已关 */ } S.es = null; }
             if (S.pullTimer) { clearInterval(S.pullTimer); S.pullTimer = null; }
+            if (S._liveWatch) { clearTimeout(S._liveWatch); S._liveWatch = null; }
         }
         /** 命令提交后的快速状态跟踪(取回执/状态迁移,不受 5s 节拍限制)。 */
         function quickPoll() {
@@ -1832,7 +1931,12 @@
                     const hb = new Date(String(S.live.lastHeartbeat).replace(' ', 'T')).getTime();
                     S.connLost = isFinite(hb) && (Date.now() - hb > 12000) && ['RUNNING', 'PAUSED'].includes(S.phase);
                 } else if (runningLike()) S.connLost = true;
-                if (S.phase === 'READY' && !S.catalog) loadCatalog().then(() => renderAll());
+                // 字典缺失时任何阶段都重试(准备中channels.json可能还没写出);不然运行期全图"未在字典中"
+                if (!S.catalog && !S._catBusy && !S.readonlyRunId) {
+                    S._catBusy = true;
+                    loadCatalog().then(ok => { S._catBusy = false; if (ok) renderAll(); })
+                        .catch(() => { S._catBusy = false; });
+                }
                 if (S.catalog && !S.es && S.streamMode !== 'pull') startLiveChannel();
                 if ((S.phase === 'ENDED' || S.phase === 'FAILED') && !S.result) ensureSessionResult();
                 const now = uiState();
@@ -1862,7 +1966,7 @@
             S.live = S.live || {};
             ['state', 'currentSimulationTime', 'sampleTime', 'sampleSeq', 'publishedSeq',
              'lastHeartbeat', 'saveState', 'saveError', 'publishError', 'applied', 'pending',
-             'pauseRequested', 'stopRequested'].forEach(k => {
+             'pauseRequested', 'stopRequested', 'error'].forEach(k => {
                 if (d[k] !== undefined) S.live[k] = d[k];
             });
             if (d.events && d.eventsLen !== undefined) {

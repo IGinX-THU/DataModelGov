@@ -90,7 +90,12 @@ public class AfoController {
     @ApiOperation("会话状态SSE通知流(全生命周期1s指纹比对,变化才推chg;前端收到后拉一次status)")
     @GetMapping(value = "/stream", produces = org.springframework.http.MediaType.TEXT_EVENT_STREAM_VALUE)
     @RequirePermission(Permission.READ)
-    public org.springframework.web.servlet.mvc.method.annotation.SseEmitter statusStream() {
+    public org.springframework.web.servlet.mvc.method.annotation.SseEmitter statusStream(
+            javax.servlet.http.HttpServletResponse resp) {
+        // nginx等反向代理默认缓冲SSE响应,导致事件攒到连接结束才一次性发出(前端表现为运行期全盲、
+        // 结束瞬间跳全量);X-Accel-Buffering:no让代理对该响应自动关闭缓冲
+        resp.setHeader("X-Accel-Buffering", "no");
+        resp.setHeader("Cache-Control", "no-cache");
         return afoService.openStatusStream();
     }
 
@@ -402,7 +407,11 @@ public class AfoController {
             @PathVariable("pid") String pid,
             @org.springframework.web.bind.annotation.RequestParam(value = "afterSeq", required = false, defaultValue = "0") Long afterSeq,
             @org.springframework.web.bind.annotation.RequestParam(value = "sessionId", required = false) String sessionId,
-            @org.springframework.web.bind.annotation.RequestParam(value = "columns", required = false) String columns) {
+            @org.springframework.web.bind.annotation.RequestParam(value = "columns", required = false) String columns,
+            javax.servlet.http.HttpServletResponse resp) {
+        // 同/stream:关掉代理缓冲,保证live帧实时到达
+        resp.setHeader("X-Accel-Buffering", "no");
+        resp.setHeader("Cache-Control", "no-cache");
         org.springframework.web.servlet.mvc.method.annotation.SseEmitter em =
                 new org.springframework.web.servlet.mvc.method.annotation.SseEmitter(0L);
         try {
