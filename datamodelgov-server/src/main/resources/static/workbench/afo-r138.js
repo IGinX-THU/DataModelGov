@@ -1823,6 +1823,10 @@
                             // 乐观过渡态:点击即锁界面,失败回退(R138 6.1"准备中"不可操作)
                             S.phase = 'PREPARING';
                             S.message = '准备运行副本(校验配套身份与初态)';
+                            // 新会话数据通道复位:上次运行可能残留 pull 模式/未关连接,
+                            // 不清会导致 refresh 的 startLiveChannel 被 streamMode!=='pull' 永久拦截,
+                            // 运行期 S.live 零更新(状态SSE无chg)→进度条不动直到结束
+                            stopLiveChannel(); S.streamMode = '';
                             S.liveBuf = null; S.sessionId = null; S.catalog = null; S.byId = null;
                             S.dispIds = null; S.dispPos = null; S.liveCols = null; S.gapNotice = ''; S.liveErr = '';
                             renderAll();
@@ -2238,6 +2242,7 @@
         function stopLoops() {
             if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
             stopLiveChannel();
+            S.streamMode = ''; // 通道模式一并复位:残留'pull'会让下个会话的SSE启动被永久拦截
             if (S.sseRetry) { clearInterval(S.sseRetry); S.sseRetry = null; }
             if (S.stsRetry) { clearInterval(S.stsRetry); S.stsRetry = null; }
             if (S.stsEs) { try { S.stsEs.close(); } catch (e) { /* 已关 */ } S.stsEs = null; }
