@@ -311,4 +311,95 @@ public class TestbenchController {
             return Result.error("读取试车台任务列表失败: " + e.getMessage());
         }
     }
+
+    /* ---------- 任务/全模式会话状态 SSE 通知流(指纹变化才推chg;前端轮询降为兜底) ---------- */
+
+    private static final com.fasterxml.jackson.databind.ObjectMapper OM_TB = new com.fasterxml.jackson.databind.ObjectMapper();
+    private final java.util.concurrent.CopyOnWriteArrayList<Object[]> tbSubs = new java.util.concurrent.CopyOnWriteArrayList<>();
+    private final java.util.concurrent.ScheduledExecutorService tbPump =
+            java.util.concurrent.Executors.newSingleThreadScheduledExecutor(
+                    r -> { Thread t = new Thread(r, "tb-status-pump"); t.setDaemon(true); return t; });
+    private volatile boolean tbPumpStarted = false;
+
+    private synchronized void ensureTbPump() {
+        if (!tbPumpStarted) {
+            tbPumpStarted = true;
+            tbPump.scheduleWithFixedDelay(this::pumpTbChanges, 1000, 1000, java.util.concurrent.TimeUnit.MILLISECONDS);
+        }
+    }
+
+    private void pumpTbChanges() {
+        for (Object[] sub : tbSubs) {
+            org.springframework.web.servlet.mvc.method.annotation.SseEmitter em =
+                    (org.springframework.web.servlet.mvc.method.annotation.SseEmitter) sub[0];
+            String pid = (String) sub[1], taskId = (String) sub[2], kind = (String) sub[3];
+            try {
+                String json = "fm".equals(kind)
+                        ? OM_TB.writeValueAsString(testbenchService.fullmodeStatus(pid))
+                        : OM_TB.writeValueAsString(testbenchService.taskStatus(pid, taskId));
+                String fp = Integer.toString(json.hashCode()) + ':' + json.length();
+                if (!fp.equals((String) sub[4])) {
+                    sub[4] = fp;
+                    em.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event()
+                            .name("chg").data(json));
+                }
+            } catch (java.io.IOException io) {
+                tbSubs.remove(sub);
+                try { em.complete(); } catch (Exception ignore) { }
+            } catch (Exception e) {
+                log.debug("试车台状态SSE泵异常(下周期重试): {}", e.getMessage());
+            }
+        }
+    }
+
+    private org.springframework.web.servlet.mvc.method.annotation.SseEmitter openTbSub(
+            String pid, String taskId, String kind) {
+        org.springframework.web.servlet.mvc.method.annotation.SseEmitter em =
+                new org.springframework.web.servlet.mvc.method.annotation.SseEmitter(0L);
+        Object[] sub = new Object[]{ em, pid, taskId, kind, "" };
+        tbSubs.add(sub);
+        em.onCompletion(() -> tbSubs.remove(sub));
+        em.onTimeout(() -> { tbSubs.remove(sub); try { em.complete(); } catch (Exception ignore) { } });
+        ensureTbPump();
+        return em;
+    }
+
+    @ApiOperation("全模式会话状态SSE通知流(指纹变化才推chg;前端轮询降为兜底)")
+    @GetMapping(value = "/fullmode/stream", produces = org.springframework.http.MediaType.TEXT_EVENT_STREAM_VALUE)
+    @RequirePermission(Permission.READ)
+    public org.springframework.web.servlet.mvc.method.annotation.SseEmitter fullmodeStream(@PathVariable("pid") String pid) {
+        org.springframework.web.servlet.mvc.method.annotation.SseEmitter em =
+                new org.springframework.web.servlet.mvc.method.annotation.SseEmitter(0L);
+        try {
+            testbenchService.fullmodeStatus(pid); // 探活
+            return openTbSub(pid, "fullmode", "fm");
+        } catch (Exception e) {
+            try {
+                em.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event()
+                        .name("err").data(e.getMessage() == null ? "stream unavailable" : e.getMessage()));
+                em.complete();
+            } catch (Exception ignore) { }
+            return em;
+        }
+    }
+
+    @ApiOperation("试车台任务(起动停/设计点)状态SSE通知流")
+    @GetMapping(value = "/tasks/{taskId}/stream", produces = org.springframework.http.MediaType.TEXT_EVENT_STREAM_VALUE)
+    @RequirePermission(Permission.READ)
+    public org.springframework.web.servlet.mvc.method.annotation.SseEmitter tbTaskStream(
+            @PathVariable("pid") String pid, @PathVariable("taskId") String taskId) {
+        org.springframework.web.servlet.mvc.method.annotation.SseEmitter em =
+                new org.springframework.web.servlet.mvc.method.annotation.SseEmitter(0L);
+        try {
+            testbenchService.taskStatus(pid, taskId); // 探活
+            return openTbSub(pid, taskId, "task");
+        } catch (Exception e) {
+            try {
+                em.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event()
+                        .name("err").data(e.getMessage() == null ? "stream unavailable" : e.getMessage()));
+                em.complete();
+            } catch (Exception ignore) { }
+            return em;
+        }
+    }
 }

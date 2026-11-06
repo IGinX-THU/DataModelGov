@@ -1,0 +1,11 @@
+{
+  "Mode": "static",
+  "PID": 21588,
+  "ExitCode": 0,
+  "Seconds": 15.88974,
+  "ActualPriority": "BelowNormal",
+  "BudgetExceeded": false,
+  "CumulativeSeconds": 30.203282899999998,
+  "StoppedByTool": false,
+  "Finished": "2026-11-02T19:29:13.0379230+08:00"
+}

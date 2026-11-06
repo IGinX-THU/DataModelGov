@@ -3,10 +3,15 @@
 ## 需求与设计依据
 
 功能、界面、交互、业务逻辑的设计**一律以交付文档为准**：
-`datamodelgov-server/src/main/resources/programs/Delivery_V1_20261019_R06/docs/`
+`datamodelgov-server/src/main/resources/matlab/delivery/docs/`
 （完整界面设计说明书.docx、程序调用与独立使用手册.docx、界面页面与操作流程关联图.html、
 程序与界面功能关联图.html、modules/{TC24,TC27,StartStop,F3,Stage4,UI} 下各 CSV 字典）。
 本文件只涵盖构建与 MATLAB 集成，不是功能设计依据。
+
+> 内置交付树固定放在 `src/main/resources/matlab/delivery/`（版本无关的固定目录名，
+> 当前为 R065）。升级 MATLAB 程序版本时，把新交付包 `程序/` 的内层内容
+> （advanced_C、docs、examples、manifests、programs、tools）整树覆盖该目录即可，代码零改动。
+> 也可通过 `engine.r06.root` 指向外部原始交付包（自动扫描定位，见 application.yml 注释）。
 
 ## 构建 / 运行
 

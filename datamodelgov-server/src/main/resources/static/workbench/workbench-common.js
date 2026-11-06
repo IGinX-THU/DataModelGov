@@ -3246,6 +3246,15 @@ window.Workbench = (() => {
                     h('div', { class: 'wb-hint', style: 'word-break:break-all' },
                         S.message || '执行异常;详情见仿真记录与服务端日志。修正后可直接重新发起准备。')));
             }
+            // 过渡态锁定(与AFO页PREPARING一致):准备期间禁用全部输入/按钮,只读横幅提示,完成后由SSE/轮询解锁
+            if (preparing) {
+                card.querySelectorAll('input,select,button').forEach(el => { el.disabled = true; el.style.pointerEvents = 'none'; });
+                card.appendChild(h('div', { style: 'margin-top:14px;padding:10px 14px;background:#f0fdf9;border:1px solid #99e0d5;border-radius:6px;display:flex;gap:12px;align-items:center' },
+                    h('span', { class: 'wb-inline-loading' }, h('span', { class: 'wb-inline-spinner' })),
+                    h('div', null,
+                        h('div', { style: 'font-weight:700;color:#0f766e' }, '正在准备初态,界面已锁定'),
+                        h('div', { class: 'wb-hint', style: 'margin:0' }, '校验身份/初始化模型需要一些时间(引擎预热约1-2分钟);准备完成前不可修改配置,完成后自动解锁。'))));
+            }
             return card;
         }
 
@@ -4384,16 +4393,34 @@ window.Workbench = (() => {
             if (S.tab === 'ops') patchOps();
         }
 
+        // 状态获取:SSE 通知流为主,chg事件自带完整status负载→直接渲染(SSE活跃期间零status轮询XHR);
+        // EventSource失败才回退5s轮询(IDLE时status是轻量文件读,本地相位与后端脱锁也能自动恢复)
+        const fmApply = r => { if (r && r.code === 200 && r.data) applyStatus(r.data); };
+        const fmPoll = () => { window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000; api('/status').then(fmApply).catch(() => { }); };
         if (window.__WB_FM_TIMER__) clearInterval(window.__WB_FM_TIMER__);
-        window.__WB_FM_TIMER__ = setInterval(() => {
-            if (document.hidden) return;
-            // 始终轮询(IDLE时status是轻量文件读):本地相位与后端脱锁(如准备失败误判)也能自动恢复,
-            // 否则IDLE停轮询后页面永久冻结——准备/推进实际仍在后端进行
-            window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000;
-            api('/status').then(r => {
-                if (r && r.code === 200 && r.data) applyStatus(r.data);
-            }).catch(() => { });
-        }, 2000);
+        if (window.__WB_FM_ES__) { try { window.__WB_FM_ES__.close(); } catch (e) { } window.__WB_FM_ES__ = null; }
+        try {
+            const cfg0 = window.AppConfig;
+            const url = cfg0.api.baseURL + '/api/engine/projects/' + encodeURIComponent(pid) + '/testbench/fullmode/stream?token=' + encodeURIComponent(cfg0.getToken() || '');
+            const es = new EventSource(url);
+            window.__WB_FM_ES__ = es;
+            es.addEventListener('chg', ev => {
+                window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000;
+                try { fmApply({ code: 200, data: JSON.parse(ev.data) }); } catch (e) { fmPoll(); }
+            });
+            es.onerror = () => {
+                try { es.close(); } catch (e) { }
+                window.__WB_FM_ES__ = null;
+                if (!window.__WB_FM_TIMER__) window.__WB_FM_TIMER__ = setInterval(() => {
+                    if (document.hidden) return;
+                    window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000;
+                    fmPoll();
+                }, 5000);
+            };
+            fmPoll();
+        } catch (e) {
+            window.__WB_FM_TIMER__ = setInterval(() => { if (document.hidden) return; fmPoll(); }, 5000);
+        }
         if (!window.__WB_FM_RESIZE__) {
             window.__WB_FM_RESIZE__ = () => Object.keys(S.charts).forEach(k => { try { S.charts[k].resize(); } catch (e) { } });
             window.addEventListener('resize', window.__WB_FM_RESIZE__);
@@ -4644,7 +4671,7 @@ window.Workbench = (() => {
                     runBtn.classList.add('disabled');
                     apiPost('/tasks/design_point/run', { modelMode: S.modelMode, design })
                         .then(r => {
-                            if (r && r.code === 200 && r.data) { S.dpTaskId = r.data.taskId; S.dpView = 'result'; S.dpShowLog = false; pollDp(); }
+                            if (r && r.code === 200 && r.data) { S.dpTaskId = r.data.taskId; S.dpView = 'result'; S.dpShowLog = false; startSsStream(); pollDp(); }
                             else toast((r && r.message) || '求解发起失败', 'error');
                             runBtn.classList.remove('disabled');
                             renderBody();
@@ -4720,12 +4747,17 @@ window.Workbench = (() => {
         }
         function str(v) { return v == null ? '—' : String(v); }
         function toast(msg, kind) { if (window.Workbench && window.Workbench.toast) window.Workbench.toast(msg, kind || 'info'); }
-        /** 拉取一次求解状态并就地重绘状态容器(状态条/求解结果/commit核对视图);不重建页面其他部分。 */
-        function renderDpStatus(holder) {
-            return api('/tasks/' + encodeURIComponent(S.dpTaskId) + '/status').then(r => {
-                if (!holder.isConnected) return; // 页面已切走/重建,丢弃本次渲染
-                holder.innerHTML = '';
-                const d = r && r.code === 200 ? r.data : null;
+        /** 就地重绘状态容器(状态条/求解结果/commit核对视图)。
+         *  d缺省=自行拉取一次(遗留调用方);传入d则零网络直接渲染(SSE chg负载复用)。 */
+        function renderDpStatus(holder, d) {
+            if (d === undefined) {
+                return api('/tasks/' + encodeURIComponent(S.dpTaskId) + '/status').then(r => {
+                    renderDpStatus(holder, r && r.code === 200 ? r.data : null);
+                }).catch(() => { });
+            }
+            if (!holder.isConnected) return; // 页面已切走/重建,丢弃本次渲染
+            holder.innerHTML = '';
+            {
                 if (!d) { holder.appendChild(h('div', { class: 'wb-empty' }, '状态读取失败')); return; }
                 const res = d.result || {};
                 const cmp = res.parameterComparison || res.parameterStates;
@@ -4881,27 +4913,18 @@ window.Workbench = (() => {
                         h('div', { class: 'wb-hint', style: 'margin:0 0 4px' }, '求解与残差日志(最近150行)'), pre));
                     pre.scrollTop = pre.scrollHeight;
                 }
-            }).catch(() => { if (holder.isConnected) { holder.innerHTML = ''; holder.appendChild(h('div', { class: 'wb-empty' }, '状态读取失败')); } });
+            }
         }
         function logToggleBtn() {
             return h('button', { class: 'wb-btn wb-btn-outline', onclick: () => { S.dpShowLog = !S.dpShowLog; if (S.dpHolder && S.dpHolder.isConnected) renderDpStatus(S.dpHolder); } },
                 S.dpShowLog ? '收起迭代与残差' : '查看迭代与残差');
         }
+        /** 单次状态拉取(引导+兜底用);周期刷新由SSE chg驱动(startSsStream),不再自建轮询链 */
         function pollDp() {
             if (!S.dpTaskId) return;
             api('/tasks/' + encodeURIComponent(S.dpTaskId) + '/status').then(r => {
-                const d = r && r.code === 200 ? r.data : null;
-                if (!d) { setTimeout(pollDp, 4000); return; }
-                const terminal = ['ENDED', 'FAILED', 'COMMITTED', 'STOPPED'].includes(d.phase);
-                if (!terminal) window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000;
-                // 终态提醒:失败必须提示(无论当前页签);完成提示仅在用户停留design页签时给出
-                if (terminal && d.phase === 'FAILED') toast('设计点求解失败:' + (d.error || d.message || '详情见任务日志'), 'error');
-                else if (terminal && d.phase === 'STOPPED') toast('设计点求解已按请求在安全点停止', 'info');
-                else if (terminal && d.phase !== 'FAILED' && S.tab === 'design') toast('设计点求解完成(' + d.phase + ');写入MDL需显式commit', 'success');
-                // 就地更新状态区;只有页面仍在design页签时才刷新DOM,输入框/配置表不动
-                if (S.tab === 'design' && S.dpHolder && S.dpHolder.isConnected) renderDpStatus(S.dpHolder);
-                if (!terminal) setTimeout(pollDp, 4000);
-            }).catch(() => { setTimeout(pollDp, 4000); });
+                ssApply(r && r.code === 200 ? r.data : null);
+            }).catch(() => { });
         }
 
         /* ---- 特性图(07-15/16): 默认=特性图预览(示例双图+核对表) / 图配置 / 原图与候选图(maps阶段真实产物) ---- */
@@ -5221,7 +5244,7 @@ window.Workbench = (() => {
                         .then(r => {
                             if (r && r.code === 200 && r.data) {
                                 S.ssTaskId = r.data.taskId; S._ssPollId = r.data.taskId; S.ssShowLog = true;
-                                renderBody(); pollSs();
+                                renderBody(); startSsStream(); pollSs();
                             }
                             else toast((r && r.message) || '发起失败', 'error');
                             runBtn.classList.remove('disabled');
@@ -5242,11 +5265,16 @@ window.Workbench = (() => {
             return box;
         }
         /** 拉取一次校核状态并就地重绘状态容器(07-20:运行状态进度+阶段表+安全停止+日志);不重建页面其他部分。 */
-        function renderSsStatus(holder) {
-            return api('/tasks/' + encodeURIComponent(S.ssTaskId) + '/status').then(r => {
-                if (!holder.isConnected) return; // 页面已切走/重建,丢弃本次渲染
-                holder.innerHTML = '';
-                const d = r && r.code === 200 ? r.data : null;
+        /** 就地重绘校核状态容器;d缺省=自行拉取一次(遗留调用方);传入d则零网络直接渲染。 */
+        function renderSsStatus(holder, d) {
+            if (d === undefined) {
+                return api('/tasks/' + encodeURIComponent(S.ssTaskId) + '/status').then(r => {
+                    renderSsStatus(holder, r && r.code === 200 ? r.data : null);
+                }).catch(() => { });
+            }
+            if (!holder.isConnected) return; // 页面已切走/重建,丢弃本次渲染
+            holder.innerHTML = '';
+            {
                 if (!d) { holder.appendChild(h('div', { class: 'wb-empty' }, '状态读取失败')); return; }
                 const res = d.result || {};
                 const stages = ((d.config || {}).requestedStages || SS_STAGES.map(x => x[0]));
@@ -5334,7 +5362,7 @@ window.Workbench = (() => {
                         h('a', { href: 'javascript:void 0', style: 'color:#2e86de;cursor:pointer', onclick: () => { S.ssShowLog = !S.ssShowLog; renderSsStatus(holder); } }, S.ssShowLog ? '收起' : '展开')),
                     pre));
                 if (S._ssLogStick !== false) pre.scrollTop = pre.scrollHeight;
-            }).catch(() => { if (holder.isConnected) { holder.innerHTML = ''; holder.appendChild(h('div', { class: 'wb-empty' }, '状态读取失败')); } });
+            }
         }
         /** 汇总当前校核任务产物为起停模型包并登记到模型成果(异步受理+轮询;MATLAB导出约1-3分钟)。 */
         function savePackageFlow() {
@@ -5372,20 +5400,12 @@ window.Workbench = (() => {
                 }
             }).catch(() => setTimeout(savePkgPoll, 4000));
         }
-        /** 校核执行轮询:未终态每4s就地刷新一次状态容器;终态toast并停止。 */
+        /** 单次状态拉取(引导+兜底用);周期刷新由SSE chg驱动(startSsStream),不再自建轮询链 */
         function pollSs() {
-            if (!S.ssTaskId || S.ssTaskId !== S._ssPollId) return; // 新任务发起/已清除,旧链终止
+            if (!S.ssTaskId) return;
             api('/tasks/' + encodeURIComponent(S.ssTaskId) + '/status').then(r => {
-                const d = r && r.code === 200 ? r.data : null;
-                if (!d) { setTimeout(pollSs, 4000); return; }
-                const terminal = ['ENDED', 'FAILED', 'STOPPED'].includes(d.phase);
-                if (!terminal) window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000;
-                else if (d.phase === 'FAILED') toast('校核执行失败:' + (d.error || d.message || '详情见任务日志'), 'error');
-                else if (d.phase === 'STOPPED') toast('校核已按请求在安全点停止;已完成阶段产物保留', 'info');
-                else if (S.tab === 'exec') toast('校核执行完成;可切到"校核结果"页签查看', 'success');
-                if (S.tab === 'exec' && S.ssHolder && S.ssHolder.isConnected) renderSsStatus(S.ssHolder);
-                if (!terminal) setTimeout(pollSs, 4000);
-            }).catch(() => { setTimeout(pollSs, 4000); });
+                ssApply(r && r.code === 200 ? r.data : null);
+            }).catch(() => { });
         }
 
         /* ---- 校核结果(07-21/22/23/24/10): 真实阶段产物展示(保留失败点与限制) ---- */
@@ -5764,23 +5784,61 @@ window.Workbench = (() => {
             else { S.ssTaskId = ssOpen.taskId; S.tab = 'exec'; }
         }
         renderBody();
-        // 任务轮询:design_point和startstop任务非终态时每3s检测相位变化并重绘
-        // (修复:之前无轮询,求解/提交完成后页面状态不刷新一直显示运行中)
-        setInterval(() => {
-            if (document.hidden) return;
+        // 任务状态:design_point和startstop任务——SSE 通知流为主,chg事件自带完整状态负载→直接渲染
+        // (SSE活跃期间零status轮询XHR);EventSource失败才回退5s轮询
+        const ssApply = d => {
+            if (!d) return;
+            const terminal = ['ENDED', 'FAILED', 'COMMITTED', 'STOPPED'].includes(d.phase);
+            if (!terminal) window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000;
+            if (d.phase !== S._lastPhase) {
+                S._lastPhase = d.phase;
+                // 终态一次性提醒(相位跃迁时)
+                if (d.phase === 'FAILED') toast((S.tab === 'design' ? '设计点求解失败:' : '校核执行失败:')
+                    + (d.error || d.message || '详情见任务日志'), 'error');
+                else if (d.phase === 'STOPPED') toast('已按请求在安全点停止', 'info');
+                else if (terminal && S.tab === 'design') toast('设计点求解完成(' + d.phase + ');写入MDL需显式commit', 'success');
+                else if (terminal && S.tab === 'exec') toast('校核执行完成;可切到"校核结果"页签查看', 'success');
+                if (S.tab === 'design' || S.tab === 'exec') renderBody();
+            }
+            // 迭代/残差等就地状态容器随每次应用刷新(直接吃chg负载,渲染函数不再自行拉取)
+            if (S.tab === 'design' && S.dpHolder && S.dpHolder.isConnected) renderDpStatus(S.dpHolder, d);
+            if (S.tab === 'exec' && S.ssHolder && S.ssHolder.isConnected) renderSsStatus(S.ssHolder, d);
+        };
+        const ssPoll = () => {
             const tid = S.tab === 'design' ? S.dpTaskId : S.ssTaskId;
             if (!tid) return;
             api('/tasks/' + encodeURIComponent(tid) + '/status').then(r => {
-                const d = r && r.code === 200 ? r.data : null;
-                if (!d) return;
-                const terminal = ['ENDED', 'FAILED', 'COMMITTED', 'STOPPED'].includes(d.phase);
-                if (!terminal) window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000;
-                if (d.phase !== S._lastPhase) {
-                    S._lastPhase = d.phase;
-                    if (S.tab === 'design' || S.tab === 'exec') renderBody();
-                }
+                ssApply(r && r.code === 200 ? r.data : null);
             }).catch(() => { });
-        }, 3000);
+        };
+        // (重)开启SSE:页面渲染时任务id可能尚未产生(design_point/run之后才有),run处理器里须再调一次
+        function startSsStream() {
+            if (window.__WB_SS_TIMER__) { clearInterval(window.__WB_SS_TIMER__); window.__WB_SS_TIMER__ = null; }
+            if (window.__WB_SS_ES__) { try { window.__WB_SS_ES__.close(); } catch (e) { } window.__WB_SS_ES__ = null; }
+            const tid = S.tab === 'design' ? S.dpTaskId : S.ssTaskId;
+            if (!tid) return;
+            try {
+                const cfg0 = window.AppConfig;
+                const url = cfg0.api.baseURL + '/api/engine/projects/' + encodeURIComponent(pid) + '/testbench/tasks/'
+                    + encodeURIComponent(tid) + '/stream?token=' + encodeURIComponent(cfg0.getToken() || '');
+                const es = new EventSource(url);
+                window.__WB_SS_ES__ = es;
+                es.addEventListener('chg', ev => {
+                    window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000;
+                    try { ssApply(JSON.parse(ev.data)); } catch (e) { ssPoll(); }
+                });
+                es.addEventListener('end', () => { try { es.close(); } catch (e) { } window.__WB_SS_ES__ = null; });
+                es.onerror = () => {
+                    try { es.close(); } catch (e) { }
+                    if (window.__WB_SS_ES__ === es) window.__WB_SS_ES__ = null;
+                    if (!window.__WB_SS_TIMER__) window.__WB_SS_TIMER__ = setInterval(() => { if (document.hidden) return; ssPoll(); }, 5000);
+                };
+            } catch (e) {
+                window.__WB_SS_TIMER__ = setInterval(() => { if (document.hidden) return; ssPoll(); }, 5000);
+            }
+        }
+        startSsStream();
+        ssPoll();
         return wrap;
     };
     /* 试车台模型成果(与建模工作台同一renderModelsBody) */

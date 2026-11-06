@@ -1,0 +1,13 @@
+{
+  "Mode": "remaining",
+  "PID": 3292,
+  "ExitCode": 0,
+  "Seconds": 133.493319,
+  "ActualPriority": "BelowNormal",
+  "BudgetExceeded": false,
+  "Window": "R065_JSON_FIX",
+  "CumulativeSeconds": 133.4933594,
+  "AllHistoricalGrossSeconds": 10537.7914105,
+  "StoppedByTool": false,
+  "Finished": "2026-11-02T22:37:12.1433782+08:00"
+}

@@ -47,8 +47,22 @@ public class TestbenchService {
     @Autowired
     private EngineTestbenchRecordService testbenchRecordService;
 
-    private static final String R06_IN_CLASSPATH = "programs/Delivery_V1_20261019_R06/programs";
+    private static final String R06_IN_CLASSPATH = "matlab/delivery/programs";
     private static final String PROG_SUBDIR = "m_program_adaptive_tune";
+
+    /** 交付树根可配置解析(engine.r06.root):磁盘路径优先,classpath/内置资源/jar 兜底。 */
+    @Autowired(required = false)
+    private DeliveryTreeLocator deliveryTree;
+
+    /** 交付树 programs 层 classpath 基准(配置 classpath 模式时跟随配置)。 */
+    private String r06ProgramsBase() {
+        return deliveryTree != null ? deliveryTree.classpathProgramsBase() : R06_IN_CLASSPATH;
+    }
+
+    /** 配置的磁盘交付树 programs 层;未配置或无效返回 null。 */
+    private File deliveryProgramsDir() {
+        return deliveryTree != null ? deliveryTree.programsDir() : null;
+    }
 
     /* ---------- 全模式会话(F-11) ---------- */
 
@@ -78,24 +92,47 @@ public class TestbenchService {
     /* ---------- 一次性任务(F-09/F-10) ---------- */
 
     private final Map<String, TaskRun> taskRuns = new ConcurrentHashMap<>();
-    private final ExecutorService taskExecutor = Executors.newFixedThreadPool(2);
+    /** 任务执行线程池:懒初始化,线程数跟随 matlab.engine.pool-size(下限2,保证准备/提交通道不被计算占满) */
+    private volatile ExecutorService taskExecutor;
 
     @org.springframework.beans.factory.annotation.Value("${matlab.engine.home:}")
     private String matlabHome;
+
+    // 引擎池最大并发数(与 program-run/TC24 接入层同键;此前写死1导致第二个任务排队)
+    @org.springframework.beans.factory.annotation.Value("${matlab.engine.pool-size:4}")
+    private int enginePoolSize;
 
     @org.springframework.beans.factory.annotation.Value("${matlab.engine.enabled:true}")
     private boolean engineEnabled;
 
     private volatile com.tsinghua.matlab.MatlabEnginePool enginePool;
 
-    /** 任务执行引擎池(懒加载,size=1;起动停车/设计点任务串行借用,stdout自动落盘+回调)。 */
+    /** 一次性任务引擎池(懒加载,尚未创建时为 null),供工作台状态聚合读取。 */
+    public com.tsinghua.matlab.MatlabEnginePool enginePoolRef() {
+        return enginePool;
+    }
+
+    /** 全模式会话当前独占的引擎数(0/1),该引擎不走共享池。 */
+    public int sessionEngineCount() {
+        FullmodeSession s = fmSession;
+        return s != null && s.engine != null ? 1 : 0;
+    }
+
+    private synchronized ExecutorService taskExecutor() {
+        if (taskExecutor == null) {
+            taskExecutor = Executors.newFixedThreadPool(Math.max(2, enginePoolSize));
+        }
+        return taskExecutor;
+    }
+
+    /** 任务执行引擎池(懒加载;起动停车/设计点任务并行借用,stdout自动落盘+回调)。 */
     private com.tsinghua.matlab.MatlabEnginePool requirePool() {
         if (!engineEnabled) throw new IllegalStateException("MATLAB引擎被禁用(matlab.engine.enabled=false)");
         if (enginePool == null) {
             synchronized (this) {
                 if (enginePool == null) {
-                    enginePool = new com.tsinghua.matlab.MatlabEnginePool(1, matlabHome);
-                    log.info("试车台接入层 MATLAB 引擎池已创建(懒加载): poolSize=1");
+                    enginePool = new com.tsinghua.matlab.MatlabEnginePool(Math.max(1, enginePoolSize), matlabHome);
+                    log.info("试车台接入层 MATLAB 引擎池已创建(懒加载): poolSize={}", Math.max(1, enginePoolSize));
                 }
             }
         }
@@ -710,7 +747,7 @@ public class TestbenchService {
         r.message = "任务排队中";
         taskRuns.put(taskId, r);
         writeTaskIndex(r);
-        taskExecutor.submit(() -> taskExec(r));
+        taskExecutor().submit(() -> taskExec(r));
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("taskId", taskId);
         out.put("phase", r.phase);
@@ -733,7 +770,7 @@ public class TestbenchService {
             r.finishedAt = null;
         }
         final String pkgName = packageName;
-        taskExecutor.submit(() -> {
+        taskExecutor().submit(() -> {
             try {
                 doSavePackageWork(projectId, r, pkgName);
             } catch (Exception e) {
@@ -833,7 +870,7 @@ public class TestbenchService {
         r.phase = "RUNNING";
         r.message = "提交设计(时间备份后写原选定MDL)";
         writeTaskIndex(r);
-        taskExecutor.submit(() -> designPointCommit(r));
+        taskExecutor().submit(() -> designPointCommit(r));
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("accepted", true);
         return out;
@@ -1224,8 +1261,27 @@ m.append("    case 'savepackage'\n");
             return user;
         }
 
-        File c1 = new File("target/classes/" + R06_IN_CLASSPATH + "/" + PROG_SUBDIR);
-        File c2 = new File("datamodelgov-server/target/classes/" + R06_IN_CLASSPATH + "/" + PROG_SUBDIR);
+        // 配置的磁盘交付树(engine.r06.root)优先于内置资源
+        File ext = deliveryProgramsDir();
+        File extProg = ext != null ? new File(ext, PROG_SUBDIR) : null;
+        if (extProg != null && new File(extProg, "Start_FullModeSimulation_01.m").isFile()) {
+            // 优先复制到项目工作目录(项目自包含),失败才回退直接用配置目录运行
+            try {
+                copyTree(extProg, user);
+                ensureCRuntime(user.getParentFile());
+                applyProgramPatches(user.getParentFile());
+                return user;
+            } catch (IOException e) {
+                log.warn("试车台程序复制到项目目录失败,改用配置交付树路径运行: {}", e.getMessage());
+                ensureCRuntime(ext);
+                applyProgramPatches(ext);
+                return extProg;
+            }
+        }
+
+        String base = r06ProgramsBase();
+        File c1 = new File("target/classes/" + base + "/" + PROG_SUBDIR);
+        File c2 = new File("datamodelgov-server/target/classes/" + base + "/" + PROG_SUBDIR);
         File hit = new File(c1, "Start_FullModeSimulation_01.m").isFile() ? c1
                 : (new File(c2, "Start_FullModeSimulation_01.m").isFile() ? c2 : null);
         if (hit != null) {
@@ -1250,8 +1306,8 @@ m.append("    case 'savepackage'\n");
         log.info("从jar解压 m_program_adaptive_tune 到项目工作目录: {} -> {}", jar, user);
         Files.createDirectories(user.toPath());
         String[] prefixes = {
-                "BOOT-INF/classes/" + R06_IN_CLASSPATH + "/" + PROG_SUBDIR + "/",
-                R06_IN_CLASSPATH + "/" + PROG_SUBDIR + "/"
+                "BOOT-INF/classes/" + base + "/" + PROG_SUBDIR + "/",
+                base + "/" + PROG_SUBDIR + "/"
         };
         int n = 0;
         try (java.util.zip.ZipFile zf = new java.util.zip.ZipFile(jar.toFile())) {
@@ -1296,8 +1352,19 @@ m.append("    case 'savepackage'\n");
             }
         }
         File dest = new File(programsRoot, "C_runtime");
-        File c1 = new File("target/classes/" + R06_IN_CLASSPATH + "/C_runtime");
-        File c2 = new File("datamodelgov-server/target/classes/" + R06_IN_CLASSPATH + "/C_runtime");
+        // 配置的磁盘交付树(engine.r06.root)优先于内置资源
+        File ext = deliveryProgramsDir();
+        if (ext != null) {
+            File extC = new File(ext, "C_runtime");
+            if (hasCProjectFiles(extC)) {
+                copyTree(extC, dest);
+                log.info("项目程序树缺C工程,已从配置交付树补齐C_runtime: {} -> {}", extC, dest);
+                return;
+            }
+        }
+        String base = r06ProgramsBase();
+        File c1 = new File("target/classes/" + base + "/C_runtime");
+        File c2 = new File("datamodelgov-server/target/classes/" + base + "/C_runtime");
         File src = hasCProjectFiles(c1) ? c1 : hasCProjectFiles(c2) ? c2 : null;
         if (src != null) {
             copyTree(src, dest);
@@ -1311,8 +1378,8 @@ m.append("    case 'savepackage'\n");
         log.info("从jar解压 C_runtime 到项目程序树: {} -> {}", jar, dest);
         Files.createDirectories(dest.toPath());
         String[] prefixes = {
-                "BOOT-INF/classes/" + R06_IN_CLASSPATH + "/C_runtime/",
-                R06_IN_CLASSPATH + "/C_runtime/"
+                "BOOT-INF/classes/" + base + "/C_runtime/",
+                base + "/C_runtime/"
         };
         int n = 0;
         try (java.util.zip.ZipFile zf = new java.util.zip.ZipFile(jar.toFile())) {
@@ -1462,11 +1529,13 @@ m.append("    case 'savepackage'\n");
             applyProgramPatches(programRoot); // 已知交付程序损坏在副本上修复(交付树不动)
             return;
         }
-        // 来源顺序:工作区resources整树 → target/classes整树 → jar前缀解压(均为R06 programs层)
-        File src = new File("datamodelgov-server/src/main/resources/" + R06_IN_CLASSPATH);
-        if (!src.isDirectory()) src = new File("src/main/resources/" + R06_IN_CLASSPATH);
-        if (!src.isDirectory()) src = new File("target/classes/" + R06_IN_CLASSPATH);
-        if (!src.isDirectory()) src = new File("datamodelgov-server/target/classes/" + R06_IN_CLASSPATH);
+        // 来源顺序:配置磁盘交付树 → 工作区resources整树 → target/classes整树 → jar前缀解压(均为R06 programs层)
+        String base = r06ProgramsBase();
+        File src = deliveryProgramsDir();
+        if (src == null || !src.isDirectory()) src = new File("datamodelgov-server/src/main/resources/" + base);
+        if (!src.isDirectory()) src = new File("src/main/resources/" + base);
+        if (!src.isDirectory()) src = new File("target/classes/" + base);
+        if (!src.isDirectory()) src = new File("datamodelgov-server/target/classes/" + base);
         if (src.isDirectory()) {
             log.info("预置程序树(整树镜像)到项目工作目录: {} -> {}", src, programRoot);
             copyTree(src, programRoot);
@@ -1476,8 +1545,8 @@ m.append("    case 'savepackage'\n");
             log.info("从jar解压预置程序树(整树): {} -> {}", jar, programRoot);
             Files.createDirectories(programRoot.toPath());
             String[] prefixes = {
-                    "BOOT-INF/classes/" + R06_IN_CLASSPATH + "/",
-                    R06_IN_CLASSPATH + "/"
+                    "BOOT-INF/classes/" + base + "/",
+                    base + "/"
             };
             try (java.util.zip.ZipFile zf = new java.util.zip.ZipFile(jar.toFile())) {
                 java.util.Enumeration<? extends java.util.zip.ZipEntry> en = zf.entries();

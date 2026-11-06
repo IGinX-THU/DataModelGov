@@ -160,6 +160,13 @@
             const busy = state.prepWait || (state.task && (state.task.status === 'PREPARING'
                 || state.task.status === 'RUNNING' || state.task.status === 'STOP_REQUESTED'));
             if (state.tab !== 'run' && !busy) stopPolling();
+            // 日志框滚动跟随:SSE chg 高频重绘会重建DOM,scrollTop归零表现为"每次推送跳回顶部"。
+            // 重绘前记住是否贴底(30px容差;收起状态视同贴底),重绘后贴底则自动拉到最底,
+            // 用户向上翻阅时保持原滚动位置不扰读。
+            const prevLog = body.querySelector('.wb-logbox');
+            const prevStick = !prevLog || prevLog.clientHeight === 0
+                || prevLog.scrollTop + prevLog.clientHeight >= prevLog.scrollHeight - 30;
+            const prevTop = prevLog ? prevLog.scrollTop : 0;
             body.innerHTML = '';
             if (!ctx.project.id) { body.appendChild(noTaskView()); paintTabs(); paintMeta(); return; }
             if (!state.task) { body.appendChild(createCard()); paintTabs(); paintMeta(); return; }
@@ -169,6 +176,11 @@
             else body.appendChild(uqTab());
             paintTabs();
             paintMeta();
+            const newLog = body.querySelector('.wb-logbox');
+            if (newLog) {
+                if (prevStick) newLog.scrollTop = newLog.scrollHeight;
+                else newLog.scrollTop = Math.min(prevTop, newLog.scrollHeight);
+            }
         }
 
         /* ---------- 项目不在服务器(本地演示) ---------- */
@@ -1119,7 +1131,7 @@
                 view.appendChild(WB().h('div', { class: 'wb-actions-row', style: 'max-width:1180px' },
                     WB().h('button', {
                         class: 'wb-btn wb-btn-outline',
-                        onclick: () => { state.logOpen = !state.logOpen; logBox.style.display = state.logOpen ? '' : 'none'; }
+                        onclick: () => { state.logOpen = !state.logOpen; logBox.style.display = state.logOpen ? '' : 'none'; if (state.logOpen) logBox.scrollTop = logBox.scrollHeight; }
                     }, state.logOpen ? '收起详细日志' : '展开详细日志')));
                 view.appendChild(logBox);
 
@@ -2355,61 +2367,90 @@
             return (h ? h + '时' : '') + (m ? m + '分' : '') + (s % 60) + '秒';
         }
 
-        /* ---------- 轮询 ---------- */
-        function poll() {
+        /* ---------- 状态获取(SSE为主,轮询兜底) ---------- */
+        /** 状态应用(SSE chg负载与 /status 响应同构 {task, logTail}):SSE活跃期间零status轮询XHR */
+        function applyData(resp) {
             const prevStatus = state.task ? state.task.status : null;
             const prevUq = state.task ? state.task.uqStatus : null;
             const prevPrep = state.task ? state.task.prepMessage : null;
+            if (resp && (resp.success || resp.code === 200) && resp.data) {
+                state.task = resp.data.task;
+                state.log = resp.data.logTail || [];
+            }
+            const t = state.task || {};
+            const changed = t.status !== prevStatus || t.uqStatus !== prevUq || t.prepMessage !== prevPrep;
+            // 运行中显示旧版同款 loading 遮罩,结束后自动隐藏
+            // (01-13:STOP_REQUESTED为琥珀过渡态页,不再盖遮罩,保持停止进度可见)
+            const uqRunning = t.uqStatus === 'EXECUTING' || t.uqStatus === 'PREPARING';
+            const prepRunning = state.prepWait || t.status === 'PREPARING';
+            if (prepRunning) {
+                showRunLoading(state.loadingTitle || '数据准备中');
+            } else if (t.status === 'RUNNING') {
+                showRunLoading(state.loadingTitle || '辨识运行中');
+            } else if (uqRunning && state.tab === 'uq') {
+                showRunLoading(state.loadingTitle || 'UQ 评估运行中');
+            } else {
+                hideRunLoading();
+            }
+            // 后端确认停止(01-26):此时才进入"已安全停止"检查点视图,并停止轮询
+            if (t.status === 'STOPPED' && prevStatus && prevStatus !== 'STOPPED') {
+                stopPolling();
+                renderBody();
+                toast('已安全停止:' + (t.message || '运行已在安全点结束'), 'success');
+                return;
+            }
+            if (t.status === 'COMPLETED' && state.tab !== 'uq' && prevStatus !== 'COMPLETED') {
+                stopPolling();
+                state.tab = 'result';
+                renderBody();
+            } else if (state.tab === 'run' || (state.tab === 'uq' && changed)) {
+                renderBody();
+            } else if (state.tab === 'data' && changed) {
+                // TC24 看conditions;TC27更新任务看prepMessage(后端READY+摘要即完成)
+                const prepDone = t.kind === 'steady_update'
+                    ? !!(t.prepMessage && t.prepMessage.length)
+                    : (Array.isArray(t.conditions) && t.conditions.length > 0);
+                if (prepDone) { stopPolling(); state.prepWait = false; toast('数据准备完成', 'success'); }
+                renderBody();
+            }
+        }
+        function poll() {
             window.AppConfig.engineGet(
                 'projects/' + encodeURIComponent(ctx.project.id || '') + '/tasks/'
                 + encodeURIComponent(state.task.id) + '/status')
-                .then(resp => {
-                    if (resp && (resp.success || resp.code === 200) && resp.data) {
-                        state.task = resp.data.task;
-                        state.log = resp.data.logTail || [];
-                    }
-                    const t = state.task || {};
-                    const changed = t.status !== prevStatus || t.uqStatus !== prevUq || t.prepMessage !== prevPrep;
-                    // 运行中显示旧版同款 loading 遮罩,结束后自动隐藏
-                    // (01-13:STOP_REQUESTED为琥珀过渡态页,不再盖遮罩,保持停止进度可见)
-                    const uqRunning = t.uqStatus === 'EXECUTING' || t.uqStatus === 'PREPARING';
-                    const prepRunning = state.prepWait || t.status === 'PREPARING';
-                    if (prepRunning) {
-                        showRunLoading(state.loadingTitle || '数据准备中');
-                    } else if (t.status === 'RUNNING') {
-                        showRunLoading(state.loadingTitle || '辨识运行中');
-                    } else if (uqRunning && state.tab === 'uq') {
-                        showRunLoading(state.loadingTitle || 'UQ 评估运行中');
-                    } else {
-                        hideRunLoading();
-                    }
-                    // 后端确认停止(01-26):此时才进入"已安全停止"检查点视图,并停止轮询
-                    if (t.status === 'STOPPED' && prevStatus && prevStatus !== 'STOPPED') {
-                        stopPolling();
-                        renderBody();
-                        toast('已安全停止:' + (t.message || '运行已在安全点结束'), 'success');
-                        return;
-                    }
-                    if (t.status === 'COMPLETED' && state.tab !== 'uq' && prevStatus !== 'COMPLETED') {
-                        stopPolling();
-                        state.tab = 'result';
-                        renderBody();
-                    } else if (state.tab === 'run' || (state.tab === 'uq' && changed)) {
-                        renderBody();
-                    } else if (state.tab === 'data' && changed) {
-                        // TC24 看conditions;TC27更新任务看prepMessage(后端READY+摘要即完成)
-                        const prepDone = t.kind === 'steady_update'
-                            ? !!(t.prepMessage && t.prepMessage.length)
-                            : (Array.isArray(t.conditions) && t.conditions.length > 0);
-                        if (prepDone) { stopPolling(); state.prepWait = false; toast('数据准备完成', 'success'); }
-                        renderBody();
-                    }
-                })
+                .then(resp => applyData(resp))
                 .catch(() => { });
         }
         function startPolling() {
             stopPolling();
-            window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000; // 活动心跳:让底部状态栏轮询保持
+            window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000;
+            // SSE 通知流为主:chg负载直接渲染(不再回拉status);EventSource失败回退5s定时轮询
+            try {
+                const cfg0 = window.AppConfig;
+                const url = cfg0.api.baseURL + '/api/engine/projects/' + encodeURIComponent(ctx.project.id || '')
+                    + '/tasks/' + encodeURIComponent(state.task.id) + '/stream?token=' + encodeURIComponent(cfg0.getToken() || '');
+                const es = new EventSource(url);
+                state.es = es;
+                es.addEventListener('chg', ev => {
+                    window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000;
+                    try {
+                        const d = JSON.parse(ev.data);
+                        // 服务端task流负载为裸{task,logTail};补成/status同构信封再应用
+                        applyData(d && d.task ? { code: 200, data: d } : d);
+                    } catch (e) { poll(); }
+                });
+                es.addEventListener('end', () => { try { es.close(); } catch (e) { } state.es = null; });
+                es.onerror = () => {
+                    try { es.close(); } catch (e) { }
+                    if (state.es === es) state.es = null;
+                    if (!state.timer) state.timer = setInterval(() => {
+                        window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000; poll();
+                    }, 5000);
+                };
+                state.keepalive = setInterval(() => { window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000; }, 30000);
+                poll();
+                return;
+            } catch (e) { /* 降级 */ }
             state.timer = setInterval(() => {
                 window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000;
                 poll();
@@ -2417,10 +2458,9 @@
             poll();
         }
         function stopPolling() {
-            if (state.timer) {
-                clearInterval(state.timer);
-                state.timer = null;
-            }
+            if (state.timer) { clearInterval(state.timer); state.timer = null; }
+            if (state.keepalive) { clearInterval(state.keepalive); state.keepalive = null; }
+            if (state.es) { try { state.es.close(); } catch (e) { } state.es = null; }
             // 关闭SSE连接
             if (state.uqLogEventSource) {
                 state.uqLogEventSource.close();

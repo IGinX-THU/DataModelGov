@@ -1,0 +1,1 @@
+{"mode":"baseline","seconds":100.3000684,"checks":[{"name":"engine_baseline_internal","pass":true,"detail":"发动机输出有限"},{"name":"engine_baseline_external","pass":true,"detail":"发动机输出有限"}]}

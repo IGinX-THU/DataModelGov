@@ -157,11 +157,14 @@ public final class MatlabNativeLibrary {
         return true;
     }
 
-    /** 追加 java.library.path 并清空 ClassLoader 的路径缓存（JDK 8 生效） */
+    /** 追加 java.library.path 并清空 ClassLoader 的路径缓存（JDK 8 生效）。
+     *  即使属性已含目标目录也强制重置缓存：sys_paths 由首次 loadLibrary 的线程缓存，
+     *  若缓存发生在注入之前（如 JNA 引导期），不重置会导致后续线程仍按旧路径搜索。 */
     private static void appendLibraryPath(String dir) throws Exception {
         String current = System.getProperty("java.library.path", "");
-        if (current.toLowerCase().contains(dir.toLowerCase())) return;
-        System.setProperty("java.library.path", dir + File.pathSeparator + current);
+        if (!current.toLowerCase().contains(dir.toLowerCase())) {
+            System.setProperty("java.library.path", dir + File.pathSeparator + current);
+        }
         Field sysPaths = ClassLoader.class.getDeclaredField("sys_paths");
         sysPaths.setAccessible(true);
         sysPaths.set(null, null);

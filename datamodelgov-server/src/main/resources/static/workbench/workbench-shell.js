@@ -73,18 +73,17 @@
                         WB().h('div', { class: 'wb-identity-name' }, p.engineId || '—'),
                         WB().h('div', { class: 'wb-identity-meta' }, p.engineDesc || ''),
                         WB().h('div', { class: 'wb-identity-meta' }, p.matlab || 'MATLAB R2019b'),
-                        WB().h('div', { class: 'wb-identity-meta' }, '本地项目'))),
+                        WB().h('div', { class: 'wb-identity-meta' }, '本地运行'))),
                 WB().h('main', { class: 'wb-main' })));
 
-            // 状态栏:MATLAB日志行滚动(左,同旧版program-run footer-log) + 引擎状态(右) + 固定说明
+            // 状态栏:MATLAB日志行滚动(左,同旧版program-run footer-log) + 引擎状态(右)
             app.appendChild(WB().h('footer', { class: 'wb-statusbar' },
                 WB().h('span', {
                     class: 'wb-engine-log',
                     style: 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap',
                     title: '加载中...'
                 }, 'MATLAB 日志加载中...'),
-                WB().h('span', { class: 'wb-engine-status', style: 'flex-shrink:0' }, 'MATLAB 引擎状态查询中...'),
-                WB().h('span', { style: 'flex-shrink:0' }, '界面结构依据 UI-R131 · 程序绑定以 R06 交付包为准')));
+                WB().h('span', { class: 'wb-engine-status', style: 'flex-shrink:0' }, 'MATLAB 引擎状态查询中...')));
             this._startEngineStatusPolling();
 
             this.appendChild(app);
@@ -93,7 +92,7 @@
             if (first) this._navigate(first.key);
         }
 
-        /** 状态栏轮询(单例):MATLAB日志尾(/engine-log)+引擎状态(/api/program/engine-status)。
+        /** 状态栏轮询(单例):MATLAB日志尾(/api/engine/engine-log)+新版接入层引擎状态(/api/engine/engine-status)。
          *  仅当工作台内有活动任务/会话时轮询(各页面通过 __WB_ENGINE_POLL_UNTIL__ 心跳续期);
          *  空闲时零请求。 */
         _startEngineStatusPolling() {
@@ -119,20 +118,41 @@
                 if (sts.length) {
                     let msg = 'MATLAB 引擎状态未知';
                     try {
-                        const resp = await window.AppConfig.request(
-                            window.AppConfig.getApiUrl('program', 'engine-status'));
-                        if (resp && resp.code === 200 && resp.data && resp.data.message) msg = resp.data.message;
+                        const resp = await window.AppConfig.engineGet('engine-status');
+                        if (resp && (resp.success || resp.code === 200) && resp.data && resp.data.message) msg = resp.data.message;
                     } catch (e) { /* 保持未知 */ }
                     sts.forEach(el => { el.textContent = msg; });
                 }
             };
             refresh();
-            if (window.__WB_ENGINE_TIMER__) clearInterval(window.__WB_ENGINE_TIMER__);
-            window.__WB_ENGINE_TIMER__ = setInterval(() => {
-                // 页面隐藏/切后台时不发请求;回到前台下一轮自动恢复
-                if (document.hidden) return;
-                refresh();
-            }, 15000);
+            // 引擎状态/日志:SSE 通知流为主(全局一条,服务端指纹变化才推chg),失败回退15s门控轮询
+            const applyEng = d => {
+                if (!d) return;
+                const logs = document.querySelectorAll('.wb-engine-log');
+                const sts = document.querySelectorAll('.wb-engine-status');
+                if (logs.length && Array.isArray(d.logTail) && d.logTail.length) {
+                    const last = d.logTail[d.logTail.length - 1];
+                    logs.forEach(el => { el.textContent = last; el.title = d.logTail.join('\n'); });
+                }
+                if (sts.length && d.status) sts.forEach(el => { el.textContent = d.status; });
+            };
+            const startEngFallback = () => {
+                if (window.__WB_ENGINE_TIMER__) return;
+                window.__WB_ENGINE_TIMER__ = setInterval(() => {
+                    // 页面隐藏/切后台时不发请求;回到前台下一轮自动恢复
+                    if (document.hidden) return;
+                    refresh();
+                }, 15000);
+            };
+            try {
+                if (typeof EventSource === 'undefined') { startEngFallback(); return; }
+                const cfg0 = window.AppConfig;
+                const es = new EventSource(cfg0.api.baseURL + '/api/engine/engine-status-stream?token='
+                    + encodeURIComponent(cfg0.getToken() || ''));
+                window.__WB_ENGINE_ES__ = es;
+                es.addEventListener('chg', ev => { try { applyEng(JSON.parse(ev.data)); } catch (e) { /* 坏帧忽略 */ } });
+                es.onerror = () => { try { es.close(); } catch (e) { } window.__WB_ENGINE_ES__ = null; startEngFallback(); };
+            } catch (e) { startEngFallback(); }
         }
 
         _navigate(key) {

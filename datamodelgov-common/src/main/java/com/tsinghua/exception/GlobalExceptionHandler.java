@@ -96,6 +96,19 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * 处理客户端提前断开连接(浏览器刷新/关闭页面/前端请求超时主动abort)。
+     * 此时连接已死或响应已提交:禁止再写任何响应体——否则错误JSON会被拼进
+     * 已发出的响应之后(浏览器报"Unexpected non-whitespace character after JSON"),
+     * 或污染同一条keep-alive连接上的下一个响应。
+     * 只记DEBUG日志并返回null(响应已提交,Spring视为已处理)。
+     */
+    @ExceptionHandler(org.apache.catalina.connector.ClientAbortException.class)
+    public Result<Void> handleClientAbort(org.apache.catalina.connector.ClientAbortException e) {
+        log.debug("客户端已断开连接,放弃响应: {}", e.getMessage());
+        return null;
+    }
+
+    /**
      * 处理所有异常
      */
     @ExceptionHandler(Exception.class)

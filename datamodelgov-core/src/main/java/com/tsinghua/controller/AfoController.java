@@ -87,6 +87,18 @@ public class AfoController {
         }
     }
 
+    @ApiOperation("会话状态SSE通知流(全生命周期1s指纹比对,变化才推chg;前端收到后拉一次status)")
+    @GetMapping(value = "/stream", produces = org.springframework.http.MediaType.TEXT_EVENT_STREAM_VALUE)
+    @RequirePermission(Permission.READ)
+    public org.springframework.web.servlet.mvc.method.annotation.SseEmitter statusStream(
+            javax.servlet.http.HttpServletResponse resp) {
+        // nginx等反向代理默认缓冲SSE响应,导致事件攒到连接结束才一次性发出(前端表现为运行期全盲、
+        // 结束瞬间跳全量);X-Accel-Buffering:no让代理对该响应自动关闭缓冲
+        resp.setHeader("X-Accel-Buffering", "no");
+        resp.setHeader("Cache-Control", "no-cache");
+        return afoService.openStatusStream();
+    }
+
     @ApiOperation("在线命令(pause/resume/stop/np/load;写inbox文件通道)")
     @PostMapping("/command")
     @RequirePermission(Permission.CREATE)
@@ -140,6 +152,7 @@ public class AfoController {
             @PathVariable("pid") String pid,
             @org.springframework.web.bind.annotation.RequestParam(value = "status", required = false) String status,
             @org.springframework.web.bind.annotation.RequestParam(value = "kw", required = false) String kw,
+            @org.springframework.web.bind.annotation.RequestParam(value = "kind", required = false) String kind,
             @org.springframework.web.bind.annotation.RequestParam(value = "pageNum", required = false, defaultValue = "1") Integer pageNum,
             @org.springframework.web.bind.annotation.RequestParam(value = "pageSize", required = false, defaultValue = "10") Integer pageSize) {
         try {
@@ -147,21 +160,35 @@ public class AfoController {
             String where = sessionsWhere(status, kw);
             int pn = pageNum == null || pageNum < 1 ? 1 : pageNum;
             int ps = pageSize == null || pageSize < 1 ? 10 : Math.min(pageSize, 100);
+            String k = kind == null ? "" : kind.trim();
+            boolean all = k.isEmpty() || "all".equals(k);
+            boolean wantAfo = all || "afo".equals(k);
+            boolean wantFull = all || "fullmode".equals(k);
+            boolean wantSs = all || "startstop".equals(k) || "design_point".equals(k);
+            if (!all && !wantAfo && !wantFull && !wantSs) {
+                throw new IllegalArgumentException("未知记录类型: " + kind);
+            }
             // 两个来源各取前 pn*ps 条(均按 createTime DESC),归并后切片,保证全局排序正确
-            List<com.tsinghua.entity.EngineAfoSessionEntity> a =
-                    afoSessionService.queryFiltered(pid, 1, pn * ps, where);
-            List<com.tsinghua.entity.EngineTestbenchEntity> fFull =
-                    testbenchRecordService.queryFiltered(pid, 1, pn * ps,
-                            joinWhere("kind = 'fullmode'", where));
-            List<com.tsinghua.entity.EngineTestbenchEntity> fDpSs =
-                    testbenchRecordService.queryFiltered(pid, 1, pn * ps,
-                            joinWhere("kind IN ('design_point','startstop')", where));
             List<Map<String, Object>> merged = new java.util.ArrayList<>();
-            for (com.tsinghua.entity.EngineAfoSessionEntity e : a) merged.add(toRow(e, "afo"));
-            for (com.tsinghua.entity.EngineTestbenchEntity e : fFull) merged.add(toRow(e, "fm"));
-            // 起动停工作流归并:设计点校核并入起动停工作流行,一行=一次工作流执行
-            for (com.tsinghua.entity.EngineTestbenchEntity e : mergeTestbenchWorkflow(pid, fDpSs)) {
-                merged.add(toRow(e, "fm"));
+            if (wantAfo) {
+                List<com.tsinghua.entity.EngineAfoSessionEntity> a =
+                        afoSessionService.queryFiltered(pid, 1, pn * ps, where);
+                for (com.tsinghua.entity.EngineAfoSessionEntity e : a) merged.add(toRow(e, "afo"));
+            }
+            if (wantFull) {
+                List<com.tsinghua.entity.EngineTestbenchEntity> fFull =
+                        testbenchRecordService.queryFiltered(pid, 1, pn * ps,
+                                joinWhere("kind = 'fullmode'", where));
+                for (com.tsinghua.entity.EngineTestbenchEntity e : fFull) merged.add(toRow(e, "fm"));
+            }
+            if (wantSs) {
+                List<com.tsinghua.entity.EngineTestbenchEntity> fDpSs =
+                        testbenchRecordService.queryFiltered(pid, 1, pn * ps,
+                                joinWhere("kind IN ('design_point','startstop')", where));
+                // 起动停工作流归并:设计点校核并入起动停工作流行,一行=一次工作流执行
+                for (com.tsinghua.entity.EngineTestbenchEntity e : mergeTestbenchWorkflow(pid, fDpSs)) {
+                    merged.add(toRow(e, "fm"));
+                }
             }
             merged.sort((x, y) -> Long.compare(numOf(y.get("createdAt")), numOf(x.get("createdAt"))));
             int from = Math.min(merged.size(), (pn - 1) * ps);
@@ -351,6 +378,77 @@ public class AfoController {
             }
         } catch (Exception e) {
             log.warn("试车台记录清单回填失败: projectId={}", pid, e);
+        }
+    }
+
+    @ApiOperation("通道字典(R065 prepare自产channels.json:SHT_AFO_CATALOG_V2,含display/displayGroup/panel)")
+    @GetMapping("/channels")
+    @RequirePermission(Permission.READ)
+    public Result<Map<String, Object>> channels(@PathVariable("pid") String pid) {
+        try {
+            return Result.success(afoService.channelCatalog(pid));
+        } catch (Exception e) {
+            return Result.error("读取AFO通道字典失败: " + e.getMessage());
+        }
+    }
+
+    @ApiOperation("动态历史增量读取(游标式;stream样本块纯文件读取,不占用引擎)")
+    @GetMapping("/live")
+    @RequirePermission(Permission.READ)
+    public Result<Map<String, Object>> live(@PathVariable("pid") String pid,
+            @org.springframework.web.bind.annotation.RequestParam(value = "afterSeq", required = false, defaultValue = "0") Long afterSeq,
+            @org.springframework.web.bind.annotation.RequestParam(value = "sessionId", required = false) String sessionId,
+            @org.springframework.web.bind.annotation.RequestParam(value = "maxRows", required = false, defaultValue = "2048") Integer maxRows,
+            @org.springframework.web.bind.annotation.RequestParam(value = "columns", required = false) String columns) {
+        try {
+            int[] cols = null;
+            if (columns != null && !columns.trim().isEmpty()) {
+                String[] parts = columns.trim().split(",");
+                cols = new int[parts.length];
+                for (int i = 0; i < parts.length; i++) {
+                    cols[i] = Integer.parseInt(parts[i].trim());
+                }
+            }
+            return Result.success(afoService.readLive(pid, afterSeq == null ? 0L : afterSeq, sessionId, maxRows, cols));
+        } catch (Exception e) {
+            return Result.error("读取AFO动态历史失败: " + e.getMessage());
+        }
+    }
+
+    @ApiOperation("增量数据SSE流(program-run live-stream同构;token走query;end事件=终态/会话结束)")
+    @GetMapping(value = "/live-stream", produces = org.springframework.http.MediaType.TEXT_EVENT_STREAM_VALUE)
+    @RequirePermission(Permission.READ)
+    public org.springframework.web.servlet.mvc.method.annotation.SseEmitter liveStream(
+            @PathVariable("pid") String pid,
+            @org.springframework.web.bind.annotation.RequestParam(value = "afterSeq", required = false, defaultValue = "0") Long afterSeq,
+            @org.springframework.web.bind.annotation.RequestParam(value = "sessionId", required = false) String sessionId,
+            @org.springframework.web.bind.annotation.RequestParam(value = "columns", required = false) String columns,
+            javax.servlet.http.HttpServletResponse resp) {
+        // 同/stream:关掉代理缓冲,保证live帧实时到达
+        resp.setHeader("X-Accel-Buffering", "no");
+        resp.setHeader("Cache-Control", "no-cache");
+        org.springframework.web.servlet.mvc.method.annotation.SseEmitter em =
+                new org.springframework.web.servlet.mvc.method.annotation.SseEmitter(0L);
+        try {
+            int[] cols = null;
+            if (columns != null && !columns.trim().isEmpty()) {
+                String[] parts = columns.trim().split(",");
+                cols = new int[parts.length];
+                for (int i = 0; i < parts.length; i++) {
+                    cols[i] = Integer.parseInt(parts[i].trim());
+                }
+            }
+            return afoService.openLiveStream(pid, afterSeq == null ? 0L : afterSeq, sessionId, cols);
+        } catch (Exception e) {
+            // SSE 错误以事件形式返回,前端降级为轮询
+            try {
+                em.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event()
+                        .name("err").data(e.getMessage() == null ? "live-stream unavailable" : e.getMessage()));
+                em.complete();
+            } catch (Exception ignore) {
+                // 客户端已断开
+            }
+            return em;
         }
     }
 

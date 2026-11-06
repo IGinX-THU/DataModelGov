@@ -88,6 +88,12 @@ public class EngineWorkbenchController {
     @Autowired
     private com.tsinghua.engine.EngineProjectMetaService metaService;
 
+    @Autowired
+    private com.tsinghua.service.ProgramService programService;
+
+    @Autowired
+    private cn.edu.tsinghua.iginx.session_v2.IginXClient iginxClient;
+
     /* ---------- 项目 ---------- */
 
     /** 项目归属校验:owner 为空视为历史遗留数据,仅管理员可见;非创建人一律拒绝。 */
@@ -318,6 +324,122 @@ public class EngineWorkbenchController {
             return Result.success(out);
         } catch (IOException e) {
             return Result.error("读取项目失败: " + e.getMessage());
+        }
+    }
+
+    @ApiOperation("下载项目(打包工作目录为ZIP;备份副本每次覆盖 program/backup/<pid>/*.zip,备份记录按项目ID覆盖入 IGinX)")
+    @GetMapping("/projects/{pid}/download")
+    @RequirePermission(Permission.READ)
+    public org.springframework.http.ResponseEntity<?> downloadProject(@PathVariable("pid") String pid) {
+        EngineModels.EngineProject p;
+        try {
+            p = store.getProject(pid);
+        } catch (IOException e) {
+            return org.springframework.http.ResponseEntity.status(500)
+                    .body(Result.error("读取项目失败: " + e.getMessage()));
+        }
+        String denied = accessDenied(p);
+        if (denied != null) {
+            return org.springframework.http.ResponseEntity.status(403).body(Result.error(denied));
+        }
+        File root = new File(p.getWorkdir());
+        if (!root.isDirectory()) {
+            return org.springframework.http.ResponseEntity.status(404)
+                    .body(Result.error("项目工作目录不存在: " + root.getAbsolutePath()));
+        }
+        try {
+            // 1) 打包:固定文件名(不带时间戳),每次下载覆盖上一份备份,不累积冗余文件;
+            //    先写 .part 临时文件再 REPLACE_EXISTING 原子覆盖,避免下载到半截包
+            File backups = new File(new File("program", "backup"), pid);
+            if (!backups.isDirectory() && !backups.mkdirs()) {
+                throw new IOException("备份目录创建失败: " + backups.getAbsolutePath());
+            }
+            File zip = new File(backups, safeZipName(p.getName()) + ".zip");
+            File tmp = new File(backups, zip.getName() + ".part");
+            long[] stat = zipDir(root, tmp);
+            java.nio.file.Files.move(tmp.toPath(), zip.toPath(),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+
+            // 2) 备份记录入 IGinX(best-effort:IGinX 不可用不阻断下载);
+            //    id 固定为项目ID → 同一项目每次覆盖同一条记录,不产生历史冗余行
+            try {
+                long ts = System.currentTimeMillis();
+                long bkId;
+                try {
+                    bkId = Long.parseLong(pid);
+                } catch (NumberFormatException ex) {
+                    bkId = Math.abs(pid.hashCode());
+                }
+                com.tsinghua.entity.ProjectBackupEntity rec = com.tsinghua.entity.ProjectBackupEntity.builder()
+                        .id(bkId).projectId(p.getId()).projectName(p.getName())
+                        .owner(com.tsinghua.auth.util.AuthUtil.getCurrentUsername())
+                        .zipName(zip.getName()).zipPath(zip.getAbsolutePath())
+                        .sizeBytes(stat[0]).fileCount(stat[1]).dirCount(stat[2])
+                        .backupTime(ts).build();
+                iginxClient.getWriteClient().writeMeasurement(rec);
+            } catch (Exception e) {
+                log.warn("项目备份记录写入 IGinX 失败(不影响下载): {}", pid, e);
+            }
+
+            // 3) 流式返回 ZIP(文件名 UTF-8 编码,兼容中文项目名)
+            String fname = java.net.URLEncoder.encode(zip.getName(), "UTF-8").replace("+", "%20");
+            return org.springframework.http.ResponseEntity.ok()
+                    .header("Content-Disposition", "attachment; filename*=UTF-8''" + fname)
+                    .header("Content-Type", "application/zip")
+                    .contentLength(zip.length())
+                    .body(new org.springframework.core.io.FileSystemResource(zip));
+        } catch (IOException e) {
+            return org.springframework.http.ResponseEntity.status(500)
+                    .body(Result.error("打包失败: " + e.getMessage()));
+        }
+    }
+
+    /** ZIP 文件名安全化:去路径分隔与非法字符,空则回退项目ID。 */
+    private static String safeZipName(String name) {
+        String s = name == null ? "" : name.trim().replaceAll("[\\\\/:*?\"<>|]", "_");
+        return s.isEmpty() ? "project" : s;
+    }
+
+    /**
+     * 递归打包目录为 ZIP(UTF-8 文件名,支持中文)。
+     * 返回 {ZIP字节数, 文件数, 目录数};跳过无法读取的文件,不中断打包。
+     */
+    private static long[] zipDir(File root, File out) throws IOException {
+        java.util.zip.ZipOutputStream zos = new java.util.zip.ZipOutputStream(
+                Files.newOutputStream(out.toPath()), java.nio.charset.StandardCharsets.UTF_8);
+        long[] stat = new long[3];
+        try {
+            zipInto(zos, root, "", stat);
+        } finally {
+            zos.close();
+        }
+        stat[0] = out.length();
+        return stat;
+    }
+
+    /** zipDir 递归辅助:relPrefix 为空表示根;目录条目以 '/' 结尾保持压缩包内目录结构。 */
+    private static void zipInto(java.util.zip.ZipOutputStream zos, File dir, String relPrefix, long[] stat) throws IOException {
+        File[] children = dir.listFiles();
+        if (children == null) return;
+        for (File f : children) {
+            String rel = relPrefix + f.getName();
+            if (f.isDirectory()) {
+                stat[2]++;
+                zos.putNextEntry(new java.util.zip.ZipEntry(rel + "/"));
+                zos.closeEntry();
+                zipInto(zos, f, rel + "/", stat);
+            } else if (f.isFile()) {
+                try (InputStream in = Files.newInputStream(f.toPath())) {
+                    zos.putNextEntry(new java.util.zip.ZipEntry(rel));
+                    byte[] buf = new byte[8192];
+                    int n;
+                    while ((n = in.read(buf)) >= 0) zos.write(buf, 0, n);
+                    zos.closeEntry();
+                    stat[1]++;
+                } catch (IOException e) {
+                    log.warn("打包跳过不可读文件: {}", f.getAbsolutePath(), e);
+                }
+            }
         }
     }
 
@@ -807,7 +929,11 @@ public class EngineWorkbenchController {
         {"Stage4/prediction_models/hold/steady_model.xlsx", "model", "示例·预测载体模型-沿用(自演化)"},
         {"Stage4/prediction_models/trend/steady_model.xlsx", "model", "示例·预测载体模型-趋势(自演化)"}
     };
-    private static final String EXAMPLE_CLASSPATH = "programs/Delivery_V1_20261019_R06/examples/";
+    private static final String EXAMPLE_CLASSPATH = "matlab/delivery/examples/";
+
+    /** 交付树根可配置解析(engine.r06.root):配置磁盘路径时 examples 优先从该目录读取。 */
+    @Autowired(required = false)
+    private com.tsinghua.engine.DeliveryTreeLocator deliveryTree;
 
     /** 创建项目时把examples示例文件按类型复制入项目文件库(kind带"示例·"前缀;幂等:同名跳过;
      *  文件名保留examples原始名称,不重命名)。 */
@@ -839,6 +965,16 @@ public class EngineWorkbenchController {
 
     /** 读取classpath交付examples文件:优先文件系统目录(IDE/解包运行),兜底jar内条目(部署运行)。 */
     private byte[] readExampleResource(String rel) {
+        // 配置的磁盘交付树(engine.r06.root)优先于内置资源
+        if (deliveryTree != null && rel.startsWith(EXAMPLE_CLASSPATH)) {
+            File extExamples = deliveryTree.examplesDir();
+            if (extExamples != null) {
+                File f = new File(extExamples, rel.substring(EXAMPLE_CLASSPATH.length()));
+                if (f.isFile()) {
+                    try { return java.nio.file.Files.readAllBytes(f.toPath()); } catch (Exception ignore) { }
+                }
+            }
+        }
         String[] roots = {
                 "datamodelgov-server/src/main/resources/",
                 "src/main/resources/",
@@ -1313,6 +1449,132 @@ public class EngineWorkbenchController {
     @RequirePermission(Permission.READ)
     public Result<List<String>> engineLog(@RequestParam(value = "n", defaultValue = "20") int n) {
         return Result.success(com.tsinghua.engine.MatlabLogRing.tail(Math.min(Math.max(n, 1), 300)));
+    }
+
+    /* ---------- 新版接入层引擎状态(工作台 footer;共享池聚合 + 专属引擎) ---------- */
+
+    private static final com.fasterxml.jackson.databind.ObjectMapper OM_ENG_STATUS =
+            new com.fasterxml.jackson.databind.ObjectMapper();
+    private static final java.util.List<Object[]> engStatusSubs =
+            new java.util.concurrent.CopyOnWriteArrayList<>();
+    private final java.util.concurrent.ScheduledExecutorService engStatusPump =
+            java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r -> {
+                Thread t = new Thread(r, "engine-status-pump");
+                t.setDaemon(true);
+                return t;
+            });
+    private volatile boolean engStatusPumpStarted = false;
+
+    @ApiOperation("新版接入层 MATLAB 引擎状态(工作台底部状态栏)")
+    @GetMapping("/engine-status")
+    @RequirePermission(Permission.READ)
+    public Result<Map<String, Object>> engineStatus() {
+        return Result.success(aggregateEngineStatus());
+    }
+
+    @ApiOperation("引擎状态与日志SSE通知流(工作台;指纹变化才推chg,前端轮询兜底)")
+    @GetMapping(value = "/engine-status-stream", produces = org.springframework.http.MediaType.TEXT_EVENT_STREAM_VALUE)
+    @RequirePermission(Permission.READ)
+    public SseEmitter engineStatusStream() {
+        SseEmitter em = new SseEmitter(0L);
+        Object[] sub = new Object[]{em, ""};
+        engStatusSubs.add(sub);
+        em.onCompletion(() -> engStatusSubs.remove(sub));
+        em.onTimeout(() -> { engStatusSubs.remove(sub); try { em.complete(); } catch (Exception ignore) { } });
+        ensureEngStatusPump();
+        return em;
+    }
+
+    private synchronized void ensureEngStatusPump() {
+        if (!engStatusPumpStarted) {
+            engStatusPumpStarted = true;
+            engStatusPump.scheduleWithFixedDelay(this::pumpEngineStatus, 3000, 3000,
+                    java.util.concurrent.TimeUnit.MILLISECONDS);
+        }
+    }
+
+    private void pumpEngineStatus() {
+        for (Object[] sub : engStatusSubs) {
+            SseEmitter em = (SseEmitter) sub[0];
+            try {
+                Map<String, Object> status = aggregateEngineStatus();
+                List<String> tail = com.tsinghua.engine.MatlabLogRing.tail(20);
+                String fp = String.valueOf(String.valueOf(status.get("message")).hashCode())
+                        + ':' + (tail.isEmpty() ? "" : tail.get(tail.size() - 1)).hashCode() + ':' + tail.size();
+                if (!fp.equals((String) sub[1])) {
+                    sub[1] = fp;
+                    Map<String, Object> payload = new LinkedHashMap<>();
+                    payload.put("status", status.get("message"));
+                    payload.put("logTail", tail);
+                    em.send(SseEmitter.event().name("chg").data(OM_ENG_STATUS.writeValueAsString(payload)));
+                }
+            } catch (IOException io) {
+                engStatusSubs.remove(sub);
+                try { em.complete(); } catch (Exception ignore) { }
+            } catch (Exception e) {
+                log.debug("引擎状态SSE泵异常(下周期重试): {}", e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * 聚合新版工作台实际使用的引擎:
+     * 共享池 = 个性化建模(TC24)池 + 试车台一次性任务池 + 飞参/自演化复用的 program 池;
+     * 专属引擎 = AFO 预热/会话 + 全模式会话(不走共享池,只计入"专属")。
+     */
+    private Map<String, Object> aggregateEngineStatus() {
+        Map<String, Object> data = new LinkedHashMap<>();
+        if (!programService.isMatlabEngineEnabled()) {
+            data.put("status", "disabled");
+            data.put("message", "[MATLAB] 引擎模式未启用（matlab.engine.enabled=false）");
+            return data;
+        }
+        List<com.tsinghua.matlab.MatlabEnginePool> pools = new ArrayList<>();
+        addPool(pools, programService.enginePool());
+        addPool(pools, tc24Service.enginePoolRef());
+        addPool(pools, testbenchService.enginePoolRef());
+
+        int idle = 0, total = 0, max = 0, waiting = 0;
+        boolean ready = false, starting = false, failed = !pools.isEmpty();
+        for (com.tsinghua.matlab.MatlabEnginePool p : pools) {
+            idle += p.idleCount();
+            total += p.totalCount();
+            max += p.maxEngines();
+            waiting += p.waitingCount();
+            ready |= p.isReady();
+            starting |= p.isStarting();
+            failed &= p.isFailed();
+        }
+        int dedicated = afoService.dedicatedEngineCount() + testbenchService.sessionEngineCount();
+
+        if (ready) {
+            String msg = "[MATLAB] 引擎已就绪（空闲 " + idle + " / 已建 " + total
+                    + " · 上限 " + max + " · 排队 " + waiting;
+            if (dedicated > 0) msg += " · 专属 " + dedicated;
+            msg += "）";
+            data.put("status", "ready");
+            data.put("message", msg);
+            data.put("idle", idle);
+            data.put("total", total);
+            data.put("max", max);
+            data.put("waiting", waiting);
+            data.put("dedicated", dedicated);
+        } else if (starting) {
+            data.put("status", "starting");
+            data.put("message", "[MATLAB] 引擎启动中...（已建 " + total + " / 上限 " + max + "）");
+        } else if (failed) {
+            data.put("status", "failed");
+            data.put("message", "[MATLAB] 引擎启动失败，仿真无法运行");
+        } else {
+            data.put("status", "starting");
+            data.put("message", "[MATLAB] 引擎启动中...");
+        }
+        return data;
+    }
+
+    private static void addPool(List<com.tsinghua.matlab.MatlabEnginePool> pools,
+                                com.tsinghua.matlab.MatlabEnginePool p) {
+        if (p != null) pools.add(p);
     }
 
     @ApiOperation("请求停止辨识")
@@ -1840,5 +2102,122 @@ public class EngineWorkbenchController {
             }
         }
         return routeMatch != null ? routeMatch : fallback;
+    }
+
+    /* ---------- 任务/会话状态 SSE 通知流(轮询的推送化):服务端1s指纹比对,变化才发chg,前端收到后自行拉取一次 ---------- */
+
+    private static final com.fasterxml.jackson.databind.ObjectMapper OM_TASK = new com.fasterxml.jackson.databind.ObjectMapper();
+    private final java.util.concurrent.CopyOnWriteArrayList<Object[]> taskSubs = new java.util.concurrent.CopyOnWriteArrayList<>();
+    private final java.util.concurrent.ScheduledExecutorService taskPump =
+            java.util.concurrent.Executors.newSingleThreadScheduledExecutor(
+                    r -> { Thread t = new Thread(r, "wb-task-pump"); t.setDaemon(true); return t; });
+    private volatile boolean taskPumpStarted = false;
+
+    private synchronized void ensureTaskPump() {
+        if (!taskPumpStarted) {
+            taskPumpStarted = true;
+            taskPump.scheduleWithFixedDelay(this::pumpTaskChanges, 1000, 1000, java.util.concurrent.TimeUnit.MILLISECONDS);
+        }
+    }
+
+    private void pumpTaskChanges() {
+        for (Object[] sub : taskSubs) {
+            org.springframework.web.servlet.mvc.method.annotation.SseEmitter em =
+                    (org.springframework.web.servlet.mvc.method.annotation.SseEmitter) sub[0];
+            String pid = (String) sub[1], tid = (String) sub[2], kind = (String) sub[3];
+            try {
+                String json;
+                if ("testbench".equals(kind)) {
+                    json = OM_TASK.writeValueAsString(testbenchService.taskStatus(pid, tid));
+                } else {
+                    EngineModels.ModelingTask t = store.getTask(pid, tid);
+                    if (t == null) {
+                        finishTaskSub(sub);
+                        continue;
+                    }
+                    Map<String, Object> payload = new LinkedHashMap<>();
+                    payload.put("task", t);
+                    java.util.List<String> tail = tc24Service.logTail(tid);
+                    if (tail == null || tail.isEmpty()) tail = f3FlightService.logTail(tid);
+                    payload.put("logTail", tail);
+                    json = OM_TASK.writeValueAsString(payload);
+                }
+                String fp = Integer.toString(json.hashCode()) + ':' + json.length();
+                if (!fp.equals((String) sub[4])) {
+                    sub[4] = fp;
+                    em.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event()
+                            .name("chg").data(json));
+                }
+            } catch (java.io.IOException io) {
+                taskSubs.remove(sub);
+                try { em.complete(); } catch (Exception ignore) { }
+            } catch (Exception e) {
+                log.debug("任务状态SSE泵异常(下周期重试): {}", e.getMessage());
+            }
+        }
+    }
+
+    private void finishTaskSub(Object[] sub) {
+        org.springframework.web.servlet.mvc.method.annotation.SseEmitter em =
+                (org.springframework.web.servlet.mvc.method.annotation.SseEmitter) sub[0];
+        try {
+            em.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event()
+                    .name("end").data("task_removed"));
+        } catch (Exception ignore) { }
+        taskSubs.remove(sub);
+        try { em.complete(); } catch (Exception ignore) { }
+    }
+
+    private org.springframework.web.servlet.mvc.method.annotation.SseEmitter openTaskSub(
+            String pid, String tid, String kind) {
+        org.springframework.web.servlet.mvc.method.annotation.SseEmitter em =
+                new org.springframework.web.servlet.mvc.method.annotation.SseEmitter(0L);
+        Object[] sub = new Object[]{ em, pid, tid, kind, "" };
+        taskSubs.add(sub);
+        em.onCompletion(() -> taskSubs.remove(sub));
+        em.onTimeout(() -> { taskSubs.remove(sub); try { em.complete(); } catch (Exception ignore) { } });
+        ensureTaskPump();
+        return em;
+    }
+
+    @ApiOperation("建模任务状态SSE通知流(指纹变化才推chg;EventSource失败前端回退轮询)")
+    @GetMapping(value = "/projects/{pid}/tasks/{tid}/stream", produces = org.springframework.http.MediaType.TEXT_EVENT_STREAM_VALUE)
+    @RequirePermission(Permission.READ)
+    public org.springframework.web.servlet.mvc.method.annotation.SseEmitter taskStream(
+            @PathVariable("pid") String pid, @PathVariable("tid") String tid) {
+        org.springframework.web.servlet.mvc.method.annotation.SseEmitter em =
+                new org.springframework.web.servlet.mvc.method.annotation.SseEmitter(0L);
+        try {
+            EngineModels.ModelingTask t = store.getTask(pid, tid);
+            if (t == null) throw new IllegalStateException("任务不存在");
+            return openTaskSub(pid, tid, "task");
+        } catch (Exception e) {
+            try {
+                em.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event()
+                        .name("err").data(e.getMessage() == null ? "stream unavailable" : e.getMessage()));
+                em.complete();
+            } catch (Exception ignore) { }
+            return em;
+        }
+    }
+
+    @ApiOperation("试车台任务(全模式/起动停/设计点)状态SSE通知流")
+    @GetMapping(value = "/projects/{pid}/testbench/{taskId}/stream", produces = org.springframework.http.MediaType.TEXT_EVENT_STREAM_VALUE)
+    @RequirePermission(Permission.READ)
+    public org.springframework.web.servlet.mvc.method.annotation.SseEmitter testbenchTaskStream(
+            @PathVariable("pid") String pid, @PathVariable("taskId") String taskId) {
+        org.springframework.web.servlet.mvc.method.annotation.SseEmitter em =
+                new org.springframework.web.servlet.mvc.method.annotation.SseEmitter(0L);
+        try {
+            testbenchService.taskStatus(pid, taskId); // 探活:任务缺失直接走err
+            return openTaskSub(pid, taskId, "testbench");
+        } catch (Exception e) {
+            try {
+                em.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event()
+                        .name("err").data(e.getMessage() == null ? "stream unavailable" : e.getMessage()));
+                em.complete();
+            } catch (Exception ignore) { }
+            return em;
+        }
     }
 }

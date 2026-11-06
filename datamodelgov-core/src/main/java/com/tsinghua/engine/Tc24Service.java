@@ -4,6 +4,7 @@ import com.tsinghua.matlab.MatlabEnginePool;
 import com.tsinghua.util.MojibakeUtil;
 import com.tsinghua.matlab.MatlabFunctionRunner;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -76,7 +77,26 @@ public class Tc24Service {
         }
     }
 
-    private static final String R06_IN_CLASSPATH = "programs/Delivery_V1_20261019_R06/programs";
+    /** 新版接入层引擎池(引擎被禁用时为 null),供工作台状态聚合读取空闲/已建/上限/排队。 */
+    public MatlabEnginePool enginePoolRef() {
+        return enginePool;
+    }
+
+    private static final String R06_IN_CLASSPATH = "matlab/delivery/programs";
+
+    /** 交付树根可配置解析(engine.r06.root):磁盘路径优先,classpath/内置资源/jar 兜底。 */
+    @Autowired(required = false)
+    private DeliveryTreeLocator deliveryTree;
+
+    /** 交付树 programs 层 classpath 基准(配置 classpath 模式时跟随配置)。 */
+    private String r06ProgramsBase() {
+        return deliveryTree != null ? deliveryTree.classpathProgramsBase() : R06_IN_CLASSPATH;
+    }
+
+    /** 配置的磁盘交付树 programs 层;未配置或无效返回 null。 */
+    private File deliveryProgramsDir() {
+        return deliveryTree != null ? deliveryTree.programsDir() : null;
+    }
 
     /** 程序包相对目录(工作副本根下保持交付树 programs/ 布局,便于相对引用 C_runtime 等)。 */
     private static final String PROG_SUBPATH = "programs/m_program_adaptive_tune";
@@ -104,9 +124,16 @@ public class Tc24Service {
     private File resolveTc24Source(String projectId) throws IOException {
         File user = new File(workProgramsDir(projectId), PROG_NAME);
         if (new File(user, "Start_TC24_00_Offline.m").isFile()) return user;
+        // 配置的磁盘交付树(engine.r06.root)优先于内置资源
+        File ext = deliveryProgramsDir();
+        if (ext != null) {
+            File extProg = new File(ext, PROG_NAME);
+            if (new File(extProg, "Start_TC24_00_Offline.m").isFile()) return extProg;
+        }
+        String base = r06ProgramsBase();
         String[] classes = {
-                "target/classes/" + R06_IN_CLASSPATH + "/" + PROG_NAME,
-                "datamodelgov-server/target/classes/" + R06_IN_CLASSPATH + "/" + PROG_NAME
+                "target/classes/" + base + "/" + PROG_NAME,
+                "datamodelgov-server/target/classes/" + base + "/" + PROG_NAME
         };
         for (String c : classes) {
             File f = new File(c);
@@ -145,13 +172,19 @@ public class Tc24Service {
         log.info("TC24程序已预置到项目工作目录: {}", target);
     }
 
-    /** 预置来源(打包资源优先):工作区resources → target/classes(r06-runtime工作副本体系已废除)。 */
+    /** 预置来源(打包资源优先):配置磁盘交付树 → 工作区resources → target/classes(r06-runtime工作副本体系已废除)。 */
     private File resolveProgramSourceAny() {
+        File ext = deliveryProgramsDir();
+        if (ext != null) {
+            File extProg = new File(ext, PROG_NAME);
+            if (extProg.isDirectory()) return extProg;
+        }
+        String base = r06ProgramsBase();
         String[] candidates = {
-                "datamodelgov-server/src/main/resources/" + R06_IN_CLASSPATH + "/" + PROG_NAME,
-                "src/main/resources/" + R06_IN_CLASSPATH + "/" + PROG_NAME,
-                "target/classes/" + R06_IN_CLASSPATH + "/" + PROG_NAME,
-                "datamodelgov-server/target/classes/" + R06_IN_CLASSPATH + "/" + PROG_NAME
+                "datamodelgov-server/src/main/resources/" + base + "/" + PROG_NAME,
+                "src/main/resources/" + base + "/" + PROG_NAME,
+                "target/classes/" + base + "/" + PROG_NAME,
+                "datamodelgov-server/target/classes/" + base + "/" + PROG_NAME
         };
         for (String c : candidates) {
             File f = new File(c);
@@ -164,12 +197,12 @@ public class Tc24Service {
     private void extractClasspathProgram(File dest) throws IOException {
         org.springframework.core.io.support.PathMatchingResourcePatternResolver resolver =
                 new org.springframework.core.io.support.PathMatchingResourcePatternResolver();
-        String pattern = "classpath*:" + R06_IN_CLASSPATH + "/m_program_adaptive_tune/**/*";
+        String pattern = "classpath*:" + r06ProgramsBase() + "/m_program_adaptive_tune/**/*";
         org.springframework.core.io.Resource[] resources = resolver.getResources(pattern);
         int count = 0;
         for (org.springframework.core.io.Resource r : resources) {
             String uri = r.getURI().toString();
-            String marker = R06_IN_CLASSPATH + "/m_program_adaptive_tune/";
+            String marker = r06ProgramsBase() + "/m_program_adaptive_tune/";
             int idx = uri.indexOf(marker);
             if (idx < 0) continue;
             String rel = uri.substring(idx + marker.length());

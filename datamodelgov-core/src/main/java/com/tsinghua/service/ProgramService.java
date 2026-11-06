@@ -95,6 +95,11 @@ public class ProgramService {
     @Value("${matlab.engine.pool-size:4}")
     private int enginePoolSize;
 
+    /** 引擎模式是否启用(matlab.engine.enabled);供新版工作台状态聚合判断。 */
+    public boolean isMatlabEngineEnabled() {
+        return matlabEngineEnabled;
+    }
+
     @PostConstruct
     private void initMatlabHome() {
         MatlabSimulationRunner.configureMatlabHome(matlabHome);

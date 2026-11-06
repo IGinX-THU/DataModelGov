@@ -378,15 +378,22 @@ window.AppConfig = {
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
-            
+
             // 尝试解析JSON响应
             const contentType = response.headers.get('content-type');
             if (contentType && contentType.includes('application/json')) {
-                return await response.json();
+                // 先读原文再解析:既避免json()消费流后无法回读,也能在解析失败时展示完整body
+                const raw = await response.text();
+                try {
+                    return JSON.parse(raw);
+                } catch (jsonErr) {
+                    console.error('JSON解析失败:', jsonErr.message, '| url=', response.url, '| body(前3200字符)=', raw.slice(0, 3200));
+                    throw new Error('响应JSON格式错误(接口: ' + response.url + '): ' + jsonErr.message);
+                }
             } else {
                 return await response.text();
             }
-            
+
         } catch (error) {
             // 清除timeout
             clearTimeout(timeoutId);
@@ -715,11 +722,19 @@ window.AppConfig = {
             // 尝试解析JSON响应
             const contentType = response.headers.get('content-type');
             if (contentType && contentType.includes('application/json')) {
-                return await response.json();
+                try {
+                    return await response.json();
+                } catch (jsonErr) {
+                    // JSON解析失败:带上URL与响应体片段,便于定位是哪个接口返回了坏数据
+                    let snippet = '';
+                    try { snippet = (await response.text()).slice(0, 300); } catch (e2) { snippet = '<读取失败:' + e2.message + '>'; }
+                    console.error('JSON解析失败(上传):', jsonErr.message, '| url=', response.url, '| body片段=', snippet);
+                    throw new Error('响应JSON格式错误(接口: ' + response.url + '): ' + jsonErr.message);
+                }
             } else {
                 return await response.text();
             }
-            
+
         } catch (error) {
             console.error('文件上传失败:', error);
             throw error;

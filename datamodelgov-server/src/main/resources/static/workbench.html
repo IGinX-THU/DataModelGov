@@ -25,6 +25,9 @@
 
     <script src="./js/common-utils.js"></script>
 <script src="./workbench/workbench-common.js"></script>
+    <!-- AFO R138 页面:在 common 之后加载,覆盖注册 pages['testbench.afo'];摘除以下两行即回退旧页 -->
+    <script src="./workbench/afo-kernel.js"></script>
+    <script src="./workbench/afo-r138.js"></script>
     <script src="./workbench/workbench-root.js"></script>
     <script src="./workbench/workbench-shell.js"></script>
     <script src="./workbench/workbench-task.js"></script>
