@@ -160,6 +160,13 @@
             const busy = state.prepWait || (state.task && (state.task.status === 'PREPARING'
                 || state.task.status === 'RUNNING' || state.task.status === 'STOP_REQUESTED'));
             if (state.tab !== 'run' && !busy) stopPolling();
+            // 日志框滚动跟随:SSE chg 高频重绘会重建DOM,scrollTop归零表现为"每次推送跳回顶部"。
+            // 重绘前记住是否贴底(30px容差;收起状态视同贴底),重绘后贴底则自动拉到最底,
+            // 用户向上翻阅时保持原滚动位置不扰读。
+            const prevLog = body.querySelector('.wb-logbox');
+            const prevStick = !prevLog || prevLog.clientHeight === 0
+                || prevLog.scrollTop + prevLog.clientHeight >= prevLog.scrollHeight - 30;
+            const prevTop = prevLog ? prevLog.scrollTop : 0;
             body.innerHTML = '';
             if (!ctx.project.id) { body.appendChild(noTaskView()); paintTabs(); paintMeta(); return; }
             if (!state.task) { body.appendChild(createCard()); paintTabs(); paintMeta(); return; }
@@ -169,6 +176,11 @@
             else body.appendChild(uqTab());
             paintTabs();
             paintMeta();
+            const newLog = body.querySelector('.wb-logbox');
+            if (newLog) {
+                if (prevStick) newLog.scrollTop = newLog.scrollHeight;
+                else newLog.scrollTop = Math.min(prevTop, newLog.scrollHeight);
+            }
         }
 
         /* ---------- 项目不在服务器(本地演示) ---------- */
@@ -1119,7 +1131,7 @@
                 view.appendChild(WB().h('div', { class: 'wb-actions-row', style: 'max-width:1180px' },
                     WB().h('button', {
                         class: 'wb-btn wb-btn-outline',
-                        onclick: () => { state.logOpen = !state.logOpen; logBox.style.display = state.logOpen ? '' : 'none'; }
+                        onclick: () => { state.logOpen = !state.logOpen; logBox.style.display = state.logOpen ? '' : 'none'; if (state.logOpen) logBox.scrollTop = logBox.scrollHeight; }
                     }, state.logOpen ? '收起详细日志' : '展开详细日志')));
                 view.appendChild(logBox);
 

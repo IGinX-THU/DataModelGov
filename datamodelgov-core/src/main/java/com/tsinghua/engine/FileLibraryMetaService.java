@@ -89,7 +89,7 @@ public class FileLibraryMetaService {
             if (!AuthUtil.isAdmin()) {
                 sql.append(" AND owner = '").append(AuthUtil.getCurrentUsername()).append("'");
             }
-            sql.append(" ORDER BY createTime DESC ");
+            sql.append(" ORDER BY name ");
             if (pageNum != null && pageSize != null) {
                 sql.append(" LIMIT ").append(pageSize);
                 sql.append(" OFFSET ").append((pageNum - 1) * pageSize);
