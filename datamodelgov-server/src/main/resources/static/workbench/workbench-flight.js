@@ -994,6 +994,9 @@
         function startPolling() {
             window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000;
             if (state.es) return;
+            // SSE与轮询互斥:断链兜底定时器残留时重建SSE,必须先退掉定时器,
+            // 否则SSE活跃期间5s /status轮询永久并存
+            if (state.timer) { clearInterval(state.timer); state.timer = null; }
             // SSE 通知流为主:chg负载直接渲染(不再回拉status);失败回退5s定时轮询
             try {
                 const cfg0 = window.AppConfig;
@@ -1023,6 +1026,7 @@
         }
         function stopPolling() {
             if (state.timer) { clearInterval(state.timer); state.timer = null; }
+            if (state.es) { try { state.es.close(); } catch (e) { } state.es = null; }
         }
         // 进入业务页固定显示新建视图;只有运行记录/项目概览指定 __WB_OPEN_TASK__ 时才打开既有任务
         // 页面切换时由 shell 调用,避免旧页轮询残留(跨页串状态通道)
@@ -1560,6 +1564,9 @@
         function startPolling() {
             window.__WB_ENGINE_POLL_UNTIL__ = Date.now() + 40000;
             if (state.es) return;
+            // SSE与轮询互斥:断链兜底定时器残留时重建SSE,必须先退掉定时器,
+            // 否则SSE活跃期间5s /status轮询永久并存
+            if (state.timer) { clearInterval(state.timer); state.timer = null; }
             // SSE 通知流为主:chg负载直接渲染(不再回拉status);失败回退5s定时轮询
             try {
                 const cfg0 = window.AppConfig;
