@@ -11,6 +11,26 @@
 (function () {
     const WB = () => window.Workbench;
 
+    /* 日志刷新自动贴底：状态流(SSE chg)每次都会 renderBody 重建整个 body，
+       日志容器 scrollTop 归零会表现为"刷新后跳回顶部"。重绘前记录是否贴底，
+       重绘后贴底的拉到最底；用户主动上翻时保持原位置。稳态飞参、过渡态飞参、
+       自演化三个任务页共用这套逻辑。 */
+    const LOG_SELECTOR = '.wb-logbox, .wb-log, pre';
+    function captureLogScroll(container) {
+        return Array.prototype.map.call(container.querySelectorAll(LOG_SELECTOR), el => ({
+            stick: el.clientHeight === 0 || el.scrollTop + el.clientHeight >= el.scrollHeight - 30,
+            top: el.scrollTop
+        }));
+    }
+    function restoreLogScroll(container, states) {
+        const els = container.querySelectorAll(LOG_SELECTOR);
+        const sameLayout = states.length === els.length;
+        Array.prototype.forEach.call(els, (el, i) => {
+            const st = sameLayout ? states[i] : { stick: true, top: 0 };
+            el.scrollTop = st.stick ? el.scrollHeight : Math.min(st.top, el.scrollHeight);
+        });
+    }
+
     const KIND = {
         flight_steady: { title: '稳态飞参建模' },
         flight_transient: { title: '过渡态飞参建模' }
@@ -121,9 +141,13 @@
             // 检查/执行进行中不允许renderBody杀掉轮询
             const busy = state.prepWait || (state.task && ['PREPARING', 'RUNNING', 'STOP_REQUESTED'].includes(state.task.status));
             if (!busy) stopPolling();
+            const prevScroll = captureLogScroll(body);
             body.innerHTML = '';
             if (state.tab === 'data') body.appendChild(dataTab());
-            else if (!state.task) { body.appendChild(emptyHint('请先在「' + TABS[0][1] + '」完成任务创建与数据检查。')); paintTabs(); paintMeta(); return; }
+            else if (!state.task) {
+                body.appendChild(emptyHint('请先在「' + TABS[0][1] + '」完成任务创建与数据检查。'));
+                paintTabs(); paintMeta(); restoreLogScroll(body, prevScroll); return;
+            }
             else if (state.tab === 'update') body.appendChild(updateTab());
             else if (state.tab === 'event') body.appendChild(eventTab());
             else if (state.tab === 'run') body.appendChild(runTab());
@@ -131,6 +155,7 @@
             else body.appendChild(resultTab());
             paintTabs();
             paintMeta();
+            restoreLogScroll(body, prevScroll);
         }
 
         function emptyHint(msg) {
@@ -733,6 +758,17 @@
                 return box;
             }
 
+            // 过渡态飞参:交付程序 sht_f3_transient_task 没有UQ动作(capabilities仅
+            // check/preview/confirm/estimate/run/resume/validate),状态表明确标注
+            // uqStatus=not_evaluated_for_transient_combination。保留评估记录查看,
+            // 但不提供发起入口,避免复用稳态C/D合同后被后端拦成「缺少训练数据」。
+            if (!isSteady) {
+                wrap.appendChild(WB().h('div', { class: 'wb-infobar', style: 'margin-bottom:12px' },
+                    '当前交付程序未开通「过渡态飞参 + 不确定性评估」组合:过渡态任务只实现数据/事件/身份/安全控制与物理执行,'
+                    + '稳态飞参的 C/D 评估合同不适用于过渡态组合。如需区间评估,请新建稳态飞参建模任务后在稳态页发起。'));
+                return wrap;
+            }
+
             if (t.status !== 'COMPLETED') {
                 wrap.appendChild(WB().h('div', { class: 'wb-infobar', style: 'margin-bottom:12px' },
                     'UQ独立配置与保存:评估对象、观测、固定参数、概率来源和先验重设依据明确;当前新C/D评估限实际支持的纯稳态均值路线。'));
@@ -780,7 +816,6 @@
             }
 
             state.uqMethod = state.uqMethod || 'C';
-            state.uqParticle = state.uqParticle || '512';
             const objInp = WB().h('input', { readonly: '', value: (t.name || t.runId || '本架次模型')
                 + ' / ' + (t.identificationFile ? fileName(t.identificationFile) : '训练窗口') });
             const idInp = WB().h('input', { readonly: '', value: 'UQ-' + (t.runId || t.id) + '(记录标识由服务端生成)' });
@@ -790,19 +825,15 @@
             optC.selected = state.uqMethod !== 'D'; optD.selected = state.uqMethod === 'D';
             methodSel.appendChild(optC); methodSel.appendChild(optD);
             methodSel.addEventListener('change', () => { state.uqMethod = methodSel.value; });
-            const particleSel = WB().h('select', { style: 'width:100%' });
-            const opt5 = WB().h('option', { value: '512' }, '主样本512 · 独立复算512');
-            const opt10 = WB().h('option', { value: '1024' }, '主样本1024 · 独立复算1024');
-            opt5.selected = state.uqParticle !== '1024'; opt10.selected = state.uqParticle === '1024';
-            particleSel.appendChild(opt5); particleSel.appendChild(opt10);
-            particleSel.addEventListener('change', () => { state.uqParticle = particleSel.value; });
+            const channelInp = WB().h('input', { readonly: '', value: 'F-07-F3 独立UQ(C/D) · 同次冻结结果根' });
             wrap.appendChild(WB().h('div', { class: 'wb-form-grid', style: 'grid-template-columns:1fr 1fr;max-width:1180px;margin-bottom:6px' },
                 WB().h('div', { class: 'wb-field' }, WB().h('label', null, '评估对象(本任务已保存模型)'), objInp),
                 WB().h('div', { class: 'wb-field' }, WB().h('label', null, '本次评估编号'), idInp),
                 WB().h('div', { class: 'wb-field' }, WB().h('label', null, '方法'), methodSel),
-                WB().h('div', { class: 'wb-field' }, WB().h('label', null, '计算设置(粒子合同)'), particleSel)));
+                WB().h('div', { class: 'wb-field' }, WB().h('label', null, '评估通道'), channelInp)));
             wrap.appendChild(WB().h('div', { class: 'wb-hint', style: 'margin:0 0 10px' },
-                '当前仅支持R2稳态均值UQ;D快速局部初评可另选,两种结果分别保存、不互相覆盖。'));
+                '评估走 F3 稳态飞参专用合同:复用本任务建模时冻结的确认凭据与结果根,概率先验由服务端从项目内已接受的 UQ 后验交付中选取;'
+                + '不消费试车建模的 512/1024 粒子数设置。D 为快速局部初评,C 为非线性粒子评估。'));
 
             /* 配置内容表(04-13):由本任务数据如实汇总 */
             wrap.appendChild(WB().h('table', { class: 'wb-table', style: 'max-width:1180px' },
@@ -811,7 +842,7 @@
                     WB().h('td', { class: 'wb-hint' }, (t.identificationFile ? fileName(t.identificationFile) : '—')
                         + ' 完整窗口均值;独立测试' + (t.validationFile ? '已提供(' + fileName(t.validationFile) + ')' : '未提供;不显示测试通过率'))),
                 WB().h('tr', null, WB().h('td', null, '先验设置'),
-                    WB().h('td', { class: 'wb-hint' }, '确定性结果作为数值起点;不将本次结果或其他模型后验自动作为概率先验')),
+                    WB().h('td', { class: 'wb-hint' }, '确定性结果只作数值起点;概率先验须为 formal_status=ACCEPTED 且含后验样本的 2p4/2p7 UQ 交付,由服务端按方法与节点一致性选取')),
                 WB().h('tr', null, WB().h('td', null, '参数与条件项'),
                     WB().h('td', { class: 'wb-hint' }, '全部参数与燃油偏置节点(以交付Excel参数表为准);固定继承项不参与抽样')),
                 WB().h('tr', null, WB().h('td', null, '数值起点'),
@@ -821,36 +852,17 @@
                 WB().h('tr', null, WB().h('td', null, '预计耗时'),
                     WB().h('td', { class: 'wb-hint' }, '首次粗估约30分钟(参考20~50分钟);含准备、主计算、复算和写出,不含新工况预测;实际以评估记录为准'))));
 
-            /* 发起:确保已登记模型成果(UQ按已登记成果的交付Excel评估),再走与试车建模同一UQ接口 */
+            /* 发起:F-07-F3 专用UQ通道。服务端按本任务已交付的建模结果目录、建模时冻结的
+             * 确认凭据和项目内可用的UQ后验交付(概率先验)组配置;不消费试车建模的
+             * modelAssetId / particleCount,也不需要为了发起评估而临时登记模型成果。 */
             const launch = async () => {
                 try {
-                    let assetId = null;
-                    const fetchModels = () => window.AppConfig.engineGet(
-                        'projects/' + encodeURIComponent(ctx.project.id) + '/models');
-                    let respM = await fetchModels();
-                    let models = respM && (respM.success || respM.code === 200) && Array.isArray(respM.data) ? respM.data : [];
-                    let mine = models.filter(m => m.taskId === t.id);
-                    if (!mine.length) {
-                        const reg = await window.AppConfig.enginePost(
-                            'projects/' + encodeURIComponent(ctx.project.id) + '/tasks/'
-                            + encodeURIComponent(t.id) + '/save-model', { name: (t.name || '稳态飞参') + '-模型' });
-                        if (!(reg && (reg.success || reg.code === 200))) {
-                            toast((reg && reg.message) || '登记模型成果失败,无法发起评估', 'error'); return;
-                        }
-                        respM = await fetchModels();
-                        models = respM && (respM.success || respM.code === 200) && Array.isArray(respM.data) ? respM.data : [];
-                        mine = models.filter(m => m.taskId === t.id);
-                    }
-                    if (!mine.length || !mine[mine.length - 1].deliveryWorkbookFile) {
-                        toast('模型成果缺少交付Excel,无法评估;请检查辨识输出后重新登记', 'error'); return;
-                    }
-                    assetId = mine[mine.length - 1].id;
                     const resp = await window.AppConfig.enginePost(
                         'projects/' + encodeURIComponent(ctx.project.id) + '/tasks/'
                         + encodeURIComponent(t.id) + '/uq?method=' + encodeURIComponent(state.uqMethod),
-                        { modelAssetId: assetId, particleCount: parseInt(state.uqParticle, 10) });
+                        {});
                     if (resp && (resp.success || resp.code === 200)) {
-                        toast('UQ评估已发起;进度见本页与评估记录', 'success');
+                        toast('F3稳态飞参UQ评估已发起;进度见本页与评估记录', 'success');
                         startPolling(); renderBody();
                     } else toast((resp && resp.message) || '发起UQ失败', 'error');
                 } catch (e) { toast('发起UQ失败:' + e.message, 'error'); }
@@ -1188,6 +1200,7 @@
             const busy = state.prepWait || (state.task && ['PREPARING', 'RUNNING', 'STOP_REQUESTED'].includes(state.task.status))
                 || (state.task && (state.task.uqStatus === 'EXECUTING' || state.task.uqStatus === 'PREPARING'));
             if (!busy) stopPolling();
+            const prevScroll = captureLogScroll(body);
             body.innerHTML = '';
             if (state.tab === 'overview') body.appendChild(overviewTab());
             else if (state.tab === 'sorties') body.appendChild(sortiesTab());
@@ -1196,6 +1209,7 @@
             else if (state.tab === 'uq') body.appendChild(uqTab());
             else body.appendChild(entranceTab('下一架次预测', '先冻结两份模型:「沿用当前正常模型」与「按正常历史趋势外推模型」;两份使用相同未来输入与物理初态计算输出,不自动选胜者,不替换当前模型;之后取得测量再建立独立评价记录。'));
             paintTabs();
+            restoreLogScroll(body, prevScroll);
         }
 
         /* ---- 演化总览(06-01) ---- */

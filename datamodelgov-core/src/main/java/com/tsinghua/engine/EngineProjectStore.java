@@ -22,6 +22,7 @@ import com.tsinghua.engine.EngineModels.ModelAsset;
 import com.tsinghua.engine.EngineModels.ModelingTask;
 import com.tsinghua.engine.EngineModels.PredictionRecord;
 import com.tsinghua.engine.EngineModels.UqRecord;
+import com.tsinghua.util.MojibakeUtil;
 
 /**
  * 工作台域模型存储(元数据入IginX+工作目录,运行大文件在工作目录):
@@ -294,6 +295,10 @@ public class EngineProjectStore {
     }
 
     public ModelingTask saveTask(ModelingTask t) throws IOException {
+        // 统一兜底：各服务把 MATLAB 异常原文写进 message/uqMessage 时，落盘前还原中文乱码。
+        // repair 幂等且对正常中文无副作用，避免在每个异常分支重复处理。
+        t.setMessage(MojibakeUtil.repair(t.getMessage()));
+        t.setUqMessage(MojibakeUtil.repair(t.getUqMessage()));
         if (t.getId() == null || t.getId().isEmpty()) {
             t.setId(newId());
             t.setCreatedAt(System.currentTimeMillis());
@@ -422,6 +427,7 @@ public class EngineProjectStore {
     /* ---------- UQ评估记录(F-07) ---------- */
 
     public UqRecord saveUqRecord(UqRecord r) throws IOException {
+        r.setMessage(MojibakeUtil.repair(r.getMessage()));
         if (r.getId() == null || r.getId().isEmpty()) {
             r.setId(newId());
             if (r.getStartedAt() == null) r.setStartedAt(System.currentTimeMillis());

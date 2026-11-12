@@ -6,6 +6,7 @@ import com.tsinghua.entity.EngineModelAssetEntity;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.File;
 import java.io.IOException;
@@ -48,6 +49,8 @@ public class F3FlightService {
     private final ExecutorService executor = Executors.newFixedThreadPool(2);
     private final Map<String, MatlabFunctionRunner> running = new ConcurrentHashMap<>();
     private final Map<String, List<String>> logBuffers = new ConcurrentHashMap<>();
+    /** F3通道(稳态飞参/自演化)UQ日志的SSE订阅;TC24通道在Tc24Service里另有一份,按kind分流。 */
+    private final Map<String, SseEmitter> uqLogEmitters = new ConcurrentHashMap<>();
 
     /** F3 运行包清单SHA占位值(适配器会在MATLAB侧用 sht_f3_three_component_assets('manifest')
      *  实测覆盖——local_selection 按包身份切换:legacy R036=2977A31D...CB3,DLL_MAIN_20261010=71EBF628...E13,
@@ -366,6 +369,8 @@ public class F3FlightService {
     }
 
     private void emitLog(String taskId, String line) {
+        // 与 TC24 服务同一口径：日志缓冲/SSE 回放前统一还原 MATLAB 中文乱码。
+        line = com.tsinghua.util.MojibakeUtil.repair(line);
         com.tsinghua.engine.MatlabLogRing.append(line);
         List<String> buf = logBuffers.get(taskId);
         if (buf == null) return;
@@ -373,11 +378,42 @@ public class F3FlightService {
             buf.add(line);
             if (buf.size() > 200) buf.remove(0);
         }
+        // F3通道UQ的实时日志:原来只进缓冲(/status轮询能读到),SSE订阅拿不到——补齐推送
+        SseEmitter emitter = uqLogEmitters.get(taskId);
+        if (emitter != null) {
+            try {
+                emitter.send(SseEmitter.event().data(line));
+            } catch (Exception e) {
+                log.warn("发送F3 UQ日志到SSE失败: {}", taskId, e);
+                uqLogEmitters.remove(taskId);
+                try { emitter.complete(); } catch (Exception ignore) { }
+            }
+        }
     }
 
     public List<String> logTail(String taskId) {
         List<String> buf = logBuffers.get(taskId);
         return buf == null ? new ArrayList<>() : new ArrayList<>(buf);
+    }
+
+    /** F3通道UQ日志流订阅:首次连接先回放已有缓冲,再接实时推送。 */
+    public void subscribeUqLogs(String taskId, SseEmitter emitter) {
+        uqLogEmitters.put(taskId, emitter);
+        try {
+            List<String> buf = logBuffers.get(taskId);
+            if (buf != null) {
+                synchronized (buf) {
+                    for (String line : buf) emitter.send(SseEmitter.event().data(line));
+                }
+            }
+            if (buf == null || buf.isEmpty()) {
+                emitter.send(SseEmitter.event().data("[系统] 已连接F3通道UQ日志流,等待程序输出..."));
+            }
+        } catch (Exception e) {
+            log.warn("F3 UQ日志回放失败: {}", taskId, e);
+            uqLogEmitters.remove(taskId);
+            try { emitter.complete(); } catch (Exception ignore) { }
+        }
     }
 
     /** F3 准备(A 阶段): confirmData 冻结窗口凭据(数据意图阶段禁父模型);
@@ -844,23 +880,326 @@ public class F3FlightService {
                 emitLog(key, "自演化UQ评估完成");
             } catch (Exception e) {
                 log.error("自演化UQ评估失败: {}", key, e);
+                String msg = com.tsinghua.util.MojibakeUtil.repair(
+                        e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+                java.util.Map<String, Object> diag = null;
+                try {
+                    java.util.List<String> lines = new java.util.ArrayList<>(
+                            logBuffers.getOrDefault(key, java.util.Collections.emptyList()));
+                    diag = com.tsinghua.util.UqDiagnostics.analyze(task.getKind(), m, lines);
+                    java.io.File rep = com.tsinghua.util.UqDiagnostics.writeReport(
+                            store.taskWorkDir(task.getProjectId(), key), uqRecId, diag, lines);
+                    if (rep != null) {
+                        diag.put("reportFile", rep.getAbsolutePath());
+                    }
+                } catch (Exception de) {
+                    log.warn("自演化UQ诊断生成失败(不影响失败状态写回): {}", de.toString());
+                    diag = null;
+                }
+                String text = diag != null
+                        ? com.tsinghua.util.UqDiagnostics.summaryText(diag) : ("UQ评估失败: " + msg);
                 try {
                     EngineModels.ModelingTask tk = store.getTask(task.getProjectId(), key);
                     tk.setUqStatus("FAILED");
                     tk.setUqFinishedAt(System.currentTimeMillis());
-                    tk.setUqMessage("UQ评估失败: " + com.tsinghua.util.MojibakeUtil.repair(e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
+                    tk.setUqMessage(text);
+                    if (diag != null) {
+                        java.util.Map<String, Object> uqResMap = tk.getUqResult();
+                        if (uqResMap == null) {
+                            uqResMap = new java.util.LinkedHashMap<>();
+                            tk.setUqResult(uqResMap);
+                        }
+                        uqResMap.put("diagnostics", diag);
+                    }
                     store.saveTask(tk);
                     EngineModels.UqRecord fr = store.getUqRecord(task.getProjectId(), uqRecId);
                     if (fr != null) {
                         fr.setStatus(EngineModels.UqRecord.ST_FAILED);
                         fr.setFinishedAt(System.currentTimeMillis());
-                        fr.setMessage(tk.getUqMessage());
+                        fr.setMessage(text);
                         store.saveUqRecord(fr);
                     }
                 } catch (IOException io) {
                     log.error("UQ状态写回失败", io);
                 }
-                emitLog(key, "自演化UQ评估失败: " + e.getMessage());
+                emitLog(key, "自演化UQ评估失败: " + msg);
+            } finally {
+                running.remove(key + ":uq");
+            }
+        });
+        return task;
+    }
+
+    /**
+     * F-07-F3 稳态飞参建模不确定性评估。
+     *
+     * 通道:Start_FlightModelAdapt_15_UncertaintyTask / sht_f3_steady_task 的 uqRun 动作,
+     * 走"同次冻结B结果根"(resultDirectory)合同——复用建模阶段已冻结的 confirmation_receipt,
+     * 不需要重新生成 uq_assessment 用途凭据,也不经过TC24的 point_id 稳态均值表。
+     *
+     * 必填:resultDirectory(建模outputRoot,含result.mat/f3_result_manifest.json/f3_execution_plan.json)、
+     * confirmationFile、sourceWorkbook(概率先验=带后验样本的2p4/2p7 UQ交付)、method C/D、
+     * runTag、outputRoot、reportRoot。后两项必须是不存在的新目录(MATLAB合同SHT:F3UQ:ExistingRun)。
+     *
+     * 不改交付包任何 .m 文件:复用Java运行时生成的 dmg_f3_task.m 适配器的 otherwise 分支。
+     */
+    public EngineModels.ModelingTask runFlightSteadyUq(EngineModels.ModelingTask task, String method) throws IOException {
+        final String key = task.getId();
+        if (!"flight_steady".equals(task.getKind())) {
+            throw new IOException("仅稳态飞参建模支持F3独立UQ评估");
+        }
+        if (!EngineModels.ModelingTask.ST_COMPLETED.equals(task.getStatus())) {
+            throw new IOException("请先完成稳态飞参建模并交付模型,再发起不确定性评估");
+        }
+        Map<String, Object> res = task.getResult();
+        if (res == null || !(res.get("outputRoot") instanceof String)) {
+            throw new IOException("缺少已交付的建模结果目录(outputRoot);请重新执行稳态飞参建模");
+        }
+        final String runDir = ((String) res.get("outputRoot")).replace('\\', '/');
+        File runDirFile = new File(runDir);
+        for (String need : new String[]{"result.mat", "f3_result_manifest.json",
+                "f3_execution_plan.json", "delivery/model.xlsx"}) {
+            if (!new File(runDirFile, need).isFile()) {
+                throw new IOException("建模交付不完整,缺少 " + need + ";请重新执行稳态飞参建模后再评估");
+            }
+        }
+        if (task.getConfirmationFile() == null || task.getConfirmationFile().trim().isEmpty()
+                || !new File(task.getConfirmationFile().replace('\\', '/')).isFile()) {
+            throw new IOException("缺少建模阶段冻结的确认凭据(confirmation_receipt.mat);请重新执行数据意图确认");
+        }
+        if (task.getIdentificationFile() == null || task.getIdentificationFile().trim().isEmpty()) {
+            throw new IOException("缺少飞参训练数据(identificationFile)");
+        }
+        final String m = method == null ? "D" : method.trim().toUpperCase();
+        if (!m.matches("[CD]")) {
+            throw new IOException("稳态飞参UQ方法仅支持C/D(F-07-F3合同)");
+        }
+        if (task.getUqStatus() != null
+                && ("EXECUTING".equals(task.getUqStatus()) || "PREPARING".equals(task.getUqStatus()))) {
+            throw new IOException("UQ评估正在执行中,不能重复发起");
+        }
+
+        // 概率先验:带后验样本的2p4/2p7 UQ交付(Manifest+ParameterSummary+PosteriorSamples+ConditionalNuisance)。
+        // sht_f34_prior local_validate_upstream 要求 formal_status 含 ACCEPTED 且 method_id==sourceMethod;
+        // deterministic_workbook_sha256 与建模父工作簿一致只作优选(MATLAB硬校验是
+        // local_match_entry_nodes 的节点坐标1e-9唯一映射),不做一刀切拒绝以免滤掉唯一可用先验。
+        final File programCopy = ensureF3Source(task.getProjectId());
+        EngineModels.EngineProject pj = store.getProject(task.getProjectId());
+        File jobDir = (pj != null && pj.getWorkdir() != null && !pj.getWorkdir().isEmpty())
+                ? new File(pj.getWorkdir(), "job") : null;
+        File[] candidates = resolveUqPriorCandidates(programCopy, jobDir);
+        String parentSha = null;
+        File manifestJson = findManifest(runDirFile);
+        if (manifestJson != null) {
+            try {
+                Map<String, Object> mf = new com.fasterxml.jackson.databind.ObjectMapper()
+                        .readValue(manifestJson, Map.class);
+                Object ps = mf.get("parentSha256");
+                if (ps != null) parentSha = ps.toString();
+            } catch (Exception ignore) { }
+        }
+        File priorFile = null;
+        String priorMethod = null;
+        int bestScore = -1;
+        for (File cand : candidates) {
+            String mid = readSheetSingleValue(cand, "Manifest", "method_id");
+            String status = readSheetSingleValue(cand, "Manifest", "formal_status");
+            if (mid == null || status == null || !status.toUpperCase().contains("ACCEPTED")) continue;
+            String dsha = readSheetSingleValue(cand, "Manifest", "deterministic_workbook_sha256");
+            // 同节点网格优先于方法同名:先验的确定性工作簿与建模父工作簿一致,才可能通过
+            // local_match_entry_nodes 的1e-9坐标映射;方法不一致无妨(sourceMethod取先验实测值)。
+            int score = ((parentSha != null && dsha != null && dsha.equalsIgnoreCase(parentSha)) ? 4 : 0)
+                    + (mid.equalsIgnoreCase(m) ? 1 : 0);
+            if (score > bestScore) {
+                bestScore = score;
+                priorFile = cand;
+                priorMethod = mid.toUpperCase();
+            }
+        }
+        if (priorFile == null) {
+            throw new IOException("未找到可作概率先验的UQ后验交付:F3稳态飞参UQ需要一份带"
+                    + "ParameterSummary/PosteriorSamples/ConditionalNuisance表且formal_status为ACCEPTED的"
+                    + "2p4(或2p7)参数化交付;请先对作为父模型的2p4试车模型执行方法C的不确定性评估,"
+                    + "或使用交付包MiddleData内自带的后验交付后重试");
+        }
+        final String sourceWorkbook = priorFile.getAbsolutePath().replace('\\', '/');
+        final String sourceMethod = priorMethod;
+        final String sourceStage = "2p7".equalsIgnoreCase(task.getParentSource()) ? "2p7" : "2p4";
+
+        final String uqId = "UQ_" + new java.text.SimpleDateFormat("yyyyMMdd_HHmmss").format(new java.util.Date())
+                + "_" + (System.currentTimeMillis() % 1000);
+        task.setUqStatus("PREPARING");
+        task.setUqMessage("准备F3稳态飞参UQ评估(核对冻结凭据与概率先验)");
+        task.setUqRunId(uqId);
+        task.setUqStartedAt(System.currentTimeMillis());
+        store.saveTask(task);
+
+        EngineModels.UqRecord uqRec = new EngineModels.UqRecord();
+        uqRec.setProjectId(task.getProjectId());
+        uqRec.setTaskId(key);
+        for (EngineModels.ModelAsset ma : store.listModels(task.getProjectId())) {
+            if (key.equals(ma.getTaskId())) { uqRec.setModelAssetId(ma.getId()); break; }
+        }
+        uqRec.setMethod(m);
+        uqRec.setRunId(uqId);
+        uqRec.setStatus(EngineModels.UqRecord.ST_EXECUTING);
+        uqRec.setMessage("稳态飞参UQ评估准备中(方法 " + m + ")");
+        uqRec.setStartedAt(System.currentTimeMillis());
+        store.saveUqRecord(uqRec);
+        final String uqRecId = uqRec.getId();
+
+        logBuffers.put(key, new ArrayList<>());
+        emitLog(key, "发起F3稳态飞参UQ评估: method=" + m + ", uqId=" + uqId);
+        emitLog(key, "概率先验: " + sourceWorkbook + " (sourceMethod=" + sourceMethod + ")");
+        executor.submit(() -> {
+            try {
+                File workDir = store.taskWorkDir(task.getProjectId(), task.getId());
+                File adapterDir = new File(workDir, "f3-steady-uq-work");
+                if (adapterDir.exists()) deleteDirectory(adapterDir);
+                if (!adapterDir.mkdirs()) throw new IOException("无法创建F3 UQ适配器目录");
+                writeF3Adapter(adapterDir, programCopy, "sht_f3_steady_task");
+                File uqDir = new File(workDir, "f3-steady-uq-" + uqId);
+                File uqReport = new File(workDir, "f3-steady-uq-report-" + uqId);
+                // MATLAB合同(SHT:F3UQ:ExistingRun):新UQ目录必须不存在,这里只算路径不预建
+                if (uqDir.exists() || uqReport.exists()) {
+                    throw new IOException("UQ输出目录已存在,请稍后重试: " + uqDir.getName());
+                }
+                Map<String, Object> uq = new LinkedHashMap<>();
+                uq.put("resultDirectory", runDir);
+                uq.put("confirmationFile", task.getConfirmationFile().replace('\\', '/'));
+                uq.put("sourceStage", sourceStage);
+                uq.put("sourceWorkbook", sourceWorkbook);
+                uq.put("method", m);
+                uq.put("runTag", uqId);
+                uq.put("outputRoot", uqDir.getAbsolutePath().replace('\\', '/'));
+                uq.put("reportRoot", uqReport.getAbsolutePath().replace('\\', '/'));
+                Map<String, Object> opts = new LinkedHashMap<>();
+                // 概率中心来自所选先验,允许同节点平移重定基;sourceMethod须与先验Manifest.method_id一致
+                opts.put("allowReferenceRebase", true);
+                opts.put("sourceMethod", sourceMethod);
+                uq.put("options", opts);
+                // 业务编号一律由MATLAB从冻结凭据/交付/先验文件的实测值解析,此处不猜编号值,
+                // 只按合同给出逐字段依据,避免与文件实值冲突(SHT:F3Identity:Conflict)。
+                Map<String, Object> bi = new LinkedHashMap<>();
+                bi.put("purpose", "production");
+                Map<String, Object> basis = new LinkedHashMap<>();
+                basis.put("engineId", "engine id resolved from frozen confirmation and delivery manifest");
+                basis.put("sortieId", "sortie id resolved from frozen confirmation and delivery manifest");
+                basis.put("parentModelId", "run_id of parent workbook bound in frozen confirmation");
+                basis.put("parentPosteriorId", "run_id of selected UQ posterior workbook");
+                bi.put("basis", basis);
+                uq.put("businessIdentity", bi);
+
+                Map<String, Object> call = new LinkedHashMap<>();
+                call.put("action", "uqrun");
+                call.put("configuration", uq);
+                call.put("resultFile", new File(adapterDir, "f3-uq-run-result.json")
+                        .getAbsolutePath().replace('\\', '/'));
+                setUqMessage(task.getProjectId(), key, "F3稳态飞参UQ评估执行中(方法 " + m + ")");
+                try {
+                    runAdapter(adapterDir, "dmg_f3_task", task, key, call, "f3-uq-run");
+                } catch (Exception runErr) {
+                    // 适配器末尾会把uqrun的大结果结构jsonencode回写;若该步失败,物理计算和
+                    // f3_uq_result_manifest.json 可能已经落盘。以交付清单为准,不误判为评估失败。
+                    if (!new File(uqDir, "f3_uq_result_manifest.json").isFile()) throw runErr;
+                    emitLog(key, "UQ交付已写出,结果JSON回读失败(不影响交付): " + runErr.getMessage());
+                }
+
+                Map<String, Object> uqRes = new LinkedHashMap<>();
+                uqRes.put("method", m);
+                uqRes.put("runTag", uqId);
+                uqRes.put("sourceWorkbook", sourceWorkbook);
+                uqRes.put("outputRoot", uqDir.getAbsolutePath().replace('\\', '/'));
+                uqRes.put("reportRoot", uqReport.getAbsolutePath().replace('\\', '/'));
+                // 交付Excel路径写在 f3_uq_result_manifest.json 的 workbook 字段
+                File uqManifest = new File(uqDir, "f3_uq_result_manifest.json");
+                if (uqManifest.isFile()) {
+                    try {
+                        Map<String, Object> mf = new com.fasterxml.jackson.databind.ObjectMapper()
+                                .readValue(uqManifest, Map.class);
+                        if (mf.get("workbook") != null) uqRes.put("workbook", mf.get("workbook"));
+                        if (mf.get("sourceIdentity") != null) uqRes.put("sourceIdentity", mf.get("sourceIdentity"));
+                    } catch (Exception ignore) { }
+                }
+                if (!uqRes.containsKey("workbook")) {
+                    File delivery = findDelivery(uqDir);
+                    if (delivery != null) uqRes.put("workbook", delivery.getAbsolutePath().replace('\\', '/'));
+                }
+                // uqstatus读持久化控制状态,失败不影响已完成交付
+                try {
+                    Map<String, Object> stCall = new LinkedHashMap<>();
+                    stCall.put("action", "uqstatus");
+                    Map<String, Object> stCfg = new LinkedHashMap<>();
+                    stCfg.put("outputRoot", uqDir.getAbsolutePath().replace('\\', '/'));
+                    stCall.put("configuration", stCfg);
+                    stCall.put("resultFile", new File(adapterDir, "f3-uq-status-result.json")
+                            .getAbsolutePath().replace('\\', '/'));
+                    Map<String, Object> st = runAdapter(adapterDir, "dmg_f3_task", task, key, stCall, "f3-uq-status");
+                    uqRes.put("intervalStatus", st.get("status"));
+                } catch (Exception ignore) { }
+
+                EngineModels.ModelingTask tk = store.getTask(task.getProjectId(), key);
+                tk.setUqStatus("COMPLETED");
+                tk.setUqFinishedAt(System.currentTimeMillis());
+                tk.setUqMessage("F3稳态飞参UQ评估完成;结果另存,不覆盖确定性估计值");
+                tk.setUqResult(uqRes);
+                store.saveTask(tk);
+                EngineModels.UqRecord fr = store.getUqRecord(task.getProjectId(), uqRecId);
+                if (fr != null) {
+                    fr.setStatus(EngineModels.UqRecord.ST_COMPLETED);
+                    fr.setFinishedAt(System.currentTimeMillis());
+                    fr.setMessage("稳态飞参UQ评估完成;结果另存,不覆盖确定性估计值");
+                    Object wb = uqRes.get("workbook");
+                    if (wb != null) fr.setDeliveryFile(wb.toString());
+                    store.saveUqRecord(fr);
+                }
+                emitLog(key, "F3稳态飞参UQ评估完成");
+            } catch (Exception e) {
+                log.error("F3稳态飞参UQ评估失败: {}", key, e);
+                String msg = com.tsinghua.util.MojibakeUtil.repair(
+                        e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+                // 与 TC24/TC27 同一口径:把日志还原成结构化诊断写进 status 接口可见的 uqMessage
+                java.util.Map<String, Object> diag = null;
+                try {
+                    java.util.List<String> lines = new java.util.ArrayList<>(
+                            logBuffers.getOrDefault(key, java.util.Collections.emptyList()));
+                    diag = com.tsinghua.util.UqDiagnostics.analyze(task.getKind(), m, lines);
+                    java.io.File rep = com.tsinghua.util.UqDiagnostics.writeReport(
+                            store.taskWorkDir(task.getProjectId(), key), uqRecId, diag, lines);
+                    if (rep != null) {
+                        diag.put("reportFile", rep.getAbsolutePath());
+                    }
+                } catch (Exception de) {
+                    log.warn("F3 UQ诊断生成失败(不影响失败状态写回): {}", de.toString());
+                    diag = null;
+                }
+                String text = diag != null
+                        ? com.tsinghua.util.UqDiagnostics.summaryText(diag) : ("UQ评估失败: " + msg);
+                try {
+                    EngineModels.ModelingTask tk = store.getTask(task.getProjectId(), key);
+                    tk.setUqStatus("FAILED");
+                    tk.setUqFinishedAt(System.currentTimeMillis());
+                    tk.setUqMessage(text);
+                    if (diag != null) {
+                        java.util.Map<String, Object> uqResMap = tk.getUqResult();
+                        if (uqResMap == null) {
+                            uqResMap = new java.util.LinkedHashMap<>();
+                            tk.setUqResult(uqResMap);
+                        }
+                        uqResMap.put("diagnostics", diag);
+                    }
+                    store.saveTask(tk);
+                    EngineModels.UqRecord fr = store.getUqRecord(task.getProjectId(), uqRecId);
+                    if (fr != null) {
+                        fr.setStatus(EngineModels.UqRecord.ST_FAILED);
+                        fr.setFinishedAt(System.currentTimeMillis());
+                        fr.setMessage(text);
+                        store.saveUqRecord(fr);
+                    }
+                } catch (IOException io) {
+                    log.error("F3 UQ状态写回失败", io);
+                }
+                emitLog(key, "F3稳态飞参UQ评估失败: " + msg);
             } finally {
                 running.remove(key + ":uq");
             }
@@ -941,11 +1280,17 @@ public class F3FlightService {
     /** 同步执行一次dmg_evolution_task动作并回读结果JSON(调用方负责线程池提交)。 */
     private Map<String, Object> runEvolutionAdapter(File adapterDir, EngineModels.ModelingTask task,
                                                     String key, Map<String, Object> call, String tag) throws Exception {
+        return runAdapter(adapterDir, "dmg_evolution_task", task, key, call, tag);
+    }
+
+    /** 通用F3适配器执行:dmg_evolution_task(自演化)与dmg_f3_task(稳态飞参)共用同一调用骨架。 */
+    private Map<String, Object> runAdapter(File adapterDir, String fn, EngineModels.ModelingTask task,
+                                           String key, Map<String, Object> call, String tag) throws Exception {
         File cf = new File(adapterDir, tag + "-config.json");
         com.fasterxml.jackson.databind.ObjectMapper om = new com.fasterxml.jackson.databind.ObjectMapper();
         om.configure(com.fasterxml.jackson.core.JsonGenerator.Feature.ESCAPE_NON_ASCII, true);
         Files.write(cf.toPath(), om.writeValueAsBytes(call));
-        MatlabFunctionRunner runner = new MatlabFunctionRunner(adapterDir, "dmg_evolution_task",
+        MatlabFunctionRunner runner = new MatlabFunctionRunner(adapterDir, fn,
                 new Object[]{cf.getAbsolutePath()},
                 new File(adapterDir, tag + ".log"), programService.enginePool(),
                 new MatlabFunctionRunner.ProgressCancellationSink() {
@@ -963,15 +1308,20 @@ public class F3FlightService {
                 : new LinkedHashMap<>();
     }
 
-    /** 自演化UQ协作取消:请求MATLAB侧安全取消,结果作废不落盘。 */
+    /** F3通道UQ协作取消(自演化/稳态飞参共用):请求MATLAB侧安全取消,结果作废不落盘。 */
     public boolean stopEvolutionUq(EngineModels.ModelingTask task) {
         final String key = task.getId();
         MatlabFunctionRunner runner = running.get(key + ":uq");
         if (runner == null) return false;
         runner.requestCancel();
         setUqMessage(task.getProjectId(), key, "已请求取消(协作取消,结果作废)");
-        emitLog(key, "已请求取消自演化UQ评估");
+        emitLog(key, "已请求取消F3通道UQ评估");
         return true;
+    }
+
+    /** 稳态飞参UQ取消:与自演化同一执行器登记表,语义别名便于Controller按kind分流。 */
+    public boolean stopFlightUq(EngineModels.ModelingTask task) {
+        return stopEvolutionUq(task);
     }
 
     private void setUqMessage(String pid, String key, String msg) {

@@ -2690,12 +2690,16 @@ window.Workbench = (() => {
             listHolder.appendChild(h('div', { class: 'wb-empty' }, '正在加载仿真记录...'));
             try {
                 const base = 'projects/' + encodeURIComponent(pid) + '/afo/sessions/';
-                const params = { pageNum: state.pageNum, pageSize: state.pageSize };
-                if (listFilter.status) params.status = listFilter.status;
-                if (listFilter.kw) params.kw = listFilter.kw;
+                // 筛选条件与分页参数分开构造:未筛选时不带 status/kw 这两个键。
+                // 否则 URL 会拼出 status=undefined&kw=undefined,后端把 "undefined" 当 runId 模糊匹配,
+                // count 返回 0 → maxPage=1 → 分页条永远只有第 1 页(列表却有数据)。
+                const filter = {};
+                if (listFilter.status) filter.status = listFilter.status;
+                if (listFilter.kw) filter.kw = listFilter.kw;
                 const [listResp, countResp] = await Promise.all([
-                    window.AppConfig.engineGet(base + 'list', params),
-                    window.AppConfig.engineGet(base + 'count', { status: params.status, kw: params.kw })
+                    window.AppConfig.engineGet(base + 'list',
+                        Object.assign({ pageNum: state.pageNum, pageSize: state.pageSize }, filter)),
+                    window.AppConfig.engineGet(base + 'count', filter)
                 ]);
                 const rows = listResp && (listResp.success || listResp.code === 200) && Array.isArray(listResp.data) ? listResp.data : [];
                 const allRows = rows;
@@ -5273,6 +5277,9 @@ window.Workbench = (() => {
                 }).catch(() => { });
             }
             if (!holder.isConnected) return; // 页面已切走/重建,丢弃本次渲染
+            // 就地重绘会新建日志 pre；先记下滚动位置，避免刷新后跳回顶部
+            const oldLog = holder.querySelector('pre');
+            const oldLogTop = oldLog ? oldLog.scrollTop : null;
             holder.innerHTML = '';
             {
                 if (!d) { holder.appendChild(h('div', { class: 'wb-empty' }, '状态读取失败')); return; }
@@ -5362,6 +5369,7 @@ window.Workbench = (() => {
                         h('a', { href: 'javascript:void 0', style: 'color:#2e86de;cursor:pointer', onclick: () => { S.ssShowLog = !S.ssShowLog; renderSsStatus(holder); } }, S.ssShowLog ? '收起' : '展开')),
                     pre));
                 if (S._ssLogStick !== false) pre.scrollTop = pre.scrollHeight;
+                else if (oldLogTop != null) pre.scrollTop = Math.min(oldLogTop, pre.scrollHeight);
             }
         }
         /** 汇总当前校核任务产物为起停模型包并登记到模型成果(异步受理+轮询;MATLAB导出约1-3分钟)。 */
@@ -5707,8 +5715,17 @@ window.Workbench = (() => {
             el.appendChild(pre);
             api('/tasks/' + encodeURIComponent(tid) + '/status').then(r => {
                 const d = r && r.code === 200 ? r.data : null;
-                if (pre.isConnected) pre.textContent = (d && d.logTail) || '(无日志)';
-            }).catch(() => { if (pre.isConnected) pre.textContent = '(无日志)'; });
+                if (pre.isConnected) {
+                    pre.textContent = (d && d.logTail) || '(无日志)';
+                    // 日志按时间正序追加，首次载入后直接显示最新内容
+                    pre.scrollTop = pre.scrollHeight;
+                }
+            }).catch(() => {
+                if (pre.isConnected) {
+                    pre.textContent = '(无日志)';
+                    pre.scrollTop = pre.scrollHeight;
+                }
+            });
             el.appendChild(h('div', { class: 'wb-hint', style: 'margin:8px 0' },
                 '部分通过时不隐去问题:失败点、限制、冲突与依赖约束原文保留;被阻塞项在解除阻塞前保持当前状态。'));
         }

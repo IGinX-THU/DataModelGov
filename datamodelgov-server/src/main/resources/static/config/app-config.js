@@ -461,7 +461,18 @@ window.AppConfig = {
     // ===== 工作台域 API:按相对路径调用 /api/engine/** =====
     async engineGet(path, params) {
         let url = this.api.baseURL + '/api/engine/' + path;
-        if (params) url += '?' + new URLSearchParams(params).toString();
+        if (params) {
+            // 可选筛选项未赋值时常见写法是 { status: undefined },URLSearchParams 会序列化成
+            // "status=undefined",后端可能把该字面量当成真实过滤值(如 runId LIKE '%undefined%')。
+            // 统一剔除 null/undefined;保留空字符串(部分接口用 '' 表示"不过滤")。
+            const q = new URLSearchParams();
+            Object.keys(params).forEach(k => {
+                const v = params[k];
+                if (v !== undefined && v !== null) q.append(k, String(v));
+            });
+            const qs = q.toString();
+            if (qs) url += '?' + qs;
+        }
         return this.request(url, { method: 'GET' });
     },
 

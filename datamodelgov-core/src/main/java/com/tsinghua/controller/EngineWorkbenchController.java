@@ -1612,13 +1612,32 @@ public class EngineWorkbenchController {
                 f3FlightService.runEvolutionUq(t, em); // 异步执行;状态经task.uqStatus轮询,响应无UqRecord载荷
                 return Result.success((EngineModels.UqRecord) null);
             }
+            // F-07-F3:稳态飞参建模有自己的MATLAB UQ通道(Start_FlightModelAdapt_15),数据放在
+            // identificationFile/validationFile,交付是 delivery/model.xlsx;TC24 UQ要求2p4参数化
+            // 交付+point_id稳态均值表,不能混用。此前这里落到通用校验读trainingFile(null),在发起
+            // UQ之前就报「缺少训练数据」,uqStatus/logTail全为空——按kind分流到F3专用链。
+            if ("flight_steady".equals(t.getKind())) {
+                String em = method == null ? "D" : method.trim().toUpperCase();
+                if (!em.matches("[CD]")) return Result.error("稳态飞参UQ方法仅支持C/D(F-07-F3合同)");
+                f3FlightService.runFlightSteadyUq(t, em);
+                return Result.success((EngineModels.UqRecord) null);
+            }
+            // 过渡态飞参:交付程序 sht_f3_transient_task 无UQ动作(capabilities仅
+            // check/preview/confirm/estimate/run/resume/validate),且状态表明确标注
+            // uqStatus=not_evaluated_for_transient_combination。给出真实原因,不再误报缺训练数据。
+            if ("flight_transient".equals(t.getKind())) {
+                return Result.error("过渡态飞参建模暂不支持不确定性评估:当前交付程序未实现过渡态组合的UQ动作,"
+                        + "稳态飞参的C/D合同不适用于过渡态;如需区间评估请改走稳态飞参建模");
+            }
             if (!EngineModels.ModelingTask.ST_COMPLETED.equals(t.getStatus())) {
                 return Result.error("请先完成确定性辨识,再发起不确定性评估");
             }
-            boolean evoTask = "evolution".equals(t.getKind());
-            String trainFile = evoTask ? t.getIdentificationFile() : t.getTrainingFile();
-            if (trainFile == null || trainFile.isEmpty()) {
-                return Result.error(evoTask ? "缺少架次测量数据(identificationFile)" : "缺少训练数据");
+            // TC27更新任务不消费本任务trainingFile:其UQ输入由模型成果身份JSON、上游2p4交付、
+            // 稳态均值与训练历程共同组成(runTc27Uq内部逐项校验并给出精确错误)。原先把所有非evolution
+            // kind一律查trainingFile,导致transient_update的TC27分流永远不可达。
+            boolean tc27Task = "steady_update".equals(t.getKind()) || "transient_update".equals(t.getKind());
+            if (!tc27Task && (t.getTrainingFile() == null || t.getTrainingFile().isEmpty())) {
+                return Result.error("缺少训练数据");
             }
             if (t.getUqStatus() != null && ("EXECUTING".equals(t.getUqStatus()) || "PREPARING".equals(t.getUqStatus()))) {
                 return Result.error("UQ评估正在执行中,不能重复发起");
@@ -1651,7 +1670,17 @@ public class EngineWorkbenchController {
             }
             // F-07-TC27: 更新后试车模型(试车稳态更新/过渡态试车建模)的不确定性评估走TC27专用合同;
             // TC24路径(F-07-TC24)要求2p4参数化交付,TC27交付(如tc27_deterministic_*)会被Manifest列校验拒绝
-            if ("steady_update".equals(t.getKind()) || "transient_update".equals(t.getKind())) {
+            if ("transient_update".equals(t.getKind())) {
+                // 全量核查发现:该kind建模输入只有组合稳态模型(transientUpstreamFile)+瞬态训练历程,
+                // 而TC27 UQ输入合同(sht_tc27_uq_input_contract)强制要求上游2p4参数化交付、
+                // 稳态均值Excel、试车历程三份文件并据此重算05准备数据。两者契约不同,后端
+                // runTc27Uq会依次报「缺少上游2p4参数化交付/稳态训练均值Excel」。与其让用户在
+                // 第1个错误上反复试,不如直接说明能力边界(交付程序没有过渡态UQ入口)。
+                return Result.error("过渡态试车建模(transient_update)的UQ在当前交付程序下未接通:该kind只登记了组合稳态模型与瞬态训练历程,"
+                        + "而F-07-TC27的UQ合同要求上游2p4参数化交付、稳态均值Excel、试车历程三份文件并重算05准备数据;"
+                        + "如需区间评估请使用「试车稳态更新」任务的UQ页");
+            }
+            if ("steady_update".equals(t.getKind())) {
                 String em = method == null ? "D" : method.trim().toUpperCase();
                 if (!em.matches("[CD]")) return Result.error("更新后试车模型UQ方法仅支持C/D(F-07-TC27合同)");
                 return Result.success(tc24Service.runTc27Uq(t, em, asset.getDeliveryWorkbookFile(), asset.getId()));
@@ -1678,9 +1707,13 @@ public class EngineWorkbenchController {
             if (t == null) return Result.error("任务不存在");
             String denied = accessDenied(store.getProject(pid));
             if (denied != null) return Result.error(denied);
-            // 自演化UQ日志与取消走F3执行通道,与TC24互不相干
+            // 自演化/稳态飞参UQ日志与取消走F3执行通道,与TC24互不相干
             if ("evolution".equals(t.getKind())) {
                 boolean ok = f3FlightService.stopEvolutionUq(t);
+                return ok ? Result.success(true) : Result.error("当前没有可取消的评估");
+            }
+            if ("flight_steady".equals(t.getKind())) {
+                boolean ok = f3FlightService.stopFlightUq(t);
                 return ok ? Result.success(true) : Result.error("当前没有可取消的评估");
             }
             boolean ok = tc24Service.requestUqCancel(pid, tid);
@@ -2006,7 +2039,13 @@ public class EngineWorkbenchController {
                                   @PathVariable("tid") String tid) {
         try {
             SseEmitter emitter = new SseEmitter(Long.MAX_VALUE);
-            tc24Service.subscribeUqLogs(tid, emitter);
+            // 自演化/稳态飞参UQ日志写在F3FlightService缓冲里;TC24/TC27写在Tc24Service。
+            // 原来一律订阅TC24,F3通道的UQ实时日志始终为空——按kind分流。
+            EngineModels.ModelingTask t = store.getTask(pid, tid);
+            boolean f3Channel = t != null && ("evolution".equals(t.getKind())
+                    || "flight_steady".equals(t.getKind()) || "flight_transient".equals(t.getKind()));
+            if (f3Channel) f3FlightService.subscribeUqLogs(tid, emitter);
+            else tc24Service.subscribeUqLogs(tid, emitter);
             return emitter;
         } catch (Exception e) {
             log.error("创建UQ日志流失败", e);

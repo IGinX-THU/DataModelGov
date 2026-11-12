@@ -1,6 +1,7 @@
 package com.tsinghua.matlab;
 
 import com.mathworks.engine.MatlabEngine;
+import com.tsinghua.util.MojibakeUtil;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.BufferedWriter;
@@ -337,6 +338,9 @@ public final class MatlabFunctionRunner {
     }
 
     private void emit(String message) {
+        // MATLAB 会话为 GBK，而部分 .m 文件以 UTF-8 保存，字面量在 MATLAB 内部已乱码。
+        // 在写日志文件/推送进度之前按片段还原，保证各日志出口拿到的都是可读文本。
+        message = MojibakeUtil.repair(message);
         PrintWriter writer = logWriter;
         if (writer != null) {
             synchronized (writer) {

@@ -549,14 +549,17 @@
             };
             const mask = h('div', { style: 'position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:99998;display:flex;align-items:center;justify-content:center;padding:24px' });
             mask.addEventListener('mousedown', e => { if (e.target === mask) close(); });
+            const logPanel = h('div', { style: 'max-height:60vh;overflow:auto;overscroll-behavior:contain;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:10px 12px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;line-height:1.6;color:#334155;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-all;user-select:text' }, full);
             mask.appendChild(h('div', { class: 'wb-card', style: 'max-width:760px;width:100%;max-height:calc(100vh - 48px);display:flex;flex-direction:column;box-shadow:0 12px 40px rgba(0,0,0,.28)' },
                 h('div', { class: 'wb-section-title', style: 'margin-bottom:10px' }, '计算失败日志'),
-                h('div', { style: 'max-height:60vh;overflow:auto;overscroll-behavior:contain;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:10px 12px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;line-height:1.6;color:#334155;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-all;user-select:text' }, full),
+                logPanel,
                 truncated ? h('div', { style: 'margin-top:6px;font-size:12px;color:#b45309' }, '日志过长已截断，完整内容见服务端 error-report.txt') : null,
                 h('div', { class: 'wb-actions-row', style: 'margin-top:14px;justify-content:flex-end' },
                     h('button', { class: 'wb-btn wb-btn-outline', onclick: copy }, '复制日志'),
                     h('button', { class: 'wb-btn wb-btn-primary', onclick: close }, '关闭'))));
             document.body.appendChild(mask);
+            // 首次打开日志弹窗直接定位到最新输出
+            logPanel.scrollTop = logPanel.scrollHeight;
             document.body.style.overflow = 'hidden'; // 弹窗期间滚轮只滚日志,不滚背景页面
             document.addEventListener('keydown', onKey, true);
         }

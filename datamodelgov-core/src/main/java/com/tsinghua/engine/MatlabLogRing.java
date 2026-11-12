@@ -1,5 +1,7 @@
 package com.tsinghua.engine;
 
+import com.tsinghua.util.MojibakeUtil;
+
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -18,6 +20,8 @@ public final class MatlabLogRing {
 
     public static synchronized void append(String line) {
         if (line == null || line.isEmpty()) return;
+        // 部分调用方(Testbench/AFO/预测服务)直接入环，这里兜底修复 MATLAB 中文乱码。
+        line = MojibakeUtil.repair(line);
         String ts = new java.text.SimpleDateFormat("HH:mm:ss").format(new java.util.Date());
         RING.addLast("[" + ts + "] " + line);
         while (RING.size() > CAPACITY) RING.pollFirst();

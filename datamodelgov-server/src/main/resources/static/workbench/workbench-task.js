@@ -7,6 +7,27 @@
 (function () {
     const WB = () => window.Workbench;
 
+    /* 日志刷新自动贴底：SSE chg 会高频重建整个 body，元素的 scrollTop 会归零，
+       表现为"每次推送日志跳回顶部"。重绘前记录每个日志框是否贴底(30px 容差)，
+       重绘后贴底的拉到最底；用户主动上翻查看历史时保持原滚动位置不打扰。
+       .wb-logbox = 运行/UQ 日志框，.wb-log = 飞参日志框，pre = 结果/检查点里的日志末尾。 */
+    const LOG_SELECTOR = '.wb-logbox, .wb-log, pre';
+    function captureLogScroll(container) {
+        return Array.prototype.map.call(container.querySelectorAll(LOG_SELECTOR), el => ({
+            stick: el.clientHeight === 0 || el.scrollTop + el.clientHeight >= el.scrollHeight - 30,
+            top: el.scrollTop
+        }));
+    }
+    function restoreLogScroll(container, states) {
+        const els = container.querySelectorAll(LOG_SELECTOR);
+        const sameLayout = states.length === els.length;
+        Array.prototype.forEach.call(els, (el, i) => {
+            // 切换页签导致日志框数量变化时，新出现的日志框默认贴底。
+            const st = sameLayout ? states[i] : { stick: true, top: 0 };
+            el.scrollTop = st.stick ? el.scrollHeight : Math.min(st.top, el.scrollHeight);
+        });
+    }
+
     const STATUS_TEXT = {
         READY: '空闲', PREPARING: '准备中', RUNNING: '运行中', COMPLETED: '已完成', FAILED: '失败',
         STOP_REQUESTED: '已请求停止', STOPPED: '已停止'
@@ -160,27 +181,24 @@
             const busy = state.prepWait || (state.task && (state.task.status === 'PREPARING'
                 || state.task.status === 'RUNNING' || state.task.status === 'STOP_REQUESTED'));
             if (state.tab !== 'run' && !busy) stopPolling();
-            // 日志框滚动跟随:SSE chg 高频重绘会重建DOM,scrollTop归零表现为"每次推送跳回顶部"。
-            // 重绘前记住是否贴底(30px容差;收起状态视同贴底),重绘后贴底则自动拉到最底,
-            // 用户向上翻阅时保持原滚动位置不扰读。
-            const prevLog = body.querySelector('.wb-logbox');
-            const prevStick = !prevLog || prevLog.clientHeight === 0
-                || prevLog.scrollTop + prevLog.clientHeight >= prevLog.scrollHeight - 30;
-            const prevTop = prevLog ? prevLog.scrollTop : 0;
+            // 所有日志框统一滚动跟随(见 captureLogScroll/restoreLogScroll 注释)。
+            const prevScroll = captureLogScroll(body);
             body.innerHTML = '';
-            if (!ctx.project.id) { body.appendChild(noTaskView()); paintTabs(); paintMeta(); return; }
-            if (!state.task) { body.appendChild(createCard()); paintTabs(); paintMeta(); return; }
+            if (!ctx.project.id) {
+                body.appendChild(noTaskView()); paintTabs(); paintMeta();
+                restoreLogScroll(body, prevScroll); return;
+            }
+            if (!state.task) {
+                body.appendChild(createCard()); paintTabs(); paintMeta();
+                restoreLogScroll(body, prevScroll); return;
+            }
             if (state.tab === 'data') body.appendChild(dataTab());
             else if (state.tab === 'run') body.appendChild(runTab());
             else if (state.tab === 'result') body.appendChild(resultTab());
             else body.appendChild(uqTab());
             paintTabs();
             paintMeta();
-            const newLog = body.querySelector('.wb-logbox');
-            if (newLog) {
-                if (prevStick) newLog.scrollTop = newLog.scrollHeight;
-                else newLog.scrollTop = Math.min(prevTop, newLog.scrollHeight);
-            }
+            restoreLogScroll(body, prevScroll);
         }
 
         /* ---------- 项目不在服务器(本地演示) ---------- */
@@ -1125,14 +1143,19 @@
                         '⚠ 尚未停止;检查点保存成功后才能继续本次计算。'));
                 }
 
-                // 日志开关
+                // 日志开关(按钮文案须随点击同步:闭包捕获的是渲染时的 logOpen,点击后原地改文字)
                 const logBox = WB().h('div', { class: 'wb-logbox', style: state.logOpen ? '' : 'display:none' },
                     state.log && state.log.length ? state.log.join('\n') : '等待日志输出...');
-                view.appendChild(WB().h('div', { class: 'wb-actions-row', style: 'max-width:1180px' },
-                    WB().h('button', {
-                        class: 'wb-btn wb-btn-outline',
-                        onclick: () => { state.logOpen = !state.logOpen; logBox.style.display = state.logOpen ? '' : 'none'; if (state.logOpen) logBox.scrollTop = logBox.scrollHeight; }
-                    }, state.logOpen ? '收起详细日志' : '展开详细日志')));
+                const logBtn = WB().h('button', { class: 'wb-btn wb-btn-outline' });
+                const syncLogBtn = () => { logBtn.textContent = state.logOpen ? '收起详细日志' : '展开详细日志'; };
+                syncLogBtn();
+                logBtn.addEventListener('click', () => {
+                    state.logOpen = !state.logOpen;
+                    logBox.style.display = state.logOpen ? '' : 'none';
+                    syncLogBtn();
+                    if (state.logOpen) logBox.scrollTop = logBox.scrollHeight;
+                });
+                view.appendChild(WB().h('div', { class: 'wb-actions-row', style: 'max-width:1180px' }, logBtn));
                 view.appendChild(logBox);
 
                 // 底部:请求停止 | 查看本次配置(01-13:请求受理后按钮变"等待安全停止"禁用)
@@ -1252,14 +1275,17 @@
                         class: 'wb-btn wb-btn-outline',
                         onclick: () => {
                             ckptDrawer.innerHTML = '';
+                            const ckptLog = WB().h('pre', {
+                                style: 'max-height:220px;overflow:auto;background:#101418;color:#cde3d8;padding:12px;'
+                                    + 'border-radius:8px;font-size:12px;line-height:1.5;white-space:pre-wrap'
+                            }, (state.log && state.log.length ? state.log.join('\n') : '暂无日志输出'));
                             ckptDrawer.appendChild(WB().h('div', { class: 'wb-card', style: 'padding:14px;max-width:1180px;margin-bottom:10px' },
                                 WB().h('div', { class: 'wb-section-title', style: 'margin-bottom:8px' }, '检查点(服务端记录)'),
                                 WB().h('div', { class: 'wb-hint', style: 'margin-bottom:8px' },
                                     '当前服务版本未提供检查点明细接口;以下为任务日志末尾,供核对停止位置。'),
-                                WB().h('pre', {
-                                    style: 'max-height:220px;overflow:auto;background:#101418;color:#cde3d8;padding:12px;'
-                                        + 'border-radius:8px;font-size:12px;line-height:1.5;white-space:pre-wrap'
-                                }, (state.log && state.log.length ? state.log.join('\n') : '暂无日志输出'))));
+                                ckptLog));
+                            // 日志按时间正序展示，展开后直接定位到最新输出
+                            ckptLog.scrollTop = ckptLog.scrollHeight;
                         }
                     }, '查看检查点'),
                     WB().h('div', { class: 'wb-spacer' }),
@@ -1865,12 +1891,23 @@
                 WB().h('div', { class: 'wb-field' }, WB().h('label', null, '待评估模型'), modelSel),
                 WB().h('div', { class: 'wb-field' }, WB().h('label', null, '评估方法'), methodSel),
                 WB().h('div', { class: 'wb-field' }, WB().h('label', null, '推断数据(从所选模型带入)'),
-                    WB().h('input', { readonly: '', value: t.trainingFile ? fileName(t.trainingFile) : '未提供' })),
+                    WB().h('input', { readonly: '', value: isUpdateUq
+                        ? (t.historyFile ? 'TC27合同:稳态均值 + 新增历程(' + fileName(t.historyFile) + ')'
+                            : 'TC27合同:待核对稳态均值 / 新增历程')
+                        : (t.trainingFile ? fileName(t.trainingFile) : '未提供') })),
                 WB().h('div', { class: 'wb-field' }, WB().h('label', null, '独立测试数据'),
                     WB().h('input', { readonly: '', value: t.testFile ? fileName(t.testFile) : '未提供' }))));
 
             wrap.appendChild(WB().h('div', { class: 'wb-infobar' },
                 'UQ 与所选确定性模型身份匹配;结果另存,不覆盖确定性估计值。'));
+
+            // 全量核查:过渡态试车建模只有组合稳态模型+瞬态训练历程,与TC27 UQ的三文件输入合同不符,
+            // 当前交付程序没有对应UQ入口。前端先说明能力边界,避免点了才看到后端错误。
+            if (t.kind === 'transient_update') {
+                wrap.appendChild(WB().h('div', { class: 'wb-tag wb-tag-red', style: 'display:inline-block;padding:6px 12px;margin:8px 0;white-space:normal' },
+                    '过渡态试车建模的UQ在当前交付程序下未接通:TC27 UQ合同要求上游2p4参数化交付 + 稳态均值Excel + 试车历程三份文件,'
+                    + '而本任务只登记了组合稳态模型与瞬态训练历程。如需区间评估,请使用「试车稳态更新」任务的UQ页。'));
+            }
 
             // 评估配置表(01-08:评估配置|当前设置|操作 三列;采样数量为合同允许值 512/1024,来自 sht_tc24_b_config)
             const particleSel = WB().h('select', null,
@@ -1910,7 +1947,10 @@
                         const opt = modelSel.selectedOptions && modelSel.selectedOptions[0];
                         const problems = [];
                         if (!opt || !opt.value) problems.push('尚未选择待评估模型(先在建模结果页登记模型成果)');
-                        if (!t.trainingFile) problems.push('缺少训练数据');
+                        // TC27更新任务的UQ输入由模型成果身份JSON + 上游2p4交付 + 稳态均值 + 训练历程
+                        // 共同组成,不消费本任务trainingFile(transient_update恒为空)。按旧口径一律检查
+                        // 会误报「缺少训练数据」,真正缺项由后端runTc27Uq逐项给出精确错误。
+                        if (!isUpdateUq && !t.trainingFile) problems.push('缺少训练数据');
                         if (t.uqStatus === 'EXECUTING' || t.uqStatus === 'PREPARING') problems.push('已有评估执行中');
                         if (problems.length) toast('评估条件不满足:' + problems.join(';'), 'error');
                         else toast('评估条件检查通过:模型、推断数据与方法可发起;' + (t.testFile ? '独立测试将一并计算区间。' : '未提供独立测试,仅训练输出区间。'), 'success');
@@ -1919,6 +1959,9 @@
                 WB().h('button', {
                     class: 'wb-btn wb-btn-primary',
                     onclick: async () => {
+                        if (t.kind === 'transient_update') {
+                            toast('当前交付程序未接通过渡态试车建模的UQ,请改用试车稳态更新任务', 'error'); return;
+                        }
                         const opt = modelSel.selectedOptions && modelSel.selectedOptions[0];
                         const assetId = opt && opt.value ? opt.value : '';
                         if (!assetId) { toast('请先在建模结果页登记模型成果', 'error'); return; }
@@ -1975,11 +2018,23 @@
 
             function uqStatusArea(t, running) {
                 const box = WB().h('div', null);
+                const failed = !running && t.uqStatus === 'FAILED';
+                const full = t.uqMessage || '';
+                // 失败时 uqMessage 是服务端回写的多行诊断(阶段/气热平衡四项/越界工况/建议)，
+                // 单行 infobar 会把换行压平，因此完整诊断单独按预格式文本展示。
                 box.appendChild(WB().h('div', { class: 'wb-infobar' },
                     running
-                        ? (t.uqMessage || 'UQ 评估执行中...')
+                        ? (full || 'UQ 评估执行中...')
                         : 'UQ ' + ({ COMPLETED: '已完成', FAILED: '失败' }[t.uqStatus] || t.uqStatus) +
-                        (t.uqMessage ? ':' + t.uqMessage : '')));
+                        (full && !failed ? ':' + full : '')));
+                if (failed && full) {
+                    box.appendChild(WB().h('pre', {
+                        style: 'max-width:1180px;margin:0 0 14px;padding:12px;border-radius:8px;'
+                            + 'background:#fef2f2;border:1px solid #fecaca;color:#7f1d1d;font-size:12px;'
+                            + 'line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere;'
+                            + 'max-height:280px;overflow:auto;user-select:text'
+                    }, full));
+                }
                 const st = WB().h('div', { class: 'wb-kv', style: 'max-width:1180px;margin-bottom:14px' });
                 const rows = [['评估方法/运行标识', t.uqRunId || '—'],
                     ['状态', t.uqStatus || '—'],
@@ -1992,9 +2047,11 @@
                 box.appendChild(st);
                 if (running) {
                     const logBox = WB().h('div', { class: 'wb-logbox', id: 'uq-log-box' },
-                        '等待日志输出...');
+                        state.log && state.log.length ? state.log.join('\n') : '等待日志输出...');
                     box.appendChild(logBox);
-                    
+                    // 新建/重建的日志框直接定位到最新输出
+                    logBox.scrollTop = logBox.scrollHeight;
+
                     // 建立SSE连接接收实时日志(EventSource无法带header,后端支持?token=查询参数认证)
                     if (!state.uqLogEventSource) {
                         const pid = encodeURIComponent(ctx.project.id || '');
@@ -2007,8 +2064,12 @@
                         state.uqLogEventSource.onmessage = function(event) {
                             if (!state.log) state.log = [];
                             state.log.push(event.data);
-                            logBox.textContent = state.log.join('\n');
-                            logBox.scrollTop = logBox.scrollHeight;
+                            // renderBody 会清空 body 重建日志框，闭包里的 logBox 可能已脱离文档；
+                            // 每次按 id 取当前挂载的日志框再写入并贴底，避免刷新后日志停在最上方。
+                            const cur = body.querySelector('#uq-log-box');
+                            if (!cur) return;
+                            cur.textContent = state.log.join('\n');
+                            cur.scrollTop = cur.scrollHeight;
                         };
                         
                         state.uqLogEventSource.onerror = function(error) {
@@ -2382,6 +2443,10 @@
             // 运行中显示旧版同款 loading 遮罩,结束后自动隐藏
             // (01-13:STOP_REQUESTED为琥珀过渡态页,不再盖遮罩,保持停止进度可见)
             const uqRunning = t.uqStatus === 'EXECUTING' || t.uqStatus === 'PREPARING';
+            // 服务端准备已离开 PREPARING(无论成败)即解除本地等待标志:
+            // 否则准备失败时 prepWait 永远为 true,页面一直显示"解析算法运行中",
+            // 失败提示条(prepMessage)也因 prepRunning 恒真而不渲染。
+            if (state.prepWait && t.status && t.status !== 'PREPARING') state.prepWait = false;
             const prepRunning = state.prepWait || t.status === 'PREPARING';
             if (prepRunning) {
                 showRunLoading(state.loadingTitle || '数据准备中');
@@ -2406,11 +2471,18 @@
             } else if (state.tab === 'run' || (state.tab === 'uq' && changed)) {
                 renderBody();
             } else if (state.tab === 'data' && changed) {
-                // TC24 看conditions;TC27更新任务看prepMessage(后端READY+摘要即完成)
-                const prepDone = t.kind === 'steady_update'
+                // TC24 看conditions;TC27更新任务看prepMessage(后端READY+摘要即完成)。
+                // 失败消息不能当"完成":prepMessage 含"失败"时按失败处理,停轮询并红toast。
+                const prepFailed = !!(t.prepMessage && t.prepMessage.indexOf('失败') >= 0);
+                const prepDone = !prepFailed && (t.kind === 'steady_update'
                     ? !!(t.prepMessage && t.prepMessage.length)
-                    : (Array.isArray(t.conditions) && t.conditions.length > 0);
-                if (prepDone) { stopPolling(); state.prepWait = false; toast('数据准备完成', 'success'); }
+                    : (Array.isArray(t.conditions) && t.conditions.length > 0));
+                if (prepDone) {
+                    stopPolling(); state.prepWait = false; toast('数据准备完成', 'success');
+                } else if (prepFailed && !prepRunning) {
+                    stopPolling(); state.prepWait = false;
+                    toast('数据准备失败:' + (t.prepMessage || '详见页面提示'), 'error');
+                }
                 renderBody();
             }
         }

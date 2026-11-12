@@ -2,6 +2,8 @@ package com.tsinghua.engine;
 
 import com.tsinghua.matlab.MatlabEnginePool;
 import com.tsinghua.util.MojibakeUtil;
+import com.tsinghua.util.UqDiagnostics;
+import com.tsinghua.util.UqPointLocator;
 import com.tsinghua.matlab.MatlabFunctionRunner;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -704,11 +706,11 @@ public class Tc24Service {
                 fresh = store.getUqRecord(record.getProjectId(), record.getId());
                 fresh.setFinishedAt(System.currentTimeMillis());
                 File delivery = findUqDeliveryExcel(uqOutputDir, fresh.getRunId());
+                // 先落常规摘要，失败时再由 applyUqFailure 并入结构化诊断(两者合并在同一个 uqResult)
+                t.setUqResult(summarizeResult(result, uqOutputDir));
                 if ("failed".equals(status)) {
-                    t.setUqStatus("FAILED");
-                    t.setUqMessage("UQ程序返回失败,详见日志");
-                    fresh.setStatus(UqRecord.ST_FAILED);
-                    fresh.setMessage("UQ程序返回失败,详见日志");
+                    // 失败原因必须能从 status 接口直接读到，不能只留「详见日志」
+                    applyUqFailure(t, fresh, m, key, uqOutputDir, fresh.getRunId(), "UQ程序返回失败");
                 } else {
                     t.setUqStatus("COMPLETED");
                     t.setUqMessage("UQ评估完成;结果另存,不覆盖确定性估计值");
@@ -716,7 +718,6 @@ public class Tc24Service {
                     fresh.setMessage("UQ评估完成;结果另存,不覆盖确定性估计值");
                     fresh.setDeliveryFile(delivery != null ? delivery.getAbsolutePath() : null);
                 }
-                t.setUqResult(summarizeResult(result, uqOutputDir));
                 store.saveTask(t);
                 store.saveUqRecord(fresh);
 
@@ -763,14 +764,13 @@ public class Tc24Service {
                 log.error("TC24 UQ执行失败: {}", key, e);
                 try {
                     EngineModels.ModelingTask t = store.getTask(task.getProjectId(), task.getId());
-                    t.setUqStatus("FAILED");
                     t.setUqFinishedAt(System.currentTimeMillis());
-                    t.setUqMessage(e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
-                    store.saveTask(t);
                     UqRecord fresh = store.getUqRecord(record.getProjectId(), record.getId());
-                    fresh.setStatus(UqRecord.ST_FAILED);
                     fresh.setFinishedAt(System.currentTimeMillis());
-                    fresh.setMessage("UQ评估失败: " + MojibakeUtil.repair(e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
+                    applyUqFailure(t, fresh, m, key,
+                            store.taskWorkDir(task.getProjectId(), key), record.getRunId(),
+                            e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+                    store.saveTask(t);
                     store.saveUqRecord(fresh);
                 } catch (IOException io) {
                     log.error("UQ状态写回失败", io);
@@ -863,6 +863,12 @@ public class Tc24Service {
                 // 每次发起用带runId的全新批次目录
                 File uqOutputDir = new File(workDir, "tc27-uq-output-" + record.getRunId());
                 if (!uqOutputDir.exists() && !uqOutputDir.mkdirs()) throw new IOException("无法创建UQ输出目录");
+                // 同一秒内重复发起会落到同一个批次目录:清掉上次残留的物理回放缓存，
+                // 避免命中历史失败候选(缓存命中时不校验 valid，会把失败当结果复用)。
+                int staleCache = purgePhysicsCache(new File(uqOutputDir, "MiddleData"), 3);
+                if (staleCache > 0) {
+                    emitLog(key, "已清理上次残留的物理回放缓存 " + staleCache + " 组，本次将重新求值");
+                }
                 writeTc27UqAdapter(adapterDir, programCopy);
 
                 Map<String, Object> options = new LinkedHashMap<>();
@@ -932,10 +938,8 @@ public class Tc24Service {
                 fresh.setFinishedAt(System.currentTimeMillis());
                 File delivery = findUqDeliveryExcelDeep(uqOutputDir);
                 if ("failed".equals(status)) {
-                    t.setUqStatus("FAILED");
-                    t.setUqMessage("UQ程序返回失败,详见日志");
-                    fresh.setStatus(UqRecord.ST_FAILED);
-                    fresh.setMessage("UQ程序返回失败,详见日志");
+                    // 失败原因必须能从 status 接口直接读到，不能只留「详见日志」
+                    applyUqFailure(t, fresh, m, key, uqOutputDir, record.getRunId(), "UQ程序返回失败");
                 } else {
                     t.setUqStatus("COMPLETED");
                     t.setUqMessage("UQ评估完成;结果另存,不覆盖确定性估计值");
@@ -982,14 +986,13 @@ public class Tc24Service {
                 log.error("TC27 UQ执行失败: {}", key, e);
                 try {
                     EngineModels.ModelingTask t = store.getTask(task.getProjectId(), key);
-                    t.setUqStatus("FAILED");
                     t.setUqFinishedAt(System.currentTimeMillis());
-                    t.setUqMessage("UQ评估失败: " + MojibakeUtil.repair(e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
-                    store.saveTask(t);
                     UqRecord fresh = store.getUqRecord(record.getProjectId(), record.getId());
-                    fresh.setStatus(UqRecord.ST_FAILED);
                     fresh.setFinishedAt(System.currentTimeMillis());
-                    fresh.setMessage(t.getUqMessage());
+                    applyUqFailure(t, fresh, m, key,
+                            store.taskWorkDir(task.getProjectId(), key), record.getRunId(),
+                            e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+                    store.saveTask(t);
                     store.saveUqRecord(fresh);
                 } catch (IOException io) {
                     log.error("UQ失败状态写回失败", io);
@@ -1000,6 +1003,83 @@ public class Tc24Service {
             }
         });
         return record;
+    }
+
+    /**
+     * UQ 失败统一收尾：把日志还原成结构化诊断，写进 uqMessage 与 uqResult.diagnostics，
+     * 并把完整日志落盘为报告文件。
+     *
+     * <p>生产环境常常无法登录服务器看日志，只能调 status 接口；因此失败原因(阶段、气热平衡四项、
+     * 越界工况坐标、候选统计)必须直接体现在 uqMessage 里，而不是只留一句「详见日志」。
+     */
+    private void applyUqFailure(EngineModels.ModelingTask task, UqRecord record, String method,
+                                String key, File workDir, String prefix, String fallbackMessage) {
+        Map<String, Object> diag;
+        try {
+            List<String> lines = new ArrayList<>(logBuffers.getOrDefault(key, java.util.Collections.emptyList()));
+            diag = UqDiagnostics.analyze(task.getKind(), method, lines);
+            // 点级失败消息本身不含 point_id，用工况坐标在本次运行的稳态均值表里反查
+            List<Map<String, Object>> suspected = UqPointLocator.locate(workDir,
+                    diag.get("outOfRange") instanceof List ? (List<?>) diag.get("outOfRange") : null);
+            if (!suspected.isEmpty()) {
+                diag.put("suspectedPoints", suspected);
+            }
+            File report = UqDiagnostics.writeReport(workDir, prefix, diag, lines);
+            if (report != null) {
+                diag.put("reportFile", report.getAbsolutePath());
+            }
+        } catch (Exception e) {
+            // 诊断本身失败不能影响失败状态与原始报错写回
+            log.warn("UQ诊断生成失败(不影响失败状态写回): {}", e.toString());
+            diag = new LinkedHashMap<>();
+            diag.put("failureClass", "unknown");
+            diag.put("stage", "未识别阶段");
+        }
+        String text = UqDiagnostics.summaryText(diag);
+        if ("unknown".equals(String.valueOf(diag.get("failureClass")))
+                && fallbackMessage != null && !fallbackMessage.isEmpty()) {
+            text = "UQ评估失败：" + MojibakeUtil.repair(fallbackMessage) + "\n" + text;
+        }
+        task.setUqStatus("FAILED");
+        Map<String, Object> res = task.getUqResult();
+        if (res == null) {
+            res = new LinkedHashMap<>();
+            task.setUqResult(res);
+        }
+        res.put("diagnostics", diag);
+        task.setUqMessage(text);
+        if (record != null) {
+            record.setStatus(UqRecord.ST_FAILED);
+            record.setMessage(text);
+        }
+    }
+
+    /** 删除输出目录下的物理回放缓存(uq_replay_*)，让下次评估重新求值而不是命中历史失败候选。 */
+    private int purgePhysicsCache(File root, int maxDepth) {
+        if (root == null || !root.isDirectory()) {
+            return 0;
+        }
+        int removed = 0;
+        File[] kids = root.listFiles();
+        if (kids == null) {
+            return 0;
+        }
+        for (File f : kids) {
+            if (!f.isDirectory()) {
+                continue;
+            }
+            if (f.getName().startsWith("uq_replay_")) {
+                try {
+                    deleteRecursively(f);
+                    removed++;
+                } catch (IOException ignore) {
+                    log.warn("物理回放缓存清理失败(不影响本次评估): {}", f.getAbsolutePath());
+                }
+            } else if (maxDepth > 1) {
+                removed += purgePhysicsCache(f, maxDepth - 1);
+            }
+        }
+        return removed;
     }
 
     /** dmg_tc27_uq_task.m(ASCII-only):透传Start_TC27_UQ_ModelAssessment_01并回写JSON结果。 */
@@ -2255,6 +2335,8 @@ public class Tc24Service {
     }
 
     private void emitLog(String taskId, String line) {
+        // 统一修复 MATLAB 中文乱码：覆盖任务日志缓冲、logTail 回放与 SSE 实时推送。
+        line = MojibakeUtil.repair(line);
         MatlabLogRing.append(line);
         List<String> buf = logBuffers.get(taskId);
         if (buf == null) return;
