@@ -168,6 +168,10 @@
         }
 
         _enterTask(business) {
+            /* 进入业务任务页前停掉旧页面轮询:与_navigate一致。否则旧任务页的SSE/轮询
+               (引用已被覆盖的__WB_PAGE_STOP__)泄漏,旧任务状态toast会在新页面/保存流程后
+               继续弹出,甚至僵尸渲染把页面搞乱(2026-11-13 保存后误弹F3错误即此因)。 */
+            this._stopActivePage();
             this._stopActivePage();
             if (business && (business.id === 'flightSteady' || business.id === 'flightTransient' || business.id === 'evolution')) {
                 this._navKey = 'tasks';

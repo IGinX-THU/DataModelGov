@@ -421,6 +421,12 @@ public class F3FlightService {
     public EngineModels.ModelingTask prepare(EngineModels.ModelingTask task) throws IOException {
         final String key = task.getId();
         boolean evo = "evolution".equals(task.getKind());
+        if (running.get(key + ":f3") != null) {
+            // 同一任务正在 MATLAB 里跑 run:此时重新确认会与在跑的批次抢同一批文件
+            // (它用 diary 占着输出目录的 session 日志),既腾不空目录也会让在跑的 run 失据。
+            // 只拦「本进程内确有活跃 run」这一确定情况;进程重启后的残留 RUNNING 不拦,可正常重新确认。
+            throw new IOException("当前任务仍在执行建模(run),请等它结束或先停止后再重新确认数据意图");
+        }
         task.setStatus(EngineModels.ModelingTask.ST_PREPARING);
         task.setStartedAt(System.currentTimeMillis()); // check/confirm也调MATLAB:必须留执行痕迹,否则完成回READY后运行记录行被清理
         task.setMessage(evo ? "自演化批输入核验中(check)" : "F3数据意图确认中(confirmData)");
@@ -473,6 +479,9 @@ public class F3FlightService {
             File programCopy = ensureF3Source(task.getProjectId());
             File workDir = store.taskWorkDir(task.getProjectId(), task.getId());
             File adapterDir = new File(workDir, subDir + "-work");
+            // 交给 MATLAB 的 xlsx 副本目录(补齐 OPC docProps 部件,见 XlsxDocPropsCompat);
+            // 固定路径保证 confirm/run 用同一份副本,父工作簿 SHA 与 clean identity 保持一致
+            File compatDir = new File(workDir, "input-compat");
             // 每次执行前删除旧的适配器目录，确保使用最新代码
             if (adapterDir.exists()) {
                 deleteDirectory(adapterDir);
@@ -489,7 +498,11 @@ public class F3FlightService {
                     File confFile = new File(task.getConfirmationFile().replace('\\', '/'));
                     if (!confFile.isFile()) throw new IOException("确认凭据不存在: " + confFile);
                     outputRoot = confFile.getParentFile();
-                    reportRoot = new File(workDir, subDir + "-report");
+                    // 关键:MATLAB 的 check.identity 把整份 cfg(含 outputRoot/reportRoot 绝对路径)算进哈希,
+                    // run 若换了报告根就会报 F3:TF:Stale「数据、父模型、配置、源码或物理包已变化」。
+                    // 因此两个根必须与 confirm 那次完全一致——直接取确认落盘的 configuration.json 为准。
+                    reportRoot = readConfirmedReportRoot(outputRoot, new File(workDir, subDir + "-report"));
+                    if (!reportRoot.exists() && !reportRoot.mkdirs()) throw new IOException("无法创建F3报告目录");
                 } else if ("run".equals(action)) {
                     // steady/evolution:run必须用独立的全新批次目录——MATLAB合同(local_new_root/own_plan)
                     // 要求run启动时输出目录不存在,由程序自建;Java预创建或复用旧目录(内含上次失败残留)
@@ -501,6 +514,22 @@ public class F3FlightService {
                 } else {
                     if (!outputRoot.exists() && !outputRoot.mkdirs()) throw new IOException("无法创建F3输出目录");
                     if (!reportRoot.exists() && !reportRoot.mkdirs()) throw new IOException("无法创建F3报告目录");
+                }
+            }
+            if (isConfirm && !evo) {
+                // 重新确认:MATLAB合同(sht_f3_transient_task L39-42)要求 outputRoot/reportRoot 为空
+                // 且 <outputRoot>/confirmation.mat 不存在,否则「必须使用空的新输出目录」。
+                // 不能靠「把旧内容挪到 -prev-」来腾空:上一次 run 可能仍在 MATLAB 引擎里执行
+                // (它用 diary 打开着 <outputRoot>/session_*.log),移动会因文件占用整批失败,
+                // 更糟的是凭据已被挪走一半——正在跑的 run / 紧接着的 run 会报「确认凭据不存在」。
+                // 因此旧目录一律原样保留(可追溯),重新确认直接换一个全新批次子目录。
+                if (!isBlankConfirmRoot(outputRoot)) {
+                    String stamp = new java.text.SimpleDateFormat("yyyyMMdd_HHmmss").format(new java.util.Date());
+                    // 子目录挂在 subDir 下,保证 f3-artifacts / 交付定位的目录扫描(subDir 深度3-4)仍能命中
+                    outputRoot = new File(new File(workDir, subDir), "confirm-" + stamp);
+                    reportRoot = new File(new File(workDir, subDir + "-report"), "confirm-" + stamp);
+                    log.info("F3重新确认:旧输出目录非空或已有凭据,改用新批次目录 {} (task={})", outputRoot, key);
+                    emitLog(key, "重新确认:改用新批次目录 " + subDir + "/confirm-" + stamp);
                 }
             }
             if (evo) {
@@ -526,7 +555,7 @@ public class F3FlightService {
                 config.put("purpose", "production");
                 config.put("outputRoot", outputRoot.getAbsolutePath().replace('\\', '/'));
                 config.put("reportRoot", reportRoot.getAbsolutePath().replace('\\', '/'));
-                String parentWorkbookPath = resolveParentWorkbook(task);
+                String parentWorkbookPath = compatWorkbookPath(resolveParentWorkbook(task), compatDir);
                 Map<String, Object> root = new LinkedHashMap<>();
                 root.put("source", task.getParentSource() == null ? "2p4" : task.getParentSource());
                 root.put("route", task.getParentRoute() == null ? "steady" : task.getParentRoute());
@@ -544,9 +573,10 @@ public class F3FlightService {
                 config.put("root", root);
                 Map<String, Object> sortie = new LinkedHashMap<>();
                 sortie.put("sortieId", task.getF3SortieId() == null ? "SORTIE-01" : task.getF3SortieId());
-                sortie.put("measurementFile", task.getIdentificationFile() == null ? "" : task.getIdentificationFile().replace('\\', '/'));
+                sortie.put("measurementFile", task.getIdentificationFile() == null || task.getIdentificationFile().isEmpty()
+                        ? "" : compatWorkbookPath(task.getIdentificationFile(), compatDir));
                 sortie.put("validationFile", task.getValidationFile() == null || task.getValidationFile().isEmpty()
-                        ? "" : task.getValidationFile().replace('\\', '/'));
+                        ? "" : compatWorkbookPath(task.getValidationFile(), compatDir));
                 // 配置字典(Stage4/配置字典.csv):measurementSystemId=测量系统身份,合同必填非空;
                 // 随交付Excel的measurement_system_id列留档,标识架次测量数据来自本平台登记上传
                 sortie.put("measurementSystemId", "DMG_FLIGHT_SORTIE_DATA");
@@ -576,7 +606,7 @@ public class F3FlightService {
                 }
                 configuration.put("parentSource", task.getParentSource() == null ? "2p4" : task.getParentSource());
                 configuration.put("parentRoute", task.getParentRoute() == null ? "steady" : task.getParentRoute());
-                String parentWorkbookPath = resolveParentWorkbook(task);
+                String parentWorkbookPath = compatWorkbookPath(resolveParentWorkbook(task), compatDir);
                 configuration.put("parentWorkbook", parentWorkbookPath);
                 // 父模型运行时绑定(sht_f3_current_contract L455-462):父Excel既非内嵌运行身份也非
                 // MAIN已核历史文件时,必须显式声明关联——workbookSha256=父Excel实测SHA;
@@ -589,8 +619,10 @@ public class F3FlightService {
                 binding.put("runtimeManifestSha256", F3_RUNTIME_MANIFEST_SHA256);
                 binding.put("basis", "DataModelGov自动关联:父工作簿SHA与F3_R036运行包清单SHA已核验");
                 configuration.put("parentRuntimeBinding", binding);
-                configuration.put("identificationFile", task.getIdentificationFile() == null ? "" : task.getIdentificationFile().replace('\\', '/'));
-                configuration.put("validationFile", task.getValidationFile() == null ? "" : task.getValidationFile().replace('\\', '/'));
+                configuration.put("identificationFile", task.getIdentificationFile() == null || task.getIdentificationFile().isEmpty()
+                        ? "" : compatWorkbookPath(task.getIdentificationFile(), compatDir));
+                configuration.put("validationFile", task.getValidationFile() == null || task.getValidationFile().isEmpty()
+                        ? "" : compatWorkbookPath(task.getValidationFile(), compatDir));
                 // 飞参Excel合同前置校验(Data sheet+13必填列):让用户在发起前看到可读格式错误,
                 // 而不是MATLAB readtable 的「工作表名称 'Data' 不存在」
                 if (!evo) {
@@ -680,7 +712,7 @@ public class F3FlightService {
                         tk.setErrorKind(EngineModels.ModelingTask.ERR_NUMERIC);
                     }
                     tk.setMessage("F3" + (isConfirm ? "数据意图确认失败: " : "建模执行失败: ")
-                            + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
+                            + friendlyF3Error(e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
                     store.saveTask(tk);
                 }
             } catch (IOException io) {
@@ -1395,6 +1427,56 @@ public class F3FlightService {
         } catch (Exception e) {
             return false;
         }
+    }
+
+    /** run 必须复用 confirm 那次的 reportRoot:MATLAB 把整份 cfg(含两个根路径)算进 check.identity,
+     *  任一路径变了 run 就判 stale。以 confirm 落盘的 configuration.json 为准,缺失时才退回默认值。 */
+    private File readConfirmedReportRoot(File outputRoot, File fallback) {
+        File cfg = new File(outputRoot, "configuration.json");
+        if (!cfg.isFile()) return fallback;
+        try {
+            Map<?, ?> m = new com.fasterxml.jackson.databind.ObjectMapper().readValue(cfg, Map.class);
+            Object v = m.get("reportRoot");
+            if (v != null && !String.valueOf(v).trim().isEmpty()) {
+                return new File(String.valueOf(v).replace('\\', '/'));
+            }
+        } catch (Exception e) {
+            log.warn("F3读取确认配置里的 reportRoot 失败,退回默认报告根: {}", e.getMessage());
+        }
+        return fallback;
+    }
+
+    /** confirm 的 MATLAB 合同(local_assert_empty + ~isfile(confirmation.mat))要求输出根干净。
+     *  这里只做「能不能直接复用旧根」的判断——绝不移动/删除旧内容:
+     *  上次 run 若仍在引擎里计算,它会用 diary 占着 session_*.log,移动必然失败;
+     *  即使移动成功,把 confirmation.mat 挪走也会让在跑的 run 报「确认凭据不存在」。
+     *  不干净就由调用方换新批次目录,旧目录原样留档。 */
+    private boolean isBlankConfirmRoot(File root) {
+        if (root == null || !root.isDirectory()) return true;
+        if (findConfirmationFile(root) != null) return false;
+        File[] items = root.listFiles();
+        return items == null || items.length == 0;
+    }
+
+    /** MATLAB 的「工作表名称 'X' 不存在或不受支持」在无 Excel 服务时来自 xlsfinfo 回退失败
+     *  (见 XlsxDocPropsCompat),原样抛给用户完全看不懂;补一句可执行提示。 */
+    private String friendlyF3Error(String msg) {
+        if (msg != null && msg.contains("工作表名称") && msg.contains("不存在或不受支持")) {
+            return msg + "（本机 MATLAB 无法启动 Excel 服务,交付Excel缺少 docProps 元数据时按表名读取会失败;"
+                    + "已尝试自动补齐该元数据,若仍报此错请关闭残留的 EXCEL.EXE 进程后重试）";
+        }
+        return msg;
+    }
+
+    /** 传给 MATLAB 的 xlsx 一律走 docProps 补齐副本(见 XlsxDocPropsCompat):
+     *  MATLAB writetable 产物没有 docProps,Excel COM 不可用时 xlsfinfo 的非 COM 回退
+     *  fileread 失败,返回错误文本而非 sheet 名,调用方的 ismember 守卫退化为逐字符比较,
+     *  会去 readtable 一个不存在的表并报「工作表名称 'X' 不存在或不受支持」。
+     *  返回正斜杠绝对路径。 */
+    private String compatWorkbookPath(String rawPath, File compatDir) {
+        if (rawPath == null || rawPath.trim().isEmpty()) return rawPath;
+        File f = new File(rawPath.replace('\\', '/'));
+        return XlsxDocPropsCompat.ensure(f, compatDir).getAbsolutePath().replace('\\', '/');
     }
 
     /** 2p4参数化交付Manifest必需列(=sht_load_2p4_deterministic_delivery local_validate_manifest

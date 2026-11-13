@@ -1196,7 +1196,7 @@
                 ['输出目录', r.outputRoot || '—']
             ].forEach(([k, v]) => { kv.appendChild(WB().h('div', { class: 'k' }, k)); kv.appendChild(WB().h('div', { class: 'v' }, String(v))); });
             wrap.appendChild(kv);
-            appendF3Artifacts(wrap, t, ctx, state);
+            appendF3Artifacts(wrap, t, ctx, state, renderBody);
             wrap.appendChild(WB().h('div', { class: 'wb-hint', style: 'margin:10px 0' },
                 '全部参数清单(含燃油偏置与物理横坐标)、逐工况值与平衡/求解诊断随交付Excel与运行记录提供;最小模型交付与完整结果浏览分开。'));
             // 04-12:保存确认视图——模型名称可编辑+来源链表,一键隐式登记改为显式确认
@@ -1225,7 +1225,7 @@
                 wrap.appendChild(WB().h('div', { class: 'wb-actions-row', style: 'margin-top:6px' },
                     WB().h('button', { class: 'wb-btn wb-btn-outline', onclick: () => { state.saveConfirm = false; renderBody(); } }, '取消'),
                     WB().h('div', { class: 'wb-spacer' }),
-                    WB().h('button', { class: 'wb-btn wb-btn-primary', onclick: () => saveModel(false) }, '✓ 确认登记到模型成果')));
+                    WB().h('button', { class: 'wb-btn wb-btn-primary', onclick: () => saveModel(true) }, '✓ 确认登记到模型成果')));
             } else {
                 wrap.appendChild(WB().h('div', { class: 'wb-actions-row', style: 'margin-top:12px' },
                     WB().h('button', { class: 'wb-btn wb-btn-primary', onclick: () => { state.saveConfirm = true; renderBody(); } }, '保存模型(登记到模型成果)'),
@@ -1383,7 +1383,7 @@
     }
 
     /* ================= F3 运行资产共享渲染(04-09/10、04-24、02-08/09、06-x;数据来自 /f3-artifacts 只读端点) ================= */
-    function appendF3Artifacts(wrap, t, ctx, state) {
+    function appendF3Artifacts(wrap, t, ctx, state, rerender) {
         if (state.f3Art === undefined) {
             state.f3Art = null;
             window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id || '')
@@ -1391,9 +1391,9 @@
                 .then(resp => {
                     state.f3Art = (resp && (resp.success || resp.code === 200) && resp.data)
                         ? resp.data : { error: (resp && resp.message) || '读取失败' };
-                    renderBody();
+                    if (rerender) rerender(); // 顶层共享函数:重绘须由调用闭包传入(renderBody为闭包私有)
                 })
-                .catch(e => { state.f3Art = { error: e.message }; renderBody(); });
+                .catch(e => { state.f3Art = { error: e.message }; if (rerender) rerender(); });
             return;
         }
         if (state.f3Art === null) return; // 加载中
@@ -2010,7 +2010,7 @@
                 ['输出目录', r.outputRoot || '—']
             ].forEach(([k, v]) => { kv.appendChild(WB().h('div', { class: 'k' }, k)); kv.appendChild(WB().h('div', { class: 'v' }, String(v))); });
             wrap.appendChild(kv);
-            appendF3Artifacts(wrap, t, ctx, state);
+            appendF3Artifacts(wrap, t, ctx, state, renderBody);
             wrap.appendChild(WB().h('div', { class: 'wb-hint', style: 'margin:10px 0' },
                 '全量参数、实际父和本次先验分开;瞬态参数保持实际父值;完整节点和真实覆盖随交付Excel可追溯。'));
             // 06-22:来源与交付成果清单(成果类型/实际用途/是否独立保存)
