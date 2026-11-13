@@ -869,7 +869,32 @@ public class EngineWorkbenchController {
         out.put("total", fileLibraryMetaService.countPage(category, name, kind));
         out.put("pageNum", pageNum);
         out.put("pageSize", pageSize);
+        Object rowsObj = out.get("rows");
+        if (rowsObj instanceof List) {
+            migrateLegacyExampleKind((List<FileLibraryEntity>) rowsObj);
+        }
         return Result.success(out);
+    }
+
+    /** 历史项目文件库的示例标签迁移:prediction_input.xlsx 早期标成「示例·自演化输入(Stage4)」,
+     *  实际只有 8 列飞行条件(无 Ng/Np/Pt3_eq/Tt45/sample_id),是 Stage4 预测工况输入,
+     *  拿它当自演化 measurementFile 必被列合同拒绝。新项目由 provisionExampleLibrary 直接写新标签,
+     *  老项目只能在读清单时命中旧文案再改,避免用户继续被名字误导。 */
+    @SuppressWarnings("unchecked")
+    private void migrateLegacyExampleKind(List<FileLibraryEntity> rows) {
+        if (rows == null || rows.isEmpty()) return;
+        for (FileLibraryEntity e : rows) {
+            if (e == null || e.getName() == null || e.getKind() == null) continue;
+            if (!"prediction_input.xlsx".equalsIgnoreCase(e.getName())) continue;
+            if (!e.getKind().contains("自演化输入")) continue;
+            try {
+                e.setKind("示例·Stage4预测工况输入(非辨识数据)");
+                fileLibraryMetaService.save(e);
+                log.info("示例条目标签迁移: id={} prediction_input.xlsx 旧标签已改为预测工况输入", e.getId());
+            } catch (Exception ex) {
+                log.warn("示例条目标签迁移失败(忽略): {}", ex.getMessage());
+            }
+        }
     }
 
     @ApiOperation("上传文件入库(data类仅.xlsx/.xls;model类不限格式)")
@@ -916,7 +941,9 @@ public class EngineWorkbenchController {
         {"TC24/TestData/three_component/tc24_test_means.xlsx", "data", "示例·稳态试车检验均值(TC24)"},
         {"TC27/TestData/three_component/tc27_training_history.xlsx", "data", "示例·试车训练历程(TC27)"},
         {"TC27/TestData/three_component/tc27_test_history.xlsx", "data", "示例·试车检验历程(TC27)"},
-        {"Stage4/prediction_input.xlsx", "data", "示例·自演化输入(Stage4)"},
+        // prediction_input 只有 8 列飞行条件(无 Ng/Np/Pt3_eq/Tt45/sample_id),是 Stage4 预测工况,
+        // 不能当自演化(辨识)的 measurementFile;标签不得写成"自演化输入",否则用户必选错
+        {"Stage4/prediction_input.xlsx", "data", "示例·Stage4预测工况输入(非辨识数据)"},
         {"F3/TF_R002_continuous/steady_model.xlsx", "model", "示例·瞬态稳态载体模型(F3瞬态父模型)"},
         {"F3/TF_R002_continuous/flight_transient_model.xlsx", "model", "示例·瞬态组合模型交付(F3)"},
         {"F3/R042_B1/delivery/model.xlsx", "model", "示例·稳态飞参模型交付(F3)"},
@@ -942,7 +969,7 @@ public class EngineWorkbenchController {
         for (String[] m : EXAMPLE_LIBRARY_FILES) {
             String destName = new File(m[0]).getName();
             File dest = new File(fileLibraryDir(pid, m[1]), destName);
-            if (dest.isFile()) { n++; continue; }
+            if (dest.isFile()) { syncExampleKind(pid, m[1], destName, m[2], dest); n++; continue; }
             byte[] data = readExampleResource(EXAMPLE_CLASSPATH + m[0]);
             if (data == null) { log.warn("示例文件缺失,跳过: {}", m[0]); continue; }
             try {
@@ -961,6 +988,28 @@ public class EngineWorkbenchController {
             }
         }
         log.info("项目文件库示例初始化完成: project={} 条目={}/{}", pid, n, EXAMPLE_LIBRARY_FILES.length);
+    }
+
+    /** 文件已在库里的分支:仅纠正「同项目同路径」示例条目的 kind 文案。
+     *  历史项目(如 prediction_input 曾标"示例·自演化输入")不会因常量改文案而自动更新,
+     *  而旧标签会直接导致用户把预测工况当辨识输入选错;
+     *  用绝对路径相等做项目隔离,避免跨项目同名文件被误改。 */
+    private void syncExampleKind(String pid, String category, String fileName, String kind, File dest) {
+        try {
+            String abs = dest.getAbsolutePath().replace('\\', '/');
+            java.util.List<FileLibraryEntity> rows = fileLibraryMetaService.queryPage(category, fileName, null, null, null);
+            for (FileLibraryEntity e : rows) {
+                if (e == null || e.getName() == null || !fileName.equalsIgnoreCase(e.getName())) continue;
+                if (e.getPath() == null || !abs.equalsIgnoreCase(e.getPath().replace('\\', '/'))) continue;
+                if (kind.equals(e.getKind())) continue;
+                String old = e.getKind();
+                e.setKind(kind);
+                fileLibraryMetaService.save(e);
+                log.info("示例条目标签修正: project={} file={} {} -> {}", pid, fileName, old, kind);
+            }
+        } catch (Exception e) {
+            log.warn("示例条目标签同步失败(忽略): {} -> {}", fileName, e.getMessage());
+        }
     }
 
     /** 读取classpath交付examples文件:优先文件系统目录(IDE/解包运行),兜底jar内条目(部署运行)。 */

@@ -2807,6 +2807,11 @@
         /* ---------- 状态获取(SSE为主,轮询兜底) ---------- */
         /** 状态应用(SSE chg负载与 /status 响应同构 {task, logTail}):SSE活跃期间零status轮询XHR */
         function applyData(resp) {
+            // 页面已切走/负载属于别的任务时直接丢弃:多任务并行下旧页轮询会把
+            // 上一个任务的状态与日志写进当前页(串状态/串日志的根因)
+            if (root && root.isConnected === false) { stopPolling(); return; }
+            const incoming = resp && resp.data && resp.data.task;
+            if (incoming && state.task && state.task.id && incoming.id && incoming.id !== state.task.id) return;
             const prevStatus = state.task ? state.task.status : null;
             const prevUq = state.task ? state.task.uqStatus : null;
             const prevPrep = state.task ? state.task.prepMessage : null;
@@ -2984,6 +2989,9 @@
 
         // 进入业务页固定显示新建视图;只有运行记录/项目概览指定 __WB_OPEN_TASK__ 时才打开既有任务
         // 页面切换时由 shell 调用,避免旧页轮询残留(跨页串状态通道)
+        // 登记到页面停止表:多任务并行时单槽 __WB_PAGE_STOP__ 会被后渲染的页面覆盖,
+        // 前一个页面的 SSE/轮询就此泄漏(表现为串日志、串状态提示);shell 切页时统一停掉全部
+        (window.__WB_PAGE_STOPS__ = window.__WB_PAGE_STOPS__ || []).push(stopPolling);
         window.__WB_PAGE_STOP__ = stopPolling;
 
         renderBody();

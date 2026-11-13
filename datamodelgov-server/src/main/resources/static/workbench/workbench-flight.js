@@ -1293,6 +1293,12 @@
 
         /** 状态应用(SSE chg负载与 /status 响应同构 {task, logTail}):SSE活跃期间零status轮询XHR */
         function applyData(d) {
+            // 页面已切走:立即停轮询并丢弃本次负载。旧页 SSE 泄漏时这里若继续,
+            // 会把上一个任务的状态/日志/toast 打到当前页面(多任务并行最容易踩)
+            if (root && root.isConnected === false) { stopPolling(); return; }
+            // 只接受本任务的负载:防止任何一路误投的推送把别的任务状态写进本页
+            const incoming = d && d.data && d.data.task;
+            if (incoming && state.task && state.task.id && incoming.id && incoming.id !== state.task.id) return;
             const prev = state.task ? state.task.status : null;
             const prevUq = state.task ? state.task.uqStatus : null;
             if (d && (d.success || d.code === 200) && d.data && d.data.task) {
@@ -1376,6 +1382,9 @@
         }
         // 进入业务页固定显示新建视图;只有运行记录/项目概览指定 __WB_OPEN_TASK__ 时才打开既有任务
         // 页面切换时由 shell 调用,避免旧页轮询残留(跨页串状态通道)
+        // 登记到页面停止表:多任务并行时单槽 __WB_PAGE_STOP__ 会被后渲染的页面覆盖,
+        // 前一个页面的 SSE/轮询就此泄漏(表现为串日志、串状态提示);shell 切页时统一停掉全部
+        (window.__WB_PAGE_STOPS__ = window.__WB_PAGE_STOPS__ || []).push(stopPolling);
         window.__WB_PAGE_STOP__ = stopPolling;
 
         renderBody();
@@ -1883,7 +1892,10 @@
                     WB().h('td', { class: 'wb-hint' }, estState)));
             wrap.appendChild(tbl);
             wrap.appendChild(WB().h('div', { class: 'wb-hint', style: 'margin:6px 0 12px' },
-                '必要测量:时间、环境、燃油、PT负载、两轴转速及测量输出;父需为根或登记中更早架次;正常业务不得继承验证场景模型。'));
+                '必要测量(Data 表 13 列规范通道): sample_id, time_s, Ps0, Tt1, Pt3_eq, Ng, Np, Mkp, Wf, Tt45, Altitude, Mach, Ts_amb;'
+                + '父需为根或登记中更早架次;正常业务不得继承验证场景模型。'
+                + ' 注意: prediction_input.xlsx 只含 8 列飞行条件(无 Ng/Np/Pt3_eq/Tt45/sample_id),'
+                + '是 Stage4 预测工况输入,不能用于辨识建模。'));
 
             // 06-06 确认内容:执行范围/模型与运行包/预计用时/确认后(如实口径,不虚报停续能力)
             const confirmTbl = WB().h('table', { class: 'wb-table', style: 'max-width:1180px' },
@@ -2226,6 +2238,12 @@
         }
         /** 状态应用(SSE chg负载与 /status 响应同构 {task, logTail}):SSE活跃期间零status轮询XHR */
         function applyData(d) {
+            // 页面已切走:立即停轮询并丢弃本次负载。旧页 SSE 泄漏时这里若继续,
+            // 会把上一个任务的状态/日志/toast 打到当前页面(多任务并行最容易踩)
+            if (root && root.isConnected === false) { stopPolling(); return; }
+            // 只接受本任务的负载:防止任何一路误投的推送把别的任务状态写进本页
+            const incoming = d && d.data && d.data.task;
+            if (incoming && state.task && state.task.id && incoming.id && incoming.id !== state.task.id) return;
             const prev = state.task ? state.task.status : null;
             const prevUq = state.task ? state.task.uqStatus : null;
             if (d && (d.success || d.code === 200) && d.data && d.data.task) {
@@ -2305,6 +2323,9 @@
         }
         // 进入业务页固定显示新建视图;只有运行记录/项目概览指定 __WB_OPEN_TASK__ 时才打开既有任务
         // 页面切换时由 shell 调用,避免旧页轮询残留(跨页串状态通道)
+        // 登记到页面停止表:多任务并行时单槽 __WB_PAGE_STOP__ 会被后渲染的页面覆盖,
+        // 前一个页面的 SSE/轮询就此泄漏(表现为串日志、串状态提示);shell 切页时统一停掉全部
+        (window.__WB_PAGE_STOPS__ = window.__WB_PAGE_STOPS__ || []).push(stopPolling);
         window.__WB_PAGE_STOP__ = stopPolling;
 
         renderBody();

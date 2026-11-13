@@ -503,6 +503,10 @@ public class F3FlightService {
                     // 因此两个根必须与 confirm 那次完全一致——直接取确认落盘的 configuration.json 为准。
                     reportRoot = readConfirmedReportRoot(outputRoot, new File(workDir, subDir + "-report"));
                     if (!reportRoot.exists() && !reportRoot.mkdirs()) throw new IOException("无法创建F3报告目录");
+                    // 上次 run 若被强杀/服务重启打断,MATLAB 的软锁 run_control/session.lock 会残留,
+                    // 下次 run 直接报「该运行仍持有写入锁；不能并发恢复」。本进程内确认无活跃 runner 时
+                    // 把锁与半途产物挪到 _stale_<时间戳>/(只移动不删除),让本次从干净状态重算。
+                    quarantineStaleRunState(outputRoot, key);
                 } else if ("run".equals(action)) {
                     // steady/evolution:run必须用独立的全新批次目录——MATLAB合同(local_new_root/own_plan)
                     // 要求run启动时输出目录不存在,由程序自建;Java预创建或复用旧目录(内含上次失败残留)
@@ -624,12 +628,13 @@ public class F3FlightService {
                 configuration.put("validationFile", task.getValidationFile() == null || task.getValidationFile().isEmpty()
                         ? "" : compatWorkbookPath(task.getValidationFile(), compatDir));
                 // 飞参Excel合同前置校验(Data sheet+13必填列):让用户在发起前看到可读格式错误,
-                // 而不是MATLAB readtable 的「工作表名称 'Data' 不存在」
-                if (!evo) {
-                    validateMeasurementExcel(new File(configuration.get("identificationFile").toString()), "训练飞参文件");
-                    if (task.getValidationFile() != null && !task.getValidationFile().trim().isEmpty()) {
-                        validateMeasurementExcel(new File(task.getValidationFile().replace('\\', '/')), "独立测试文件");
-                    }
+                // 而不是MATLAB readtable 的「工作表名称 'Data' 不存在」。
+                // 自演化同样走 sht_f3_steady_task>local_measurement 的列合同(SHT:F3Task:MissingChannel),
+                // 只是它在 MATLAB 里要跑十几分钟才报缺列——一并提前校验,给出缺列与当前表头。
+                validateMeasurementExcel(new File(configuration.get("identificationFile").toString()),
+                        evo ? "架次测量文件" : "训练飞参文件");
+                if (task.getValidationFile() != null && !task.getValidationFile().trim().isEmpty()) {
+                    validateMeasurementExcel(new File(task.getValidationFile().replace('\\', '/')), "独立测试文件");
                 }
                 configuration.put("outputRoot", outputRoot.getAbsolutePath().replace('\\', '/'));
                 configuration.put("reportRoot", reportRoot.getAbsolutePath().replace('\\', '/'));
@@ -1427,6 +1432,43 @@ public class F3FlightService {
         } catch (Exception e) {
             return false;
         }
+    }
+
+    /** 清理被中断 run 残留的软锁(sht_tc24_run_control 的 run_control/session.lock)。
+     *  该锁是 createNewFile 语义且无进程存活检测:服务被强杀/引擎进程被结束后仍留在盘上,
+     *  下一次 run 会报「该运行仍持有写入锁；不能并发恢复。异常退出的锁须核查原进程后人工处理」。
+     *  这里在确认本进程内没有该任务的活跃 runner 后,把 run_control 连同半途产物(内部工作目录、
+     *  diary 会话日志、运行前预估)整体挪到 _stale_<时间戳>/,不删除任何文件;
+     *  凭据(confirmation.mat/confirmed_data.xlsx/configuration.json)保持原位,run 继续复用同一批次。 */
+    private void quarantineStaleRunState(File root, String key) throws IOException {
+        if (root == null || !root.isDirectory()) return;
+        File rc = new File(root, "run_control");
+        if (!new File(rc, "session.lock").isFile()) return;
+        if (running.get(key + ":f3") != null) return; // 真在跑,不动
+        String stamp = new java.text.SimpleDateFormat("yyyyMMdd_HHmmss").format(new java.util.Date());
+        File keep = new File(root, "_stale_" + stamp);
+        if (!keep.isDirectory() && !keep.mkdirs()) throw new IOException("无法创建残留状态暂存目录: " + keep);
+        List<File> moved = new ArrayList<>();
+        // run_control 目录整体挪走(含 session.lock/identity.mat/state.mat/stop_request.mat)
+        Files.move(rc.toPath(), new File(keep, "run_control").toPath(), StandardCopyOption.REPLACE_EXISTING);
+        moved.add(new File("run_control"));
+        for (String name : new String[]{"internal", "runtime_estimate.json"}) {
+            File f = new File(root, name);
+            if (f.exists()) {
+                Files.move(f.toPath(), new File(keep, name).toPath(), StandardCopyOption.REPLACE_EXISTING);
+                moved.add(f);
+            }
+        }
+        // diary 会话日志也挪走:否则新 run 的同名判定/日志窗口会混着上一次的输出
+        File[] sessions = root.listFiles((d, n) -> n.startsWith("session_") && n.endsWith(".log"));
+        if (sessions != null) {
+            for (File f : sessions) {
+                Files.move(f.toPath(), new File(keep, f.getName()).toPath(), StandardCopyOption.REPLACE_EXISTING);
+                moved.add(f);
+            }
+        }
+        log.warn("F3任务{}检测到上次执行残留写入锁,已移至 {} ({})", key, keep.getName(), moved.size());
+        emitLog(key, "检测到上次执行被中断残留的写入锁,已移至 " + keep.getName() + ";本次重新开始计算");
     }
 
     /** run 必须复用 confirm 那次的 reportRoot:MATLAB 把整份 cfg(含两个根路径)算进 check.identity,
