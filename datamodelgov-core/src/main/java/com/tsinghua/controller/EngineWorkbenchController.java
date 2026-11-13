@@ -1074,6 +1074,12 @@ public class EngineWorkbenchController {
 
     /** 文件内容预览公共实现:xlsx解析Data表(缺省首表)表头+前100行;其它格式返回元信息。 */
     private Map<String, Object> previewFileMap(File f, String name, String ext, Long size, String sha256) throws IOException {
+        return previewFileMap(f, name, ext, size, sha256, null);
+    }
+
+    /** sheetName 为空时按 Data/数据 优先选页;指定时按名称精确匹配(找不到回退默认选择)。 */
+    private Map<String, Object> previewFileMap(File f, String name, String ext, Long size, String sha256,
+                                               String sheetName) throws IOException {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("fileName", name);
         out.put("ext", ext);
@@ -1085,7 +1091,12 @@ public class EngineWorkbenchController {
                 List<String> names = new ArrayList<>();
                 for (int i = 0; i < wb.getNumberOfSheets(); i++) names.add(wb.getSheetName(i));
                 Sheet sheet = null;
-                for (int i = 0; i < wb.getNumberOfSheets(); i++) {
+                if (sheetName != null && !sheetName.trim().isEmpty()) {
+                    for (int i = 0; i < wb.getNumberOfSheets(); i++) {
+                        if (sheetName.equals(wb.getSheetName(i))) { sheet = wb.getSheetAt(i); break; }
+                    }
+                }
+                for (int i = 0; sheet == null && i < wb.getNumberOfSheets(); i++) {
                     String n = wb.getSheetName(i);
                     if ("Data".equalsIgnoreCase(n) || "数据".equals(n)) { sheet = wb.getSheetAt(i); break; }
                 }
@@ -1255,6 +1266,13 @@ public class EngineWorkbenchController {
             if (t == null) return Result.error("任务不存在");
             String denied = accessDenied(store.getProject(pid));
             if (denied != null) return Result.error(denied);
+            // F3通道UQ陈旧状态对账:服务重启后 uqStatus 停在执行态而 running 登记丢失,
+            // 前端会永远显示"执行中"并无限轮询——读取状态时顺手重置为失败态(会话中断)
+            if ("evolution".equals(t.getKind()) || "flight_steady".equals(t.getKind())) {
+                f3FlightService.reconcileStaleUq(t);
+            } else {
+                tc24Service.reconcileStaleUq(t);
+            }
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("task", t);
             // F3/自演化任务的运行日志在 F3FlightService 缓冲中,稳态/TC27 在 Tc24Service;按非空取用
@@ -1697,6 +1715,64 @@ public class EngineWorkbenchController {
         }
     }
 
+    @ApiOperation("UQ区间结果表(04-15:解析区间交付Excel,返回表头与前100行+追溯字段;sheet可切换页签)")
+    @GetMapping("/projects/{pid}/tasks/{tid}/uq/interval-table")
+    @RequirePermission(Permission.READ)
+    public Result<Map<String, Object>> uqIntervalTable(@PathVariable("pid") String pid,
+                                                       @PathVariable("tid") String tid,
+                                                       @org.springframework.web.bind.annotation.RequestParam(value = "sheet", required = false) String sheet) {
+        try {
+            EngineModels.ModelingTask t = store.getTask(pid, tid);
+            if (t == null) return Result.error("任务不存在");
+            String denied = accessDenied(store.getProject(pid));
+            if (denied != null) return Result.error(denied);
+            Map<String, Object> uqRes = t.getUqResult();
+            if (uqRes == null || uqRes.get("workbook") == null) {
+                return Result.error("尚无UQ区间交付(评估完成后再查看)");
+            }
+            File wb = new File(String.valueOf(uqRes.get("workbook")));
+            if (!wb.isFile()) return Result.error("区间交付文件不存在: " + wb.getName());
+            Map<String, Object> out = previewFileMap(wb, wb.getName(), "xlsx", wb.length(), null, sheet);
+            // 追溯字段随表下发,前端按04-15口径展示来源
+            for (String k : new String[]{"method", "runTag", "intervalStatus", "sourceWorkbook", "outputRoot", "reportRoot"}) {
+                if (uqRes.get(k) != null) out.put(k, uqRes.get(k));
+            }
+            out.put("uqStartedAt", t.getUqStartedAt());
+            out.put("uqFinishedAt", t.getUqFinishedAt());
+            return Result.success(out);
+        } catch (Exception e) {
+            log.error("UQ区间表解析失败", e);
+            return Result.error("区间表解析失败: " + e.getMessage());
+        }
+    }
+
+    @ApiOperation("下载UQ区间交付Excel(导出参数表)")
+    @GetMapping("/projects/{pid}/tasks/{tid}/uq/workbook")
+    @RequirePermission(Permission.READ)
+    public org.springframework.http.ResponseEntity<?> uqWorkbook(@PathVariable("pid") String pid,
+                                                                 @PathVariable("tid") String tid) {
+        try {
+            EngineModels.ModelingTask t = store.getTask(pid, tid);
+            if (t == null) return org.springframework.http.ResponseEntity.badRequest().body(Result.error("任务不存在"));
+            String denied = accessDenied(store.getProject(pid));
+            if (denied != null) return org.springframework.http.ResponseEntity.status(403).body(Result.error(denied));
+            Map<String, Object> uqRes = t.getUqResult();
+            if (uqRes == null || uqRes.get("workbook") == null) {
+                return org.springframework.http.ResponseEntity.status(404).body(Result.error("尚无UQ区间交付"));
+            }
+            File wb = new File(String.valueOf(uqRes.get("workbook")));
+            if (!wb.isFile()) return org.springframework.http.ResponseEntity.status(404)
+                    .body(Result.error("区间交付文件不存在: " + wb.getName()));
+            String cd = "attachment; filename*=UTF-8''" + java.net.URLEncoder.encode(wb.getName(), "UTF-8");
+            return org.springframework.http.ResponseEntity.ok()
+                    .header("Content-Disposition", cd)
+                    .header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                    .body(new org.springframework.core.io.FileSystemResource(wb));
+        } catch (Exception e) {
+            return org.springframework.http.ResponseEntity.status(500).body(Result.error("下载失败: " + e.getMessage()));
+        }
+    }
+
     @ApiOperation("取消UQ评估(协作取消,结果作废)")
     @PostMapping("/projects/{pid}/tasks/{tid}/uq/stop")
     @RequirePermission(Permission.CREATE)
@@ -1784,6 +1860,361 @@ public class EngineWorkbenchController {
                     .readValue(new File(t.getResultDetailFile()), Object.class));
         } catch (IOException e) {
             return Result.error("读取结果明细失败: " + e.getMessage());
+        }
+    }
+
+    @ApiOperation("F3/自演化运行结果清单(f3_result_manifest.json:收敛/估时/参数量;04组与06组估时与运行包视图数据源)")
+    @GetMapping("/projects/{pid}/tasks/{tid}/f3-manifest")
+    @RequirePermission(Permission.READ)
+    public Result<Object> f3Manifest(@PathVariable("pid") String pid,
+                                     @PathVariable("tid") String tid) {
+        try {
+            String denied = accessDenied(store.getProject(pid));
+            if (denied != null) return Result.error(denied);
+            EngineModels.ModelingTask t = store.getTask(pid, tid);
+            if (t == null) return Result.error("任务不存在");
+            Object res = t.getResult();
+            String mj = null;
+            if (res instanceof Map) {
+                Object o = ((Map<?, ?>) res).get("manifestJson");
+                if (o != null) mj = String.valueOf(o);
+            }
+            if (mj == null || mj.isEmpty()) return Result.error("结果清单尚未生成;执行完成后自动生成");
+            File f = new File(mj);
+            if (!f.isFile()) return Result.error("结果清单文件不存在: " + f.getName());
+            return Result.success(new com.fasterxml.jackson.databind.ObjectMapper()
+                    .readValue(f, Object.class));
+        } catch (IOException e) {
+            return Result.error("读取结果清单失败: " + e.getMessage());
+        }
+    }
+
+    @ApiOperation("F3/自演化运行资产三件套:manifest(估时收敛)+confirm(运行包绑定SHA/参数状态)+summary(执行摘要md,含分段与四通道RMSE表;不改MATLAB源码即可渲染04-09/10、06-x)")
+    @GetMapping("/projects/{pid}/tasks/{tid}/f3-artifacts")
+    @RequirePermission(Permission.READ)
+    public Result<Object> f3Artifacts(@PathVariable("pid") String pid,
+                                      @PathVariable("tid") String tid) {
+        try {
+            String denied = accessDenied(store.getProject(pid));
+            if (denied != null) return Result.error(denied);
+            EngineModels.ModelingTask t = store.getTask(pid, tid);
+            if (t == null) return Result.error("任务不存在");
+            String sub;
+            if ("flight_steady".equals(t.getKind())) sub = "f3-steady";
+            else if ("flight_transient".equals(t.getKind())) sub = "f3-transient";
+            else if ("evolution".equals(t.getKind())) sub = "evolution";
+            else return Result.error("该任务类型无F3运行资产: " + t.getKind());
+            File workDir = store.taskWorkDir(pid, tid);
+            Map<String, Object> out = new LinkedHashMap<>();
+            com.fasterxml.jackson.databind.ObjectMapper om = new com.fasterxml.jackson.databind.ObjectMapper();
+            // 1) 结果清单(f3_result_manifest.json):优先任务result里的路径,兜底目录探测
+            String mj = null;
+            if (t.getResult() instanceof Map) {
+                Object o = ((Map<?, ?>) t.getResult()).get("manifestJson");
+                if (o != null) mj = String.valueOf(o);
+            }
+            if (mj == null || mj.isEmpty() || !new File(mj).isFile()) {
+                File cand = findNewest(new File(workDir, sub), 4, (d, n) -> n.toLowerCase().endsWith("manifest.json"));
+                mj = cand != null ? cand.getAbsolutePath() : null;
+            }
+            if (mj != null && new File(mj).isFile()) {
+                out.put("manifest", om.readValue(new File(mj), Object.class));
+            }
+            // 2) 确认结果(f3-confirm-result.json):父绑定SHA/运行包关联/参数状态
+            File confirm = findNewest(new File(workDir, sub + "-work"), 2,
+                    (d, n) -> n.toLowerCase().endsWith("f3-confirm-result.json"));
+            if (confirm != null && confirm.isFile()) {
+                out.put("confirm", om.readValue(confirm, Object.class));
+            }
+            // 3) 执行摘要(md):分段表/四通道观测误差表/部件工作范围
+            File reportRoot = new File(workDir, sub + "-report");
+            File summary = findNewest(reportRoot, 6,
+                    (d, n) -> n.toLowerCase().endsWith(".md") && n.toLowerCase().contains("summary"));
+            if (summary != null && summary.isFile()) {
+                byte[] raw = java.nio.file.Files.readAllBytes(summary.toPath());
+                out.put("summaryMd", new String(raw, java.nio.charset.StandardCharsets.UTF_8));
+                out.put("summaryFile", summary.getAbsolutePath());
+            }
+            out.put("confirmIdentity", t.getResult() instanceof Map
+                    && ((Map<?, ?>) t.getResult()).get("deliveryWorkbookFile") != null
+                    ? String.valueOf(((Map<?, ?>) t.getResult()).get("deliveryWorkbookFile")) : null);
+            if (out.isEmpty()) return Result.error("F3运行资产尚未生成;输入核验后自动写入");
+            return Result.success(out);
+        } catch (IOException e) {
+            return Result.error("读取F3运行资产失败: " + e.getMessage());
+        }
+    }
+
+    /** 递归找最新匹配文件(限深,按修改时间取最新;找不到返回null)。 */
+    private File findNewest(File root, int maxDepth, java.util.function.BiPredicate<File, String> nameTest) {
+        if (root == null || !root.isDirectory()) return null;
+        try (java.util.stream.Stream<Path> walk = Files.walk(root.toPath(), maxDepth)) {
+            return walk.map(Path::toFile)
+                    .filter(f -> f.isFile() && nameTest.test(f.getParentFile(), f.getName()))
+                    .max(Comparator.comparingLong(File::lastModified)).orElse(null);
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    @ApiOperation("时序预览与选段清单(04-04/04-21窗口时间轴、03-02/03片段、05-03/04事件):输入Excel时序降采样+预处理确认产物segments/events/windows清单;不改MATLAB源码,全部读已落盘文件")
+    @GetMapping("/projects/{pid}/tasks/{tid}/timeline-preview")
+    @RequirePermission(Permission.READ)
+    public Result<Map<String, Object>> timelinePreview(@PathVariable("pid") String pid,
+                                                       @PathVariable("tid") String tid,
+                                                       @org.springframework.web.bind.annotation.RequestParam(value = "file", required = false, defaultValue = "identification") String file) {
+        try {
+            String denied = accessDenied(store.getProject(pid));
+            if (denied != null) return Result.error(denied);
+            EngineModels.ModelingTask t = store.getTask(pid, tid);
+            if (t == null) return Result.error("任务不存在");
+            Map<String, Object> out = new LinkedHashMap<>();
+            // 1) 输入Excel定位:flight系列用 identificationFile/validationFile;transient_update用 trainingFile/historyFile
+            String src;
+            boolean validation = "validation".equalsIgnoreCase(file);
+            if ("transient_update".equals(t.getKind())) {
+                src = validation ? t.getHistoryFile() : t.getTrainingFile();
+            } else {
+                src = validation ? t.getValidationFile() : t.getIdentificationFile();
+            }
+            out.put("sourceKind", validation ? "validation" : "identification");
+            out.put("sourceFile", src);
+            if (src == null || src.isEmpty() || !new File(src).isFile()) {
+                out.put("series", new ArrayList<>());
+                out.put("segments", new ArrayList<>());
+                out.put("events", new ArrayList<>());
+                out.put("windows", new ArrayList<>());
+                out.put("message", "输入文件尚未登记或不存在");
+                return Result.success(out);
+            }
+            // 2) 时序降采样(所有数值列,每列最多1200点)
+            out.putAll(timelineSeries(new File(src)));
+            // 3) 预处理确认产物(flight系列:f3-confirm-result.json → trainingWorkbook/validationWorkbook → segments/events/windows)
+            String sub;
+            if ("flight_steady".equals(t.getKind())) sub = "f3-steady";
+            else if ("flight_transient".equals(t.getKind())) sub = "f3-transient";
+            else if ("evolution".equals(t.getKind())) sub = "evolution";
+            else sub = null;
+            List<Map<String, Object>> segs = new ArrayList<>();
+            List<Map<String, Object>> evs = new ArrayList<>();
+            List<Map<String, Object>> wins = new ArrayList<>();
+            List<String> selectionIds = new ArrayList<>();
+            if (sub != null) {
+                File workDir = store.taskWorkDir(pid, tid);
+                File confirm = findNewest(new File(workDir, sub + "-work"), 2,
+                        (d, n) -> n.toLowerCase().endsWith("f3-confirm-result.json"));
+                if (confirm != null && confirm.isFile()) {
+                    Map<String, Object> cf = new com.fasterxml.jackson.databind.ObjectMapper()
+                            .readValue(confirm, new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() { });
+                    Object sel = cf.get("selection");
+                    if (sel instanceof Map) {
+                        Object ids = ((Map<?, ?>) sel).get(validation ? "independent_validation" : "identification");
+                        if (ids instanceof List) for (Object o : (List<?>) ids) selectionIds.add(String.valueOf(o));
+                    }
+                    // 预处理Excel:确认结果里登记的 trainingWorkbook/validationWorkbook
+                    String wbKey = validation ? "validationWorkbook" : "trainingWorkbook";
+                    String wbPath = cf.get(wbKey) != null ? String.valueOf(cf.get(wbKey)) : null;
+                    if (wbPath != null && new File(wbPath).isFile()) {
+                        segs = readSheetMaps(new File(wbPath), "segments", 400);
+                        evs = readSheetMaps(new File(wbPath), "transient_events", 100);
+                        wins = readSheetMaps(new File(wbPath), "transient_windows", 100);
+                        out.put("segmentsFile", wbPath);
+                    }
+                }
+            }
+            out.put("segments", segs);
+            out.put("events", evs);
+            out.put("windows", wins);
+            out.put("selectionIds", selectionIds);
+            return Result.success(out);
+        } catch (Exception e) {
+            log.error("时序预览失败", e);
+            return Result.error("时序预览失败: " + e.getMessage());
+        }
+    }
+
+    /** 输入Excel Data表时序:数值列全量降采样(每列<=1200点),返回 series[{name,t[],y[]}] 与 rowCount。 */
+    private Map<String, Object> timelineSeries(File xlsx) throws IOException {
+        Map<String, Object> out = new LinkedHashMap<>();
+        List<Map<String, Object>> series = new ArrayList<>();
+        int total = 0;
+        try (InputStream in = Files.newInputStream(xlsx.toPath()); Workbook wb = WorkbookFactory.create(in)) {
+            Sheet sheet = wb.getSheet("Data");
+            if (sheet == null) {
+                for (int i = 0; i < wb.getNumberOfSheets(); i++) {
+                    String n = wb.getSheetName(i);
+                    if ("Data".equalsIgnoreCase(n) || "数据".equals(n)) { sheet = wb.getSheetAt(i); break; }
+                }
+            }
+            if (sheet == null) sheet = wb.getSheetAt(0);
+            DataFormatter fmt = new DataFormatter();
+            Row hr = sheet.getRow(0);
+            int cols = hr == null ? 0 : (int) Math.min(hr.getLastCellNum(), 24);
+            List<String> headers = new ArrayList<>();
+            for (int c = 0; c < cols; c++) headers.add(fmt.formatCellValue(hr.getCell(c)).trim());
+            int timeCol = -1;
+            for (int c = 0; c < cols; c++) {
+                if (headers.get(c).toLowerCase().matches("(time_s|time|t_s|时间).*")) { timeCol = c; break; }
+            }
+            if (timeCol < 0) timeCol = 0;
+            List<Integer> numericCols = new ArrayList<>();
+            for (int c = 0; c < cols; c++) {
+                if (c == timeCol) continue;
+                // 首个数据行为数值的列才进入
+                Row r1 = sheet.getRow(1);
+                if (r1 == null) break;
+                String v = fmt.formatCellValue(r1.getCell(c)).trim();
+                if (!v.isEmpty() && isFiniteNumber(v)) numericCols.add(c);
+            }
+            if (numericCols.size() > 10) numericCols = numericCols.subList(0, 10);
+            total = Math.max(sheet.getLastRowNum(), 0);
+            int maxPoints = 1200;
+            int step = total <= maxPoints ? 1 : (int) Math.ceil((double) total / maxPoints);
+            // 一次遍历收集
+            int kept = 0;
+            List<double[]> timeBuf = new ArrayList<>();
+            List<List<Double>> colBuf = new ArrayList<>();
+            for (int k = 0; k < numericCols.size(); k++) colBuf.add(new ArrayList<>());
+            List<Double> tBuf = new ArrayList<>();
+            for (int r = 1; r <= total; r += step) {
+                Row row = sheet.getRow(r);
+                if (row == null) continue;
+                String tv = fmt.formatCellValue(row.getCell(timeCol)).trim();
+                double t = isFiniteNumber(tv) ? Double.parseDouble(tv) : r;
+                tBuf.add(t);
+                for (int k = 0; k < numericCols.size(); k++) {
+                    String v = fmt.formatCellValue(row.getCell(numericCols.get(k))).trim();
+                    colBuf.get(k).add(isFiniteNumber(v) ? Double.parseDouble(v) : null);
+                }
+                kept++;
+            }
+            for (int k = 0; k < numericCols.size(); k++) {
+                Map<String, Object> s = new LinkedHashMap<>();
+                s.put("name", headers.get(numericCols.get(k)));
+                s.put("t", tBuf);
+                s.put("y", colBuf.get(k));
+                series.add(s);
+            }
+            out.put("step", step);
+            out.put("keptPoints", kept);
+        }
+        out.put("series", series);
+        out.put("rowCount", total);
+        return out;
+    }
+
+    private boolean isFiniteNumber(String s) {
+        if (s == null || s.isEmpty()) return false;
+        try { double d = Double.parseDouble(s); return Double.isFinite(d); } catch (NumberFormatException e) { return false; }
+    }
+
+    /** 读xlsx指定sheet为 Map 列表(表头为key,最多maxRows行;sheet不存在返回空表)。 */
+    private List<Map<String, Object>> readSheetMaps(File xlsx, String sheetName, int maxRows) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        try (InputStream in = Files.newInputStream(xlsx.toPath()); Workbook wb = WorkbookFactory.create(in)) {
+            Sheet sheet = wb.getSheet(sheetName);
+            if (sheet == null) return out;
+            DataFormatter fmt = new DataFormatter();
+            Row hr = sheet.getRow(0);
+            if (hr == null) return out;
+            int cols = (int) Math.min(hr.getLastCellNum(), 30);
+            List<String> headers = new ArrayList<>();
+            for (int c = 0; c < cols; c++) headers.add(fmt.formatCellValue(hr.getCell(c)).trim());
+            int last = Math.min(sheet.getLastRowNum(), maxRows);
+            for (int r = 1; r <= last; r++) {
+                Row row = sheet.getRow(r);
+                if (row == null) continue;
+                Map<String, Object> m = new LinkedHashMap<>();
+                boolean any = false;
+                for (int c = 0; c < headers.size(); c++) {
+                    String v = fmt.formatCellValue(row.getCell(c)).trim();
+                    if (!v.isEmpty()) any = true;
+                    m.put(headers.get(c), v);
+                }
+                if (any) out.add(m);
+            }
+        } catch (Exception e) {
+            log.warn("读sheet失败 {}:{} -> {}", xlsx.getName(), sheetName, e.getMessage());
+        }
+        return out;
+    }
+
+    @ApiOperation("交付Excel指定sheet读取(01-22/04-11燃油偏置按测量燃油量横轴等):任务确定性交付Excel(result.output.excelFile)的指定表,默认MeasurementBias")
+    @GetMapping("/projects/{pid}/tasks/{tid}/delivery-sheet")
+    @RequirePermission(Permission.READ)
+    public Result<Map<String, Object>> deliverySheet(@PathVariable("pid") String pid,
+                                                     @PathVariable("tid") String tid,
+                                                     @org.springframework.web.bind.annotation.RequestParam(value = "sheet", required = false, defaultValue = "MeasurementBias") String sheet) {
+        try {
+            String denied = accessDenied(store.getProject(pid));
+            if (denied != null) return Result.error(denied);
+            EngineModels.ModelingTask t = store.getTask(pid, tid);
+            if (t == null) return Result.error("任务不存在");
+            String excel = null;
+            if (t.getResult() instanceof Map) {
+                Object output = ((Map<?, ?>) t.getResult()).get("output");
+                if (output instanceof Map) {
+                    Object ef = ((Map<?, ?>) output).get("excelFile");
+                    if (ef != null) excel = String.valueOf(ef);
+                }
+            }
+            if (excel == null || excel.isEmpty() || !new File(excel).isFile()) {
+                return Result.error("确定性交付Excel尚未生成;辨识完成后自动写入");
+            }
+            File f = new File(excel);
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("excelFile", excel);
+            out.put("sheet", sheet);
+            out.put("sheetNames", readSheetNames(f));
+            out.put("rows", readSheetMaps(f, sheet, 200));
+            return Result.success(out);
+        } catch (Exception e) {
+            return Result.error("读交付表失败: " + e.getMessage());
+        }
+    }
+
+    private List<String> readSheetNames(File xlsx) {
+        List<String> names = new ArrayList<>();
+        try (InputStream in = Files.newInputStream(xlsx.toPath()); Workbook wb = WorkbookFactory.create(in)) {
+            for (int i = 0; i < wb.getNumberOfSheets(); i++) names.add(wb.getSheetName(i));
+        } catch (Exception e) { /* 忽略 */ }
+        return names;
+    }
+
+    @ApiOperation("任务结果附属文件文本读取(03-09训练拟合曲线CSV等):kind=result里的文件字段名,白名单trainingFitCsv;返回CSV/文本原文(限4MB)")
+    @GetMapping("/projects/{pid}/tasks/{tid}/result-file")
+    @RequirePermission(Permission.READ)
+    public org.springframework.http.ResponseEntity<?> resultFile(@PathVariable("pid") String pid,
+                                                                 @PathVariable("tid") String tid,
+                                                                 @org.springframework.web.bind.annotation.RequestParam(value = "kind", required = false, defaultValue = "trainingFitCsv") String kind) {
+        try {
+            String denied = accessDenied(store.getProject(pid));
+            if (denied != null) return org.springframework.http.ResponseEntity.badRequest().body(Result.error(denied));
+            EngineModels.ModelingTask t = store.getTask(pid, tid);
+            if (t == null) return org.springframework.http.ResponseEntity.badRequest().body(Result.error("任务不存在"));
+            if (!"trainingFitCsv".equals(kind)) {
+                return org.springframework.http.ResponseEntity.badRequest().body(Result.error("不支持的结果文件类型: " + kind));
+            }
+            Object res = t.getResult();
+            String path = null;
+            if (res instanceof Map) {
+                Object o = ((Map<?, ?>) res).get(kind);
+                if (o != null) path = String.valueOf(o);
+            }
+            if (path == null || path.isEmpty()) {
+                return org.springframework.http.ResponseEntity.status(404).body(Result.error("结果文件尚未生成;辨识完成后自动写入"));
+            }
+            File f = new File(path);
+            if (!f.isFile()) return org.springframework.http.ResponseEntity.status(404)
+                    .body(Result.error("结果文件不存在: " + f.getName()));
+            if (f.length() > 4L * 1024 * 1024) return org.springframework.http.ResponseEntity.badRequest()
+                    .body(Result.error("文件过大(>4MB),请直接在输出目录查看: " + f.getName()));
+            String text = new String(java.nio.file.Files.readAllBytes(f.toPath()), java.nio.charset.StandardCharsets.UTF_8);
+            return org.springframework.http.ResponseEntity.ok()
+                    .header("Content-Type", "text/plain; charset=utf-8")
+                    .body(text);
+        } catch (Exception e) {
+            return org.springframework.http.ResponseEntity.badRequest().body(Result.error("读取结果文件失败: " + e.getMessage()));
         }
     }
 
@@ -2173,6 +2604,12 @@ public class EngineWorkbenchController {
                     if (t == null) {
                         finishTaskSub(sub);
                         continue;
+                    }
+                    // 与/status同一口径:F3通道UQ陈旧执行态在推送前对账,避免把卡死状态推给前端
+                    if ("evolution".equals(t.getKind()) || "flight_steady".equals(t.getKind())) {
+                        f3FlightService.reconcileStaleUq(t);
+                    } else {
+                        tc24Service.reconcileStaleUq(t);
                     }
                     Map<String, Object> payload = new LinkedHashMap<>();
                     payload.put("task", t);

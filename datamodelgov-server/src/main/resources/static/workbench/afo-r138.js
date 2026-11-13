@@ -31,6 +31,7 @@
     const COMMON_LAYOUT = {
         engine: {
             title: '发动机·全部登记输出',
+            notice: '发动机内部轴扭矩与外部PT负载扭矩分开展示：不将计算量充当传感器测量。（09-01）',
             charts: [
                 { t: '轴速', u: 'rpm', s: [S_('engine_09', { name: 'Np' }), S_('engine_10', { name: 'Ng' })] },
                 // 总压/总温按1、3、4、45、5截面气路顺序(M7,规格4.2)
@@ -44,6 +45,7 @@
         },
         control: {
             title: '控制与负载·指令和响应',
+            notice: '修改指令返回总控。这里查看控制响应、实际负载和操纵记录，不设置第二套指令。（09-02）',
             charts: [
                 { t: 'Np目标与反馈', u: 'rpm', s: [S_(NP_DEM, { name: '目标', dash: true }), S_('engine_09', { name: '实际' })] },
                 { t: '燃油响应', u: 'kg/s', s: [S_('fuel_command_01', { name: '控制指令' }), S_('fuel_engine_01', { name: '发动机采用' })] },
@@ -56,7 +58,8 @@
         },
         fuel: {
             title: '燃油·仅燃油系统代理模型',
-            notice: 'R065已采集10条连续量和2项状态。',
+            notice: '当前发动机采用简化执行机构输出：详细燃油输出只供联系滑油边界，不能据此评价发动机实际供油。（09-03）',
+            noticeType: 'amber',
             cols: 2,
             charts: [
                 { t: '计量流量与最终输出', u: 'kg/s', s: [S_('fuel_proxy_flow_before', { name: '切换前' }), S_('fuel_proxy_flow_after', { name: '切换后' }), S_('fuel_detailed_01', { name: '最终输出' })] },
@@ -73,6 +76,8 @@
         },
         oil: {
             title: '滑油·温度 流量 换热 通风',
+            notice: '散热器入口低于特性表范围时按端点计算；出口温度和换热不作为有效冷却性能结论。（09-04）',
+            noticeType: 'amber',
             charts: [
                 { t: '轴承腔出口油温', u: '℃', s: [S_('oil09_01', { name: '甲腔' }), S_('oil10_01', { name: '乙腔' })] },
                 { t: '供回油流量', u: 'm³/s', s: [S_('oil05_01', { name: '供油' }), S_('oil11_01', { name: '回油' })] },
@@ -1048,18 +1053,60 @@
             for (const x of srcs) { if (x && x.externalAir != null) { on = !!x.externalAir; break; } }
             return '外部回灌：' + (on ? '开启' : '关闭') + '（关闭不停止空气系统计算）';
         }
+        /** 末样本值(结果态取resultAcc,运行态取liveBuf;全NaN返回null)。 */
+        function lastSampleVal(id) {
+            if (isResultMode() && resultAcc && resultAcc.has(id)) {
+                const v = resultAcc.series(id);
+                for (let i = v.length - 1; i >= 0; i--) if (v[i] != null && isFinite(v[i])) return v[i];
+                return null;
+            }
+            const lv = liveSeries(id);
+            for (let i = lv.v.length - 1; i >= 0; i--) if (lv.v[i] != null && isFinite(lv.v[i])) return lv.v[i];
+            return null;
+        }
+        /** 09-01/03:系统页KPI数字卡(末样本值已在result.json/channels,只缺布局)。 */
+        function kpiCards(sys) {
+            const defs = sys === 'engine'
+                ? [['Np 实际转速', 'engine_09', 'rpm'], ['Ng 实际转速', 'engine_10', 'rpm'], ['Tt45 截面总温', 'engine_06', 'K'], ['入口流量 W2', 'engine_11', 'kg/s']]
+                : [['控制器燃油指令', 'fuel_command_01', 'kg/s'], ['发动机实际采用燃油', 'fuel_engine_01', 'kg/s'], ['详细燃油系统输出', 'fuel_detailed_01', 'kg/s']];
+            const items = defs.map(d => {
+                const v = lastSampleVal(d[1]);
+                const c = chById(d[1]);
+                return { label: d[0], val: v == null ? '未记录' : Number(v).toFixed(v >= 100 ? 1 : 3), unit: d[2] || (c && c.unit) || '', miss: v == null };
+            });
+            if (items.every(it => it.miss)) return null;
+            const row = h('div', { style: 'display:grid;grid-template-columns:repeat(' + items.length + ',1fr);gap:10px;padding:0 18px 10px;background:#fff' });
+            items.forEach(it => row.appendChild(h('div', {
+                style: 'border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px;background:#f8fafc'
+            },
+                h('div', { style: 'font-size:12px;color:#64748b' }, it.label),
+                h('div', { style: 'font-size:20px;font-weight:800;color:' + (it.miss ? '#94a3b8' : '#0f172a') },
+                    it.val, h('span', { style: 'font-size:12px;font-weight:400;color:#64748b;margin-left:4px' }, it.unit)))));
+            return row;
+        }
         function paintSystemTab(sys) {
             const resultMode = isResultMode();
             const L = COMMON_LAYOUT[sys];
             body.appendChild(pageHead(L.title));
-            if (L.notice) body.appendChild(h('div', { style: 'padding:2px 18px 8px;background:#fff;font-size:13px;color:#0f766e' },
-                sys === 'air' ? airStatusText() : L.notice)); // M6:空气页顶部显示本次运行实际回灌状态
+            if (L.notice) {
+                // 09-01~05:口径提示条分 teal(默认)/amber(警示口径)两色
+                const amber = L.noticeType === 'amber';
+                body.appendChild(h('div', { style: 'padding:2px 18px 8px;background:#fff;font-size:13px;color:' + (amber ? '#92400e' : '#0f766e') },
+                    sys === 'air' ? (airStatusText() + '；G04仍提供滑油系统计算边界。（09-05）') : L.notice)); // M6:空气页顶部显示本次运行实际回灌状态
+            }
             if (!S.catalog) {
                 body.appendChild(h('div', { class: 'wb-empty' }, '通道字典未加载(会话准备完成后从 channels.json 读取;历史运行取自结果 catalog/channels)。'));
                 return;
             }
             // 视图切换条在自选视图同样显示,否则进入自选后无法切回常用/全部分组
             body.appendChild(viewBar());
+            // 09-01/03:发动机/燃油页KPI末样本卡(常用视图)
+            if (S.viewMode === 'common' && (sys === 'engine' || sys === 'fuel')) {
+                const kp = kpiCards(sys);
+                if (kp) body.appendChild(kp);
+                if (sys === 'fuel' && kp) body.appendChild(h('div', { class: 'wb-hint', style: 'padding:0 18px 8px;background:#fff' },
+                    '详细燃油与主供油链未闭环连接，结果保存仍分别保留，不同名Wf覆盖。（09-03）'));
+            }
             // L6(规格4.5):图区与常驻通道树横向排列;"全部分组"共用右侧可折叠通道树;
             // "自选"按UI-R138效果图通道树固定在左侧(先树后图)
             const rowc = h('div', { style: 'display:flex;align-items:flex-start' });
@@ -1081,6 +1128,12 @@
                     else splitOneSeries([def]).forEach(d => chartCard(gr, d, resultMode));
                 });
                 if (sys === 'air') paintAirGrid(gr, resultMode);
+                // 09-02:控制页常用视图页内直接展示本次操纵记录(原仅全部分组有)
+                if (sys === 'control') {
+                    host.appendChild(h('div', { style: 'font-weight:700;font-size:15px;margin:14px 0 4px' }, '本次操纵记录',
+                        h('span', { style: 'font-weight:400;font-size:12px;color:#64748b;margin-left:10px' }, '使用实际生效时刻,非模型输出')));
+                    host.appendChild(eventsTable());
+                }
             } else {
                 // 全部分组:逐组展开(名称取自字典)
                 (GROUPS_ALL[sys] || []).forEach(g => {
@@ -1096,6 +1149,34 @@
                 if (sys === 'air') { const gr2 = h('div', { class: 'wb-chart' }); host.appendChild(gr2); paintAirGrid(gr2, resultMode); }
             }
             if (sys === 'air' && S.viewMode === 'groups') rowc.appendChild(channelTreePanel());
+            // 09-04:滑油适用范围与使用限制表(文案型口径;「低于下限」判定需特性表范围数据,当前如实标注)
+            if (sys === 'oil') {
+                host.appendChild(h('div', { style: 'font-weight:700;font-size:15px;margin:14px 0 6px' }, '检查项 · 本次记录 · 适用范围'));
+                host.appendChild(h('table', { class: 'wb-table', style: 'max-width:1180px' },
+                    h('tr', null, ['检查项', '本次记录', '适用范围', '使用限制'].map(x => h('th', null, x))),
+                    h('tr', null, h('td', null, '混合回油油温'), h('td', { class: 'wb-hint' }, '甲/乙腔出口油温已记录'),
+                        h('td', { class: 'wb-hint' }, '混合回油温度'), h('td', { class: 'wb-hint' }, '散热器入口低于特性表范围时按端点计算,不作有效冷却性能结论')),
+                    h('tr', null, h('td', null, '燃滑油散热器入口范围'), h('td', { class: 'wb-hint' }, '见通道字典温度项'),
+                        h('td', { class: 'wb-hint' }, '特性表覆盖范围'), h('td', { class: 'wb-hint' }, '范围外按端点外推,不评价换热性能')),
+                    h('tr', null, h('td', null, '空滑散热器与通风封严输出'), h('td', { class: 'wb-hint' }, '封严/通风通道已记录'),
+                        h('td', { class: 'wb-hint' }, '滑油系统边界'), h('td', { class: 'wb-hint' }, 'G04边界仅供滑油系统计算,不回灌发动机(见空气页)'))));
+                host.appendChild(h('div', { class: 'wb-hint', style: 'margin:6px 0;max-width:1180px' },
+                    '混温回退次数：回退标志（G04温度/压力、混温A/B，共4项）在导出Excel的Data列中,界面未结构化计数,不伪造「均为0次」结论。'));
+            }
+            // 09-05:发动机边界核对表(采用边界口径)
+            if (sys === 'air') {
+                let onAir = null;
+                for (const x of [S.cfgFrozen, (S.live || {}).initialConfig, (S.result || {}).initialConfig, S.cfg]) { if (x && x.externalAir != null) { onAir = !!x.externalAir; break; } }
+                host.appendChild(h('div', { style: 'font-weight:700;font-size:15px;margin:14px 0 6px' }, '发动机边界核对'));
+                host.appendChild(h('table', { class: 'wb-table', style: 'max-width:1180px' },
+                    h('tr', null, ['边界组', '流量来源', '温度/压力', '采用方式'].map(x => h('th', null, x))),
+                    h('tr', null, h('td', null, '第1~8组(八路流量)'), h('td', { class: 'wb-hint' }, '外部空气系统计算(G04边界)'),
+                        h('td', { class: 'wb-hint' }, '保护前供气边界状态'), h('td', null, onAir ? '外部回灌:经一步延迟生效回灌发动机' : '内部引气:不回灌发动机(8路流量不回灌)')),
+                    h('tr', null, h('td', null, '第9~10组'), h('td', { class: 'wb-hint' }, '合并值/延迟值按模型内部处理'),
+                        h('td', { class: 'wb-hint' }, '同上'), h('td', { class: 'wb-hint' }, '界面不展示模板、合并或延迟副本')),
+                    h('tr', null, h('td', null, '采用边界'), h('td', { class: 'wb-hint' }, 'G04滑油系统计算边界'),
+                        h('td', { class: 'wb-hint' }, '—'), h('td', { class: 'wb-hint' }, '一步延迟生效;原空气选择器第10输入未接线等历史限制保留'))));
+            }
             if (L.footnote) host.appendChild(h('div', { style: 'font-size:13px;color:#334155;padding:10px 4px 0' }, L.footnote));
             if (!resultMode) host.appendChild(h('div', { style: 'font-size:12px;color:#94a3b8;padding:4px 4px 0' },
                 '运行中曲线读取 stream 增量样本块(R065);关闭“跟随最新”仅冻结视图,仿真继续。'));
@@ -1702,8 +1783,19 @@
                     // M2(规格3.1):双总距固定映射参数,准备期配置保存,运行中不热修改
                     mk('尾/主桨功率比', 'tailToMainPowerRatio', '默认0.10');
                     mk('尾桨设计总距', 'tailDesignPitchDeg', 'deg,默认10');
-                    loadBox.appendChild(h('div', { style: 'flexBasis:100%;font-size:12px;color:#94a3b8;margin-top:2px' },
-                        '主尾桨按工程映射合成等效负载：主桨6~14 deg、尾桨−8~18 deg，合成等效桨距须在6~14 deg内；映射参数准备后固定，运行中不可修改。'));
+                    // 09-09:负载折算配置表(配置项/当前值/含义)
+                    const ratioV = isFinite(parseFloat(c.tailToMainPowerRatio)) ? parseFloat(c.tailToMainPowerRatio).toFixed(2) : '0.10(默认)';
+                    const designV = isFinite(parseFloat(c.tailDesignPitchDeg)) ? parseFloat(c.tailDesignPitchDeg).toFixed(1) + '°' : '10°(默认)';
+                    loadBox.appendChild(h('table', { class: 'wb-table', style: 'flexBasis:100%;max-width:900px;margin-top:6px;font-size:12px' },
+                        h('tr', null, ['配置项', '当前值', '含义'].map(x => h('th', null, x))),
+                        h('tr', null, h('td', null, '尾/主桨参考功率比'), h('td', null, ratioV),
+                            h('td', { class: 'wb-hint' }, '工程先验,可配置;不代表已标定')),
+                        h('tr', null, h('td', null, '主桨参考角 / 尾桨参考角'), h('td', null, '12° / ' + designV.replace('°(默认)', '°(默认10°)')),
+                            h('td', { class: 'wb-hint' }, '等效桨距折算基准角')),
+                        h('tr', null, h('td', null, '负载作用轴'), h('td', null, '均折算到PT侧'),
+                            h('td', { class: 'wb-hint' }, '不能把尾桨写入GT附件负载Mkg')),
+                        h('tr', null, h('td', null, '等效桨距范围'), h('td', null, '6~14 deg'),
+                            h('td', { class: 'wb-hint' }, '主桨6~14、尾桨−8~18,合成须在6~14内;映射参数准备后固定,运行中不可修改'))));
                 }
             };
             paintLoad();
@@ -1908,11 +2000,39 @@
                     '历史读取不启动MATLAB/DLL;R06旧结果缺新增25项显示“本结果未记录”,不填零。'));
                 host.appendChild(h('div', { class: 'wb-hint', style: 'margin:0 0 12px' },
                     '回退标志说明（G04温度/压力、混温A/B，共4项）在导出Excel的Data列中，用于标识某段计算使用了回退逻辑；属数据解释状态，不等同超限告警。'));
+                // 09-06:正式结果文件路径展示(目录浏览器无法直接打开,给出只读定位口径)
+                const outDirRes = (r.config && r.config.outputDir) || S.statusOutputDir || '';
+                if (outDirRes) host.appendChild(h('div', { class: 'wb-hint', style: 'margin:8px 0 0;max-width:1180px;overflow-wrap:anywhere' },
+                    '正式结果文件: ' + (runId || 'M-…') + '/AFO_results.xlsx · 会话目录: ' + outDirRes + '（浏览器不直接打开本地目录;导出Excel见下方按钮）'));
+                // 09-06:结束保存清单(记录内容/保存状态/用途)
+                host.appendChild(h('div', { style: 'font-weight:700;font-size:15px;margin:12px 0 6px' }, '结束本次仿真并保存 · 清单'));
+                host.appendChild(h('table', { class: 'wb-table', style: 'max-width:1180px' },
+                    h('tr', null, ['记录内容', '保存状态', '用途'].map(x => h('th', null, x))),
+                    h('tr', null, h('td', null, '运行配置与模型身份'), h('td', { class: 'wb-hint' }, saveTxt), h('td', { class: 'wb-hint' }, '用此配置新建运行、历史只读回看的身份核对')),
+                    h('tr', null, h('td', null, '全即时序输出与通道字典'), h('td', { class: 'wb-hint' }, saveTxt), h('td', { class: 'wb-hint' }, '各系统页曲线、全部分组与通道统计的数据源')),
+                    h('tr', null, h('td', null, '命令接收生效与拒绝记录'), h('td', { class: 'wb-hint' }, saveTxt), h('td', { class: 'wb-hint' }, '操纵追溯:接收/生效时刻与拒绝原因(见下方命令记录)')),
+                    h('tr', null, h('td', null, '停止原因、实际耗时与暂停'), h('td', { class: 'wb-hint' }, saveTxt), h('td', { class: 'wb-hint' }, '结束原因判定与耗时口径(见上方两表)'))));
+                host.appendChild(h('div', { style: 'font-size:13px;color:#92400e;margin:6px 0 0;max-width:1180px' },
+                    'Excel是结束记录，不是完整仿真状态快照。不能直接据此从终点继续积分。（09-06）'));
                 host.appendChild(h('div', { style: 'font-weight:700;font-size:15px;margin-bottom:6px' }, '命令记录'));
                 host.appendChild(eventsTable());
             } else {
                 host.appendChild(h('div', { class: 'wb-infobar' }, '当前会话尚无结果;运行结束保存后此处显示结果摘要。'));
             }
+            // 09-10:同一核心的两种使用方式(独立离线使用与界面接入;纯文案说明,无需后端数据)
+            host.appendChild(h('div', { style: 'font-weight:700;font-size:15px;margin:16px 0 6px' }, '同一核心的两种使用方式 · 独立离线使用与界面接入'));
+            host.appendChild(h('table', { class: 'wb-table', style: 'max-width:1180px' },
+                h('tr', null, ['使用方式', '入口', '说明'].map(x => h('th', null, x))),
+                h('tr', null, h('td', null, '无界面直接仿真'), h('td', { class: 'wb-hint' }, 'Start_AFO_Multisystem'),
+                    h('td', { class: 'wb-hint' }, '脚本/批处理直接调用,不经界面准备链')),
+                h('tr', null, h('td', null, '界面准备与执行'), h('td', { class: 'wb-hint' }, 'sht_afo_session（本页）'),
+                    h('td', { class: 'wb-hint' }, '界面配置→检查并准备→执行/暂停/结束,输出与离线一致')),
+                h('tr', null, h('td', null, '另一进程交接'), h('td', { class: 'wb-hint' }, 'sht_afo_submit / 状态文件'),
+                    h('td', { class: 'wb-hint' }, '外部进程提交会话,界面按状态文件只读跟踪')),
+                h('tr', null, h('td', null, '只读历史查看'), h('td', { class: 'wb-hint' }, 'Start_AFO_ResultView'),
+                    h('td', { class: 'wb-hint' }, '不启动MATLAB/DLL,直接查看已保存结果'))));
+            host.appendChild(h('div', { class: 'wb-hint', style: 'margin:6px 0 12px;max-width:1180px' },
+                '离线运行环境: Windows x64 · MATLAB R2019b · Simulink/Stateflow · Control System Toolbox。许可证/运行库/DLL冷加载状态探测属交付程序能力,界面不做伪造检查。（09-10）'));
             // 历史列表(只保留条数选择,取最新 N 条;查询复用仿真记录的 SQL 记录查询接口 kind=afo)
             let histSize = S.histSize || 10;
             const listHost = h('div');
@@ -2010,7 +2130,9 @@
                 h('td', { style: 'max-width:520px;overflow-wrap:anywhere' }, identitySummary(S.result)),
                 h('td', { style: 'max-width:520px;overflow-wrap:anywhere;color:' + (identitySummary(S.result) !== identitySummary(b.result) ? '#b45309' : '') }, identitySummary(b.result))));
             box.appendChild(tbl);
-            box.appendChild(h('div', { class: 'wb-hint', style: 'margin-top:4px' }, '采样网格不同则各自按原曲线叠加,不插值不外插。'));
+            box.appendChild(h('div', { class: 'wb-hint', style: 'margin-top:4px' }, '采样网格不同则各自按原曲线叠加,不插值不外插;Np/Ng/温度/流量/负载可分别叠加,不同单位不共用纵轴。'));
+            box.appendChild(h('div', { style: 'font-size:13px;color:#92400e;margin-top:6px' },
+                '没有实测数据，不能仅凭两次仿真判定哪个模型更准确。配置差异先于曲线结论。（09-08）'));
             // D7:显性展示"因单位不一致未叠加"的曲线清单(原 _cmpSkipped 从未渲染)
             const skipped = cmpUnitMismatchList();
             box.appendChild(h('div', { class: 'wb-hint', style: 'margin-top:4px;color:' + (skipped.length ? '#b45309' : '#64748b') },

@@ -1312,11 +1312,41 @@ public class F3FlightService {
     public boolean stopEvolutionUq(EngineModels.ModelingTask task) {
         final String key = task.getId();
         MatlabFunctionRunner runner = running.get(key + ":uq");
-        if (runner == null) return false;
+        if (runner == null) {
+            // 陈旧状态对账:服务重启/异常退出后 running 登记丢失,uqStatus 仍停在执行态,
+            // 前端永远显示执行中且「请求安全暂停」无效——重置为失败态放行重新发起。
+            // 对账成功视为取消受理;本来就无执行态则如实返回 false。
+            return reconcileStaleUq(task);
+        }
         runner.requestCancel();
         setUqMessage(task.getProjectId(), key, "已请求取消(协作取消,结果作废)");
         emitLog(key, "已请求取消F3通道UQ评估");
         return true;
+    }
+
+    /**
+     * 服务重启后陈旧UQ状态对账:running 无登记但 uqStatus 仍是执行态 → 重置为 FAILED(会话中断)。
+     * /status 轮询时调用,前端无需手动重置即可回到重新评估页面。返回 true 表示执行了对账。
+     */
+    public boolean reconcileStaleUq(EngineModels.ModelingTask task) {
+        final String key = task.getId();
+        String st = task.getUqStatus();
+        if (!"EXECUTING".equals(st) && !"PREPARING".equals(st)) return false;
+        if (running.get(key + ":uq") != null) return false; // 真在跑,不动
+        try {
+            EngineModels.ModelingTask tk = store.getTask(task.getProjectId(), key);
+            if (tk != null && ("EXECUTING".equals(tk.getUqStatus()) || "PREPARING".equals(tk.getUqStatus()))) {
+                tk.setUqStatus("FAILED");
+                tk.setUqFinishedAt(System.currentTimeMillis());
+                tk.setUqMessage("评估会话已中断(服务重启或异常退出),状态已重置;可重新发起评估");
+                store.saveTask(tk);
+                task.setUqStatus("FAILED");
+                task.setUqMessage(tk.getUqMessage());
+                emitLog(key, "检测到陈旧的UQ执行状态,已重置为失败态(会话中断)");
+                return true;
+            }
+        } catch (IOException ignore) { }
+        return false;
     }
 
     /** 稳态飞参UQ取消:与自演化同一执行器登记表,语义别名便于Controller按kind分流。 */

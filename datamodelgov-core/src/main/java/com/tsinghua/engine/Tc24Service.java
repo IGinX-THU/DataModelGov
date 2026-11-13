@@ -352,6 +352,32 @@ public class Tc24Service {
      * 取消受理即落终态(FAILED+已取消),前端轮询立刻回到可重新发起的状态;
      * MATLAB侧在最近的协作检查点退出,catch里幂等重写同一状态,不产生二次影响。
      */
+    /**
+     * 服务重启后陈旧UQ状态对账:running 无登记且无挂起取消、uqStatus 仍是执行态 → 重置为 FAILED(会话中断)。
+     * /status 轮询时调用,与 F3 通道 reconcileStaleUq 同一口径,避免前端永远显示"执行中"。
+     */
+    public boolean reconcileStaleUq(EngineModels.ModelingTask task) {
+        final String taskId = task.getId();
+        String st = task.getUqStatus();
+        if (!"EXECUTING".equals(st) && !"PREPARING".equals(st)) return false;
+        if (running.get(taskId + ":uq") != null) return false; // 真在跑,不动
+        if (Boolean.TRUE.equals(uqCancelPending.get(taskId + ":uq"))) return false; // 已挂起取消,交给执行线程落终态
+        try {
+            EngineModels.ModelingTask tk = store.getTask(task.getProjectId(), taskId);
+            if (tk != null && ("EXECUTING".equals(tk.getUqStatus()) || "PREPARING".equals(tk.getUqStatus()))) {
+                long now = System.currentTimeMillis();
+                tk.setUqStatus("FAILED");
+                tk.setUqFinishedAt(now);
+                tk.setUqMessage("评估会话已中断(服务重启或异常退出),状态已重置;可重新发起评估");
+                store.saveTask(tk);
+                task.setUqStatus("FAILED");
+                task.setUqMessage(tk.getUqMessage());
+                return true;
+            }
+        } catch (IOException ignore) { }
+        return false;
+    }
+
     public boolean requestUqCancel(String projectId, String taskId) {
         try {
             EngineModels.ModelingTask t = store.getTask(projectId, taskId);
