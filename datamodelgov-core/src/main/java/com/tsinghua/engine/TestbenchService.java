@@ -303,6 +303,7 @@ public class TestbenchService {
             while ("RUNNING".equals(s.phase)) {
                 // 块间命令处理(pause/terminate在此同步;其余submit入会话)
                 Map<String, Object> cmd;
+                boolean terminating = false;
                 while ((cmd = fmCommands.poll()) != null) {
                     String kind = String.valueOf(cmd.get("kind"));
                     log.info("全模式命令消费(块间): runId={} kind={}", s.runId, kind);
@@ -314,22 +315,31 @@ public class TestbenchService {
                         refreshFullmodeStatusFile(s);
                         return;
                     }
+                    if ("stop".equals(kind)) {
+                        // 「结束计算」不是发动机停车:旧实现把它翻成 normal_stop(正常停车链:
+                        // 回慢车冷却→断油→惰转→物理停转),一旦已经断油(mode=shutdown)或断油闭锁,
+                        // submit 必被拒 —— ① cutLatched 守卫拒绝除 acknowledge_cutoff 外的一切命令;
+                        // ② normal_stop 自身要求当前在 idle/run/idle_handover。被拒后 stopRequested
+                        // 却已置位,循环只能一直空转到步数预算(约2000s仿真时间)才收尾,表现为「结束不了」。
+                        // 会话合同为操作员终止计算提供了 terminate(lifecycle=terminated,
+                        // stopReason=operator_numerical_stop):不改发动机状态机,收尾仍走 save→result→close。
+                        terminateFullmode(s, "结束计算:终止推进(不等物理停转)");
+                        s.stopRequested = true;
+                        terminating = true;
+                        break;
+                    }
                     Map<String, Object> sub = new LinkedHashMap<>();
                     sub.put("requestId", "dm_" + UUID.randomUUID().toString().substring(0, 8));
-                    if ("stop".equals(kind)) {
-                        sub.put("action", "normal_stop");
-                        s.stopRequested = true;
-                    } else {
-                        sub.put("action", kind);
-                        Object v = cmd.get("value");
-                        if (v != null) sub.put("value", v);
-                    }
+                    sub.put("action", kind);
+                    Object v = cmd.get("value");
+                    if (v != null) sub.put("value", v);
                     Object receipt = fevalFullmode(s, "submit", sub);
                     if (receipt instanceof Map && "rejected".equals(String.valueOf(((Map<?, ?>) receipt).get("state")))) {
                         log.warn("全模式命令被会话拒绝: runId={} action={} reason={}",
                                 s.runId, sub.get("action"), ((Map<?, ?>) receipt).get("reason"));
                     }
                 }
+                if (terminating) break;
                 Map<String, Object> adv = new LinkedHashMap<>();
                 adv.put("n", chunkSteps);
                 fevalFullmode(s, "advance", adv);
@@ -362,12 +372,35 @@ public class TestbenchService {
         }
     }
 
+    /** 结束计算用的即时终止:会话合同 terminate 会把 lifecycle 置 terminated(不影响 runtime/轨迹),
+     *  与 normal_stop 的物理停车链完全分离;失败不抛出,由收尾流程统一兜底(save→result→close)。 */
+    private void terminateFullmode(FullmodeSession s, String reason) {
+        if (s == null || s.engine == null) return;
+        try {
+            fevalFullmode(s, "terminate", null);
+            log.info("全模式终止推进: runId={} reason={}", s.runId, reason);
+            logLine(s, reason);
+        } catch (Exception e) {
+            log.warn("全模式 terminate 调用失败(继续收尾): runId={} {}", s.runId, e.getMessage());
+        }
+    }
+
     private void finalizeFullmode(FullmodeSession s, String msg) {
         try {
             s.message = msg;
             logLine(s, "保存结果(Excel/快照/result)");
             Map<String, Object> saveCmd = new LinkedHashMap<>();
-            saveCmd.put("folder", new File(s.outputDir, "save").getAbsolutePath().replace('\\', '/'));
+            // save 合同拒绝覆盖已有 fullmode_snapshot.mat / fullmode_results.xlsx:
+            // 暂停时点过「保存当前结果」会占用 outputDir/save,收尾再写同一目录必失败,
+            // 于是会话卡在「收尾失败」。此时收尾换独立目录,交互保存的产物原样保留。
+            File saveDir = new File(s.outputDir, "save");
+            if (new File(saveDir, "fullmode_snapshot.mat").isFile()
+                    || new File(saveDir, "fullmode_results.xlsx").isFile()) {
+                saveDir = new File(s.outputDir, "save-end-"
+                        + new java.text.SimpleDateFormat("yyyyMMdd_HHmmss").format(new java.util.Date()));
+                log.info("全模式收尾保存换独立目录(交互保存已占用 save/): runId={} dir={}", s.runId, saveDir.getName());
+            }
+            saveCmd.put("folder", saveDir.getAbsolutePath().replace('\\', '/'));
             fevalFullmode(s, "save", saveCmd);
             fevalFullmode(s, "result", null);
             fevalFullmode(s, "close", null);
@@ -423,9 +456,20 @@ public class TestbenchService {
             return fullmodeRun(projectId);
         }
         if ("stop".equals(kind) && ("READY".equals(s.phase) || "PAUSED".equals(s.phase))) {
-            // 结束计算要求normal_stop块间生效,暂停中必须恢复推进才能走到停转;文档A8:物理停转后结束并保存
-            fullmodeRun(projectId);
-            log.info("全模式{}态收到结束计算,已自动恢复推进: runId={}", s.phase, s.runId);
+            // 未推进/暂停态没有推进循环消费命令队列:旧实现先自动 run 恢复推进、再靠 normal_stop
+            // 等物理停转,断油闭锁时该命令必被拒 → 会话永久卡在「结束计算」。
+            // 结束计算按合同直接终止推进并收尾保存,不碰发动机状态机(要物理停车请点「正常停车」)。
+            final String from = s.phase;
+            s.message = "正在结束计算(保存已算历程)";
+            writeFullmodeIndex(s);
+            fmExecutor.submit(() -> {
+                terminateFullmode(s, "结束计算:终止推进(" + from + "态直接收尾)");
+                finalizeFullmode(s, "结束计算;保存已算历程");
+            });
+            log.info("全模式{}态收到结束计算,直接终止并收尾: runId={}", from, s.runId);
+            out.put("accepted", true);
+            out.put("note", "已终止推进;正在保存并收尾");
+            return out;
         }
         Map<String, Object> cmd = new LinkedHashMap<>();
         cmd.put("kind", kind);

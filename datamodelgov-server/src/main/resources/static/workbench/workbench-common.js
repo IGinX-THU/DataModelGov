@@ -489,6 +489,97 @@ window.Workbench = (() => {
         return box;
     }
 
+    /** UQ评估结果明细(参数区间表+区间图,就地渲染):模型库页(02-05)与任务页
+     *  「查看此模型的已有评估」列表共用;record 形如 {id, runId, status}。
+     *  明细JSON缺失时后端会即时回读交付Excel补生成,未完成/失败返回可读错误信息。 */
+    function openUqResultDetail(projectId, record, target) {
+        if (!target || !record || !record.id) return;
+        target.innerHTML = '';
+        target.appendChild(h('div', { class: 'wb-hint' }, '正在加载 ' + (record.runId || record.id) + ' 明细...'));
+        window.AppConfig.engineGet('projects/' + encodeURIComponent(projectId || '')
+                + '/uq-records/' + encodeURIComponent(record.id) + '/detail')
+            .then(resp => {
+                if (target.isConnected === false) return; // 页面已切走,丢弃本次渲染
+                const d = resp && (resp.success || resp.code === 200) ? resp.data : null;
+                target.innerHTML = '';
+                if (!d) {
+                    target.appendChild(h('div', { class: 'wb-infobar', style: 'background:#fdf6ec;border-color:#f5d0a9;color:#94623c' },
+                        (resp && resp.message) || '结果明细尚未生成(评估未完成或交付文件缺失)。'));
+                    return;
+                }
+                const tbl = d.parameterTable || (d.delivery && d.delivery.parameterTable);
+                if (!Array.isArray(tbl) || !tbl.length) {
+                    target.appendChild(h('div', { class: 'wb-hint' },
+                        '该评估明细中未包含参数区间表;' + (d.delivery && d.delivery.workbookFile
+                            ? '完整结果见交付Excel: ' + String(d.delivery.workbookFile).split(/[\\/]/).pop()
+                            : '完整结果随交付Excel提供。')));
+                    return;
+                }
+                target.appendChild(h('div', { class: 'wb-hint', style: 'margin:2px 0 6px' },
+                    '共 ' + tbl.length + ' 个参数;q05–q95为后验样本90%区间;黑色点=确定性点估计,橙色方块=UQ中位数;区间越窄=该参数辨识越充分。'));
+                const chartHost = h('div', { style: 'width:100%;height:' + Math.max(360, tbl.length * 16 + 150) + 'px;border:1px solid #e5e7eb;border-radius:6px' });
+                target.appendChild(chartHost);
+                target.appendChild(h('div', { class: 'wb-section-title', style: 'margin:14px 0 6px' }, '参数明细(全量)'));
+                target.appendChild(dataTable(tbl, { maxRows: tbl.length + 1 }));
+                const loadChart = () => {
+                    if (!window.echarts) { setTimeout(loadChart, 200); return; }
+                    const chart = window.echarts.init(chartHost);
+                    const renderItem = (params, api) => {
+                        const idx = api.value(0);
+                        const lo = api.coord([api.value(1), idx]);
+                        const hi = api.coord([api.value(2), idx]);
+                        const barH = api.size([0, 1])[1] * 0.45;
+                        return { type: 'rect', shape: { x: Math.min(lo[0], hi[0]), y: lo[1] - barH / 2, width: Math.max(2, Math.abs(hi[0] - lo[0])), height: barH }, style: api.style() };
+                    };
+                    chart.setOption({
+                        title: { text: '参数95%置信区间(后验样本分位数)', left: 10, top: 4, textStyle: { fontSize: 13 } },
+                        tooltip: {
+                            trigger: 'item',
+                            formatter: p => {
+                                const row = tbl[p.dataIndex] || {};
+                                return (row.parameter || '') + '<br/>点估计: ' + (+row.point_estimate).toPrecision(4)
+                                    + '<br/>中位数: ' + (+row.median).toPrecision(4)
+                                    + '<br/>q05–q95: ' + (+row.q05).toPrecision(4) + ' ~ ' + (+row.q95).toPrecision(4)
+                                    + '<br/>边界: [' + row.lower_bound + ', ' + row.upper_bound + ']';
+                            }
+                        },
+                        grid: { left: 130, right: 70, top: 36, bottom: 24 },
+                        xAxis: { type: 'value', scale: true, name: '修正量', nameLocation: 'middle' },
+                        yAxis: { type: 'category', data: tbl.map(r => r.parameter), inverse: true, axisLabel: { fontSize: 10 } },
+                        dataZoom: [{ type: 'inside' }, { type: 'slider', right: 12, top: 36, bottom: 20, width: 16 }],
+                        series: [
+                            { name: 'q05–q95', type: 'custom', renderItem: renderItem,
+                              data: tbl.map((r, i) => [i, r.q05, r.q95]),
+                              encode: { x: [1, 2], y: 0 }, itemStyle: { color: '#5b8ff9', opacity: 0.5 }, z: 1 },
+                            { name: '确定性点估计', type: 'scatter',
+                              data: tbl.map((r, i) => [i, r.point_estimate]),
+                              symbolSize: 5, itemStyle: { color: '#111827' }, z: 2 },
+                            { name: 'UQ中位数', type: 'scatter',
+                              data: tbl.map((r, i) => [i, r.median]),
+                              symbol: 'rect', symbolSize: 5, itemStyle: { color: '#d97706' }, z: 2 }
+                        ]
+                    });
+                };
+                if (window.echarts) loadChart();
+                else {
+                    let ld = document.getElementById('fm-echarts-loader');
+                    if (!ld) {
+                        ld = document.createElement('script');
+                        ld.id = 'fm-echarts-loader';
+                        ld.src = './lib/echarts/echarts.min.js';
+                        document.head.appendChild(ld);
+                    }
+                    const wait = () => { if (target.isConnected === false) return; if (window.echarts) loadChart(); else setTimeout(wait, 200); };
+                    wait();
+                }
+            })
+            .catch(e => {
+                if (target.isConnected === false) return;
+                target.innerHTML = '';
+                target.appendChild(h('div', { class: 'wb-hint' }, '加载UQ明细失败:' + e.message));
+            });
+    }
+
     /** 列名族分组:识别 测量/起点/辨识 三件套(_meas/_base/_final 等后缀);返回 [{name, cols:{meas,base,final}}]。 */
     function groupSeriesColumns(keys) {
         const SUF = [
@@ -1714,83 +1805,8 @@ window.Workbench = (() => {
                         newUqBtn(false)));
 
                     const uqDetailHolder = h('div', { style: 'margin-top:10px' });
-                    const showUqDetail = (r, into) => {
-                        const target = into || uqDetailHolder;
-                        target.innerHTML = '';
-                        target.appendChild(h('div', { class: 'wb-hint' }, '正在加载 ' + (r.runId || r.id) + ' 明细...'));
-                        window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id)
-                                + '/uq-records/' + encodeURIComponent(r.id) + '/detail')
-                            .then(resp => {
-                                const d = resp && (resp.success || resp.code === 200) ? resp.data : null;
-                                const tbl = d && (d.parameterTable || (d.delivery && d.delivery.parameterTable));
-                                target.innerHTML = '';
-                                if (!Array.isArray(tbl) || !tbl.length) {
-                                    target.appendChild(h('div', { class: 'wb-hint' }, '明细中未包含参数区间表。'));
-                                    return;
-                                }
-                                target.appendChild(h('div', { class: 'wb-hint', style: 'margin:2px 0 6px' },
-                                    '共 ' + tbl.length + ' 个参数;q05–q95为后验样本90%区间;黑色点=确定性点估计,橙色方块=UQ中位数;区间越窄=该参数辨识越充分。'));
-                                const chartHost = h('div', { style: 'width:100%;height:' + Math.max(360, tbl.length * 16 + 150) + 'px;border:1px solid #e5e7eb;border-radius:6px' });
-                                target.appendChild(chartHost);
-                                target.appendChild(h('div', { class: 'wb-section-title', style: 'margin:14px 0 6px' }, '参数明细(全量)'));
-                                target.appendChild(dataTable(tbl, { maxRows: tbl.length + 1 }));
-                                const loadChart = () => {
-                                    if (!window.echarts) { setTimeout(loadChart, 200); return; }
-                                    const chart = window.echarts.init(chartHost);
-                                    const renderItem = (params, api) => {
-                                        const idx = api.value(0);
-                                        const lo = api.coord([api.value(1), idx]);
-                                        const hi = api.coord([api.value(2), idx]);
-                                        const barH = api.size([0, 1])[1] * 0.45;
-                                        return { type: 'rect', shape: { x: Math.min(lo[0], hi[0]), y: lo[1] - barH / 2, width: Math.max(2, Math.abs(hi[0] - lo[0])), height: barH }, style: api.style() };
-                                    };
-                                    chart.setOption({
-                                        title: { text: '参数95%置信区间(后验样本分位数)', left: 10, top: 4, textStyle: { fontSize: 13 } },
-                                        tooltip: {
-                                            trigger: 'item',
-                                            formatter: p => {
-                                                const row = tbl[p.dataIndex] || {};
-                                                return (row.parameter || '') + '<br/>点估计: ' + (+row.point_estimate).toPrecision(4)
-                                                    + '<br/>中位数: ' + (+row.median).toPrecision(4)
-                                                    + '<br/>q05–q95: ' + (+row.q05).toPrecision(4) + ' ~ ' + (+row.q95).toPrecision(4)
-                                                    + '<br/>边界: [' + row.lower_bound + ', ' + row.upper_bound + ']';
-                                            }
-                                        },
-                                        grid: { left: 130, right: 70, top: 36, bottom: 24 },
-                                        xAxis: { type: 'value', scale: true, name: '修正量', nameLocation: 'middle' },
-                                        yAxis: { type: 'category', data: tbl.map(r => r.parameter), inverse: true, axisLabel: { fontSize: 10 } },
-                                        dataZoom: [{ type: 'inside' }, { type: 'slider', right: 12, top: 36, bottom: 20, width: 16 }],
-                                        series: [
-                                            { name: 'q05–q95', type: 'custom', renderItem: renderItem,
-                                              data: tbl.map((r, i) => [i, r.q05, r.q95]),
-                                              encode: { x: [1, 2], y: 0 }, itemStyle: { color: '#5b8ff9', opacity: 0.5 }, z: 1 },
-                                            { name: '确定性点估计', type: 'scatter',
-                                              data: tbl.map((r, i) => [i, r.point_estimate]),
-                                              symbolSize: 5, itemStyle: { color: '#111827' }, z: 2 },
-                                            { name: 'UQ中位数', type: 'scatter',
-                                              data: tbl.map((r, i) => [i, r.median]),
-                                              symbol: 'rect', symbolSize: 5, itemStyle: { color: '#d97706' }, z: 2 }
-                                        ]
-                                    });
-                                };
-                                if (window.echarts) loadChart();
-                                else {
-                                    let ld = document.getElementById('fm-echarts-loader');
-                                    if (!ld) {
-                                        ld = document.createElement('script');
-                                        ld.id = 'fm-echarts-loader';
-                                        ld.src = './lib/echarts/echarts.min.js';
-                                        document.head.appendChild(ld);
-                                    }
-                                    const wait = () => { if (window.echarts) loadChart(); else setTimeout(wait, 200); };
-                                    wait();
-                                }
-                            })
-                            .catch(e => {
-                                target.innerHTML = '';
-                                target.appendChild(h('div', { class: 'wb-hint' }, '加载UQ明细失败:' + e.message));
-                            });
-                    };
+                    /* 区间表渲染收敛到公共函数(任务页「已有评估」列表同款): */
+                    const showUqDetail = (r, into) => openUqResultDetail(ctx.project.id, r, into || uqDetailHolder);
 
                     const uqTbl = h('table', { class: 'wb-table', style: 'max-width:1180px' },
                         h('tr', null, ['', '评估记录 / 方法', '采样设置', '计算/统计状态', '实际耗时', '输出传播', ''].map((x, i) =>
@@ -3766,7 +3782,7 @@ window.Workbench = (() => {
             } }, '暂停');
             refs.btnStop = h('button', {
                 class: 'wb-btn wb-btn-outline', style: 'display:none',
-                onclick: () => confirmDialog('结束本次计算?将执行normal_stop并保存结果。', { title: '结束计算', okText: '结束' })
+                onclick: () => confirmDialog('结束本次计算?将终止推进并保存已算历程,不会替你执行发动机停车(要物理停车请用「正常停车」)。', { title: '结束计算', okText: '结束' })
                     .then(ok => { if (ok) cmd('stop'); })
             }, '结束计算');
             refs.btnSaveTop = h('button', {
@@ -4080,7 +4096,12 @@ window.Workbench = (() => {
             if (last && S.lastReceiptId !== last.requestId) {
                 S.lastReceiptId = last.requestId;
                 if (last.state === 'rejected' && ['READY', 'RUNNING', 'PAUSED'].includes(S.phase)) {
-                    toast(actionCn(last) + '被拒绝:' + (last.reason || '未知原因'), 'error');
+                    const raw = last.reason || '未知原因';
+                    // 断油闭锁后停车链必被拒(合同要求先确认物理停转);直接点明"想结束计算该按哪个"
+                    const reason = /断油闭锁/.test(raw)
+                        ? raw + '。已断油时不能再走正常停车:要结束本次计算请直接点「结束计算」;物理停转后用「确认断油锁存」复位。'
+                        : raw;
+                    toast(actionCn(last) + '被拒绝:' + reason, 'error');
                 }
             }
             refs.receiptBar.style.display = last ? 'flex' : 'none';
@@ -4121,7 +4142,7 @@ window.Workbench = (() => {
             if (cutLatched && S.phase === 'PAUSED') hint = '⚠ 断油请求已锁存,计算仍暂停。继续时先执行切断,当前仪表不提前归零。';
             else if (cutLatched) hint = '⚠ 断油已锁存:切断已生效,一般操作不能覆盖;物理停转后可确认复位。';
             else if (S.phase === 'READY') hint = '会话已就绪;油门位置与起动命令分开:置慢车不自动起动,置运行不绕过暖机;Ng稳定暖机60秒后转入Np控制。';
-            else if (S.phase === 'PAUSED') hint = '计算暂停在 ' + Number(t).toFixed(3) + ' s。转速、燃油和热状态保持此刻值,可保存完整快照;结束计算会自动恢复推进并在停转后收尾保存。';
+            else if (S.phase === 'PAUSED') hint = '计算暂停在 ' + Number(t).toFixed(3) + ' s。转速、燃油和热状态保持此刻值,可保存完整快照;结束计算会直接终止推进并保存已算历程,不会替你执行停车。';
             else if (S.phase === 'ENDED') hint = '物理停转和数值结束均已确认。本次输出、指令和完整状态已保存;可前往「本次结果」查看五类内容。';
             else if (S.phase === 'FAILED') hint = '运行异常终止;' + (S.message || '') + ' 可在「本次结果」查看已保存内容。';
             else if (live.mode === 'warmup') hint = '稳定暖机中,完成后进入慢车交接。当前不允许施加新负载。';
@@ -6383,7 +6404,7 @@ window.Workbench = (() => {
                 }, isRun ? '⏸ 暂停' : '▶ 继续'));
                 actions.appendChild(h('button', {
                     class: 'wb-btn wb-btn-outline',
-                    onclick: () => { if (!S._busyAction) { S.message = '已请求结束;等待主步生效'; renderAll(); sendCmd('stop', 0); } }
+                    onclick: () => { if (!S._busyAction) { S.message = '已请求结束计算;终止推进后保存'; renderAll(); sendCmd('stop', 0); } }
                 }, '□ 结束计算'));
             } else if (S.phase === 'READY') {
                 // 09-12:准备就绪后常驻"开始仿真";检查配置回到总控表单核对
@@ -7075,6 +7096,7 @@ window.Workbench = (() => {
     return {
         ICONS, DEMO, WORKBENCHES, pages, h, toast, confirmDialog, showFilePreview,
         lineChart, timelineChart, timelinePreviewBlock, chartLegend, dataTable, groupSeriesColumns, numericColumns, toNum,
+        openUqResultDetail,
         /** 渲染页面:workbenchKey + navKey → DOM */
         renderPage(workbenchKey, navKey, ctx) {
             const fn = pages[workbenchKey + '.' + navKey];

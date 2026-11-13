@@ -2726,32 +2726,56 @@
                 return kv;
             }
 
-            /** 已有评估记录列表(02-05:同一模型/任务下的多份评估,方法/条件/状态独立)。 */
+            /** 已有评估记录列表(02-05:同一模型/任务下的多份评估,方法/条件/状态独立)。
+             *  点「查看结果」把本卡整体切换成该次评估的结果视图(带返回),不在列表下方追加。 */
             function uqRecordList() {
-                const box = WB().h('div', { class: 'wb-card', style: 'padding:14px;max-width:1180px' },
-                    WB().h('div', { class: 'wb-section-title', style: 'margin-bottom:8px' }, '此任务的评估记录'));
-                const holder = WB().h('div', null, WB().h('div', { class: 'wb-hint' }, '正在加载...'));
-                box.appendChild(holder);
-                window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id || '') + '/uq-records')
-                    .then(resp => {
-                        const list = resp && (resp.success || resp.code === 200) && Array.isArray(resp.data) ? resp.data : [];
-                        const mine = list.filter(r => r.taskId === state.task.id);
-                        holder.innerHTML = '';
-                        if (!mine.length) {
-                            holder.appendChild(WB().h('div', { class: 'wb-hint' }, '暂无评估记录。'));
-                            return;
-                        }
-                        holder.appendChild(WB().h('table', { class: 'wb-table' },
-                            WB().h('tr', null, ['运行标识', '方法', '粒子数', '状态', '开始时间', '说明'].map(x => WB().h('th', null, x))),
-                            mine.map(r => WB().h('tr', null,
-                                WB().h('td', null, r.runId || r.id),
-                                WB().h('td', null, r.method || '—'),
-                                WB().h('td', null, r.particleCount || '默认'),
-                                WB().h('td', null, r.status === 'COMPLETED' ? '已完成' : r.status === 'FAILED' ? '失败' : (r.status || '—')),
-                                WB().h('td', { class: 'wb-hint' }, r.startedAt ? new Date(r.startedAt).toLocaleString() : '—'),
-                                WB().h('td', { class: 'wb-hint' }, r.message || '—')))));
-                    })
-                    .catch(e => { holder.innerHTML = ''; holder.appendChild(WB().h('div', { class: 'wb-hint' }, '加载失败:' + e.message)); });
+                const box = WB().h('div', { class: 'wb-card', style: 'padding:14px;max-width:1180px' });
+                const renderList = () => {
+                    box.innerHTML = '';
+                    box.appendChild(WB().h('div', { class: 'wb-section-title', style: 'margin-bottom:8px' }, '此任务的评估记录'));
+                    const holder = WB().h('div', null, WB().h('div', { class: 'wb-hint' }, '正在加载...'));
+                    box.appendChild(holder);
+                    window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id || '') + '/uq-records')
+                        .then(resp => {
+                            const list = resp && (resp.success || resp.code === 200) && Array.isArray(resp.data) ? resp.data : [];
+                            const mine = list.filter(r => r.taskId === state.task.id);
+                            holder.innerHTML = '';
+                            if (!mine.length) {
+                                holder.appendChild(WB().h('div', { class: 'wb-hint' }, '暂无评估记录。'));
+                                return;
+                            }
+                            holder.appendChild(WB().h('table', { class: 'wb-table' },
+                                WB().h('tr', null, ['运行标识', '方法', '粒子数', '状态', '开始时间', '说明', '操作'].map(x => WB().h('th', null, x))),
+                                mine.map(r => WB().h('tr', { class: 'clickable', onclick: () => {
+                                    if (r.status === 'COMPLETED') showDetail(r);
+                                    else WB().toast(r.status === 'FAILED' ? '该次评估失败:' + (r.message || '见本页评估日志') : '该次评估尚未完成,暂无结果明细', 'info');
+                                } },
+                                    WB().h('td', null, r.runId || r.id),
+                                    WB().h('td', null, r.method || '—'),
+                                    WB().h('td', null, r.particleCount || '默认'),
+                                    WB().h('td', null, r.status === 'COMPLETED' ? '已完成' : r.status === 'FAILED' ? '失败' : (r.status || '—')),
+                                    WB().h('td', { class: 'wb-hint' }, r.startedAt ? new Date(r.startedAt).toLocaleString() : '—'),
+                                    WB().h('td', { class: 'wb-hint' }, r.message || '—'),
+                                    WB().h('td', null, r.status === 'COMPLETED' ? WB().h('button', {
+                                        class: 'wb-btn wb-btn-outline', style: 'padding:3px 10px;font-size:12px',
+                                        onclick: ev => { ev.stopPropagation(); showDetail(r); }
+                                    }, '查看结果') : WB().h('span', { class: 'wb-hint' }, '—'))))));
+                        })
+                        .catch(e => { holder.innerHTML = ''; holder.appendChild(WB().h('div', { class: 'wb-hint' }, '加载失败:' + e.message)); });
+                };
+                /* 点哪条记录,本卡就显示哪条的结果;列表由上方「查看此模型的已有评估」
+                 *  按钮重建(每次点击都重新拉取,即最新列表),无需单独的返回按钮。 */
+                const showDetail = (r) => {
+                    box.innerHTML = '';
+                    box.appendChild(WB().h('div', { style: 'display:flex;align-items:baseline;gap:12px;margin-bottom:8px' },
+                        WB().h('div', { class: 'wb-section-title', style: 'margin:0' },
+                            '评估结果 · ' + (r.runId || r.id) + ' · 方法' + (r.method || '—')),
+                        WB().h('span', { class: 'wb-hint' }, '点上方「查看此模型的已有评估」重新加载记录列表')));
+                    const target = WB().h('div');
+                    box.appendChild(target);
+                    WB().openUqResultDetail(ctx.project.id, r, target);
+                };
+                renderList();
                 return box;
             }
         }
