@@ -1764,30 +1764,55 @@ public class EngineWorkbenchController {
         }
     }
 
-    @ApiOperation("UQ区间结果表(04-15:解析区间交付Excel,返回表头与前100行+追溯字段;sheet可切换页签)")
+    @ApiOperation("UQ区间结果表(04-15:解析区间交付Excel,返回表头与前100行+追溯字段;sheet可切换页签;recordId指定历史评估记录)")
     @GetMapping("/projects/{pid}/tasks/{tid}/uq/interval-table")
     @RequirePermission(Permission.READ)
     public Result<Map<String, Object>> uqIntervalTable(@PathVariable("pid") String pid,
                                                        @PathVariable("tid") String tid,
-                                                       @org.springframework.web.bind.annotation.RequestParam(value = "sheet", required = false) String sheet) {
+                                                       @org.springframework.web.bind.annotation.RequestParam(value = "sheet", required = false) String sheet,
+                                                       @org.springframework.web.bind.annotation.RequestParam(value = "recordId", required = false) String recordId) {
         try {
             EngineModels.ModelingTask t = store.getTask(pid, tid);
             if (t == null) return Result.error("任务不存在");
             String denied = accessDenied(store.getProject(pid));
             if (denied != null) return Result.error(denied);
-            Map<String, Object> uqRes = t.getUqResult();
-            if (uqRes == null || uqRes.get("workbook") == null) {
-                return Result.error("尚无UQ区间交付(评估完成后再查看)");
+            File wb;
+            EngineModels.UqRecord rec = null;
+            Map<String, Object> uqRes = null;
+            if (recordId != null && !recordId.trim().isEmpty()) {
+                // 指定历史评估记录:用该记录自己的交付Excel,追溯字段从记录取
+                rec = store.getUqRecord(pid, recordId.trim());
+                if (rec == null) return Result.error("评估记录不存在");
+                if (rec.getDeliveryFile() != null && new File(rec.getDeliveryFile()).isFile()) {
+                    wb = new File(rec.getDeliveryFile());
+                } else {
+                    wb = tc24Service.findUqDeliveryForRecord(pid, rec);
+                }
+                if (wb == null || !wb.isFile()) return Result.error("该评估记录的区间交付Excel不存在或已移动");
+            } else {
+                uqRes = t.getUqResult();
+                if (uqRes == null || uqRes.get("workbook") == null) {
+                    return Result.error("尚无UQ区间交付(评估完成后再查看)");
+                }
+                wb = new File(String.valueOf(uqRes.get("workbook")));
+                if (!wb.isFile()) return Result.error("区间交付文件不存在: " + wb.getName());
             }
-            File wb = new File(String.valueOf(uqRes.get("workbook")));
-            if (!wb.isFile()) return Result.error("区间交付文件不存在: " + wb.getName());
             Map<String, Object> out = previewFileMap(wb, wb.getName(), "xlsx", wb.length(), null, sheet);
             // 追溯字段随表下发,前端按04-15口径展示来源
-            for (String k : new String[]{"method", "runTag", "intervalStatus", "sourceWorkbook", "outputRoot", "reportRoot"}) {
-                if (uqRes.get(k) != null) out.put(k, uqRes.get(k));
+            if (rec != null) {
+                out.put("recordMode", true);
+                out.put("method", rec.getMethod());
+                out.put("runTag", rec.getRunId());
+                if (rec.getMessage() != null) out.put("intervalStatus", rec.getMessage());
+                out.put("uqStartedAt", rec.getStartedAt());
+                out.put("uqFinishedAt", rec.getFinishedAt());
+            } else {
+                for (String k : new String[]{"method", "runTag", "intervalStatus", "sourceWorkbook", "outputRoot", "reportRoot"}) {
+                    if (uqRes.get(k) != null) out.put(k, uqRes.get(k));
+                }
+                out.put("uqStartedAt", t.getUqStartedAt());
+                out.put("uqFinishedAt", t.getUqFinishedAt());
             }
-            out.put("uqStartedAt", t.getUqStartedAt());
-            out.put("uqFinishedAt", t.getUqFinishedAt());
             return Result.success(out);
         } catch (Exception e) {
             log.error("UQ区间表解析失败", e);
@@ -1879,9 +1904,15 @@ public class EngineWorkbenchController {
             if (!detail.isFile()) {
                 File excel = tc24Service.findUqDeliveryForRecord(pid, r);
                 if (excel == null) return Result.error("未找到UQ交付Excel,无法生成结果明细");
-                detail = tc24Service.readExcelDetail(pid, excel,
-                        new File(excel.getParentFile(), r.getRunId() + "_dmg_uq_detail.json"));
-                if (detail == null) return Result.error("结果明细生成失败(回读程序未通过),请查看运行日志");
+                // 根因透出:回读失败的MATLAB断言/异常消息直接进响应,不再只给笼统提示
+                StringBuilder err = new StringBuilder();
+                detail = tc24Service.readExcelDetailVerbose(pid, excel,
+                        new File(excel.getParentFile(), r.getRunId() + "_dmg_uq_detail.json"), err);
+                if (detail == null) {
+                    String cause = err.length() > 0 ? err.toString() : "回读程序未通过";
+                    return Result.error("结果明细生成失败: " + cause
+                            + ";详细堆栈见服务端日志(结果明细回读失败)");
+                }
                 r.setDetailFile(detail.getAbsolutePath());
                 store.saveUqRecord(r);
             }

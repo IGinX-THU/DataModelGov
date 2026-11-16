@@ -516,7 +516,9 @@ window.Workbench = (() => {
                     return;
                 }
                 target.appendChild(h('div', { class: 'wb-hint', style: 'margin:2px 0 6px' },
-                    '共 ' + tbl.length + ' 个参数;q05–q95为后验样本90%区间;黑色点=确定性点估计,橙色方块=UQ中位数;区间越窄=该参数辨识越充分。'));
+                    d.message
+                        ? '共 ' + tbl.length + ' 个参数;' + String(d.message)
+                        : '共 ' + tbl.length + ' 个参数;q05–q95为后验样本90%区间;黑色点=确定性点估计,橙色方块=UQ中位数;区间越窄=该参数辨识越充分。'));
                 const chartHost = h('div', { style: 'width:100%;height:' + Math.max(360, tbl.length * 16 + 150) + 'px;border:1px solid #e5e7eb;border-radius:6px' });
                 target.appendChild(chartHost);
                 target.appendChild(h('div', { class: 'wb-section-title', style: 'margin:14px 0 6px' }, '参数明细(全量)'));

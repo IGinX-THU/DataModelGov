@@ -544,21 +544,139 @@ public class Tc24Service {
             viewMat = alt;
         }
         File out = new File(viewMat.getParentFile(), detailFileName);
-        return runReadAdapter(viewMat.getAbsolutePath(), out, fields, projectId) ? out : null;
+        return runReadAdapter(viewMat.getAbsolutePath(), out, fields, projectId, null) ? out : null;
     }
 
     /** 回读交付 Excel(UQ parameterTable 视图)生成明细 JSON。 */
     public File readExcelDetail(String projectId, File excel, File out) throws IOException {
+        return readExcelDetailVerbose(projectId, excel, out, null);
+    }
+
+    /**
+     * 带根因透出的回读:errorOut 非空时,失败根因(MATLAB断言消息/异常message)写回调用方,
+     * 供接口响应直接给出可读原因;堆栈仍由内部 log.warn 全量打印。
+     */
+    public File readExcelDetailVerbose(String projectId, File excel, File out, StringBuilder errorOut)
+            throws IOException {
+        // F34局部D工件(自演化/稳态飞参UQ的交付):Manifest合同为F34_LOCAL_D_EXCEL_V1(路由列叫
+        // model_route,无route列),TC24通用回读合同不认,须走交付包自带免DLL的inspect只读入口
+        if (isF34MethodDDelivery(excel)) {
+            return runF34DReadAdapter(excel.getAbsolutePath(), out, errorOut, projectId) ? out : null;
+        }
         // TC27 UQ交付(tc27_uq_*/tc27_deterministic_*):Manifest结构与TC24不同,须用TC27专用读取器
         String name = excel.getName().toLowerCase();
         if (name.startsWith("tc27_uq_") || name.startsWith("tc27_deterministic_")) {
-            return runTc27ReadAdapter(excel.getAbsolutePath(), out, projectId) ? out : null;
+            return runTc27ReadAdapter(excel.getAbsolutePath(), out, projectId, errorOut) ? out : null;
         }
-        return runReadAdapter(excel.getAbsolutePath(), out, null, projectId) ? out : null;
+        return runReadAdapter(excel.getAbsolutePath(), out, null, projectId, errorOut) ? out : null;
+    }
+
+    /** F34局部D交付探测:xlsx 的 sheet 名同时含 LocalDistribution/ParameterDictionary/ShapeNodeMap
+     *  (sht_f34_method_d_artifacts 写出的工件;TC24/TC27 交付无此组合)。 */
+    private boolean isF34MethodDDelivery(File excel) {
+        try (java.util.zip.ZipFile zip = new java.util.zip.ZipFile(excel)) {
+            java.util.zip.ZipEntry entry = zip.getEntry("xl/workbook.xml");
+            if (entry == null) return false;
+            String wb = org.apache.commons.io.IOUtils.toString(
+                    zip.getInputStream(entry), StandardCharsets.UTF_8);
+            return wb.contains("LocalDistribution") && wb.contains("ParameterDictionary")
+                    && wb.contains("ShapeNodeMap");
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * F34局部D交付回读:走交付包自带免DLL的 sht_f34_method_d_artifacts('inspect',file,'') 只读入口
+     * (local_read 不校验运行资产、不打开DLL),产出与TC24 UQ明细同构的 parameterTable。
+     * 语义:局部高斯边缘近似——中位数=后验均值(theta空间);q05–q95=边缘95%区间(±1.959964σ);
+     * 点估计=参考基线(ParameterDictionary.center_value,即theta=0);区间说明经 intervalNote 传给前端。
+     */
+    private boolean runF34DReadAdapter(String resultFile, File detailOut, StringBuilder errorOut,
+                                       String projectId) throws IOException {
+        if (detailOut.exists()) return true; // 已生成过,直接复用
+        try {
+            File programCopy = ensureTc24Source(projectId);
+            File adapterDir = new File(System.getProperty("java.io.tmpdir"), "datamodelgov-read-adapter");
+            if (!adapterDir.exists() && !adapterDir.mkdirs()) throw new IOException("无法创建回读适配器目录");
+            StringBuilder m = new StringBuilder();
+            m.append("function r = dmg_f34_d_read(configFile)\n");
+            m.append("c = jsondecode(fileread(configFile));\n");
+            m.append("addpath('").append(programCopy.getAbsolutePath().replace(File.separatorChar, '/'))
+                    .append("', '-begin');\n");
+            m.append("rehash;\n");
+            m.append("pkg = sht_f34_method_d_artifacts('inspect', c.resultFile, '');\n");
+            m.append("p = pkg.context.parameterContract;\n");
+            m.append("d = pkg.distribution;\n");
+            m.append("n = double(d.explicitDimension);\n");
+            m.append("map = double(d.jointMean(1:n));\n");
+            m.append("sd = sqrt(max(diag(double(d.jointCovariance(1:n,1:n))),0));\n");
+            m.append("z95 = 1.959963984540054;\n");
+            m.append("pe = nan(n,1);\n");
+            m.append("if ismember('center_value',p.Properties.VariableNames), pe = double(p.center_value); end\n");
+            m.append("unit = strings(n,1); pname = strings(n,1);\n");
+            m.append("if ismember('unit',p.Properties.VariableNames), unit = string(p.unit); end\n");
+            m.append("if ismember('name',p.Properties.VariableNames), pname = string(p.name); end\n");
+            m.append("T = table(cellstr(string(p.parameter_id)),cellstr(pname),cellstr(unit),pe,map, ...\n");
+            m.append("    map-z95.*sd,map+z95.*sd,double(p.lower_bound),double(p.upper_bound), ...\n");
+            m.append("    'VariableNames',{'parameter','point_estimate','unit','median','q05','q95', ...\n");
+            m.append("    'lower_bound','upper_bound'});\n");
+            m.append("man = readtable(c.resultFile,'Sheet','Manifest','PreserveVariableNames',true);\n");
+            m.append("mf = struct();\n");
+            m.append("fns = man.Properties.VariableNames;\n");
+            m.append("for k = 1:numel(fns)\n");
+            m.append("    col = man.(fns{k});\n");
+            m.append("    if numel(col) >= 1 && iscell(col), mf.(fns{k}) = char(string(col{1,1}));\n");
+            m.append("    elseif numel(col) >= 1, mf.(fns{k}) = char(string(col(1,1))); end\n");
+            m.append("end\n");
+            m.append("view = struct('kind','f34_local_d_delivery', ...\n");
+            m.append("    'parameterTable',table2struct(T),'message',c.intervalNote, ...\n");
+            m.append("    'delivery',struct('manifest',mf,'workbookFile',c.resultFile, ...\n");
+            m.append("    'converged',logical(d.converged), ...\n");
+            m.append("    'qualityLevel',cellstr(string(d.qualityLevel)), ...\n");
+            m.append("    'intervalInterpretation',cellstr(string(d.intervalInterpretation))));\n");
+            m.append("payload = jsonencode(view);\n");
+            m.append("fid = fopen(c.detailFile, 'w', 'n', 'UTF-8');\n");
+            m.append("fwrite(fid, payload, 'char');\n");
+            m.append("fclose(fid);\n");
+            m.append("r = 'ok';\n");
+            m.append("end\n");
+            Files.write(new File(adapterDir, "dmg_f34_d_read.m").toPath(),
+                    m.toString().getBytes(StandardCharsets.UTF_8));
+
+            Map<String, Object> cfg = new LinkedHashMap<>();
+            cfg.put("resultFile", resultFile.replace(File.separatorChar, '/'));
+            cfg.put("detailFile", detailOut.getAbsolutePath().replace(File.separatorChar, '/'));
+            // 中文说明经 config JSON 传入(ESCAPE_NON_ASCII 转义),避免 .m 文件编码问题
+            cfg.put("intervalNote", "局部D高斯近似交付:中位数与q05–q95为局部后验(相对参考中心的修正量空间,"
+                    + "q05–q95为边缘95%区间±1.96σ);黑色点=参数合同参考中心(center_value);"
+                    + "lower_bound/upper_bound为交付参数合同的物理边界;区间越窄=该参数辨识越充分。"
+                    + "完整局部联合矩见交付Excel的LocalDistribution表。");
+            File configFile = new File(adapterDir, "f34-read-config.json");
+            com.fasterxml.jackson.databind.ObjectMapper om = new com.fasterxml.jackson.databind.ObjectMapper();
+            om.configure(com.fasterxml.jackson.core.JsonGenerator.Feature.ESCAPE_NON_ASCII, true);
+            Files.write(configFile.toPath(), om.writerWithDefaultPrettyPrinter().writeValueAsBytes(cfg));
+            MatlabFunctionRunner runner = new MatlabFunctionRunner(adapterDir, "dmg_f34_d_read",
+                    new Object[]{configFile.getAbsolutePath()},
+                    new File(adapterDir, "f34-read.log"), enginePool,
+                    new MatlabFunctionRunner.ProgressCancellationSink() {
+                        @Override public void onProgress(String message) { MatlabLogRing.append(message); }
+                        @Override public boolean isCancellationRequested() { return false; }
+                    });
+            runner.run();
+            return detailOut.exists();
+        } catch (Exception e) {
+            if (errorOut != null) {
+                errorOut.append(e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+            }
+            log.warn("F34局部D交付明细回读失败: {}", resultFile, e);
+            return false;
+        }
     }
 
     /** 生成并执行 task='read' 适配器;fields 非空时只保留白名单顶层字段。 */
-    private boolean runReadAdapter(String resultFile, File detailOut, String[] fields, String projectId) throws IOException {
+    private boolean runReadAdapter(String resultFile, File detailOut, String[] fields, String projectId,
+                                   StringBuilder errorOut) throws IOException {
         if (detailOut.exists()) return true; // 已生成过,直接复用
         try {
             File programCopy = ensureTc24Source(projectId);
@@ -638,6 +756,9 @@ public class Tc24Service {
             runner.run();
             return detailOut.exists();
         } catch (Exception e) {
+            if (errorOut != null) {
+                errorOut.append(e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+            }
             log.warn("结果明细回读失败: {}", resultFile, e);
             return false;
         }
@@ -1130,7 +1251,8 @@ public class Tc24Service {
 
     /** TC27 UQ交付扫描:交付Excel可能落在report_outputs等较深目录,走6层取最新。 */
     /** dmg_tc27_read.m:TC27 UQ交付的参数区间表(ParameterDictionary逐参数 + PosteriorSamples加权分位数)。 */
-    private boolean runTc27ReadAdapter(String resultFile, File detailOut, String projectId) throws IOException {
+    private boolean runTc27ReadAdapter(String resultFile, File detailOut, String projectId,
+                                       StringBuilder errorOut) throws IOException {
         // schema自检:旧版明细(无posteriorQ025字段)视为无效,按新schema重新生成
         if (detailOut.exists()) {
             try {
@@ -1197,7 +1319,10 @@ public class Tc24Service {
             runner.run();
             return detailOut.exists();
         } catch (Exception e) {
-            log.warn("TC27结果明细回读失败: {}", e.getMessage());
+            if (errorOut != null) {
+                errorOut.append(e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+            }
+            log.warn("TC27结果明细回读失败: {}", resultFile, e);
             return false;
         }
     }

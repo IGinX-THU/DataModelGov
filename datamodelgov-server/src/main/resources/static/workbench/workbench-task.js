@@ -2142,14 +2142,22 @@
             const wrap = WB().h('div', null);
             const uqRunning = t.uqStatus === 'EXECUTING' || t.uqStatus === 'PREPARING';
 
-            // 04-16连接(双向):任何状态都可查看此任务的已有评估记录
+            // 04-16连接(双向):任何状态都可查看此任务的已有评估记录。
+            // 列表只做选择器:点哪条,下方内容区(uqMainBox)就渲染哪条的结果,列表保持不动。
             const uqPrevBox = WB().h('div', null);
+            const uqMainBox = WB().h('div', null);
+            const showRecordResult = (r) => {
+                // 用原有「UQ 结果」wb-section 结构渲染所选记录,不换展示形态
+                uqMainBox.innerHTML = '';
+                uqMainBox.appendChild(uqResultArea(t, r));
+            };
             wrap.appendChild(WB().h('div', { class: 'wb-actions-row', style: 'margin-bottom:10px' },
                 WB().h('button', {
                     class: 'wb-btn wb-btn-outline',
-                    onclick: () => { uqPrevBox.innerHTML = ''; uqPrevBox.appendChild(uqRecordList()); }
+                    onclick: () => { uqPrevBox.innerHTML = ''; uqPrevBox.appendChild(uqRecordList(showRecordResult)); }
                 }, '查看此模型的已有评估')));
             wrap.appendChild(uqPrevBox);
+            wrap.appendChild(uqMainBox);
 
             // 关闭之前的SSE连接
             if (state.uqLogEventSource) {
@@ -2163,9 +2171,9 @@
             if (uqRunning && !state.es && !state.timer) startPolling();
 
             if (uqRunning || (t.uqStatus && !state.uqNew)) {
-                wrap.appendChild(uqStatusArea(t, uqRunning));
+                uqMainBox.appendChild(uqStatusArea(t, uqRunning));
                 if (!uqRunning && t.uqStatus === 'COMPLETED') {
-                    wrap.appendChild(uqResultArea(t));
+                    uqMainBox.appendChild(uqResultArea(t));
                 }
                 wrap.appendChild(WB().h('div', { class: 'wb-actions-row', style: 'margin-top:16px' },
                     WB().h('button', {
@@ -2272,7 +2280,7 @@
                 wrap.appendChild(WB().h('div', { class: 'wb-actions-row', style: 'max-width:1180px;margin-top:16px' },
                     WB().h('button', {
                         class: 'wb-btn wb-btn-outline',
-                        onclick: () => { uqPrevBox.innerHTML = ''; uqPrevBox.appendChild(uqRecordList()); }
+                        onclick: () => { uqPrevBox.innerHTML = ''; uqPrevBox.appendChild(uqRecordList(showRecordResult)); }
                     }, '查看已有评估记录'),
                     WB().h('button', {
                         class: 'wb-btn wb-btn-primary disabled', title: '当前交付程序未提供组合瞬态模型的UQ动作'
@@ -2311,7 +2319,7 @@
                     WB().h('div', { class: 'wb-hint', style: 'margin:0' }, '原因:少于2条同类有效记录;完成后保存实际用时。')),
                 WB().h('button', {
                     class: 'wb-btn wb-btn-outline',
-                    onclick: () => { prevDrawer.innerHTML = ''; prevDrawer.appendChild(uqRecordList()); }
+                    onclick: () => { prevDrawer.innerHTML = ''; prevDrawer.appendChild(uqRecordList(showRecordResult)); }
                 }, '查看此模型的已有评估')));
             wrap.appendChild(prevDrawer);
 
@@ -2458,14 +2466,35 @@
             }
 
             /** UQ 结果区(01-09):参数分布区间表(确定性值/后验均值/候选区间分列);明细来自交付Excel回读。 */
-            function uqResultArea(t) {
+            /** UQ结果区(wb-section,结构不变):rec缺省=最新一条完成评估;
+             *  rec指定=渲染所选记录的detail(点「已有评估」列表哪条,这里就是哪条)。 */
+            function uqResultArea(t, rec) {
                 const box = WB().h('div', { class: 'wb-section', style: 'max-width:1180px' });
                 box.appendChild(WB().h('div', { class: 'wb-section-title', style: 'margin-bottom:8px' },
-                    'UQ 结果(' + (t.uqRunId || 'UQ') + ')'));
+                    'UQ 结果(' + (rec ? (rec.runId || rec.id) : (t.uqRunId || 'UQ')) + ')'));
                 box.appendChild(WB().h('div', { class: 'wb-hint', style: 'margin-bottom:10px' },
                     '结果另存,不覆盖确定性估计值;未计算或质量受限的区间如实标注。'));
                 const holder = WB().h('div', null, WB().h('div', { class: 'wb-hint' }, '正在加载参数区间表...'));
                 box.appendChild(holder);
+                if (rec) {
+                    window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id || '')
+                        + '/uq-records/' + encodeURIComponent(rec.id) + '/detail')
+                        .then(resp => {
+                            holder.innerHTML = '';
+                            const d = resp && (resp.success || resp.code === 200) ? resp.data : null;
+                            if (!d) {
+                                holder.appendChild(WB().h('div', { class: 'wb-hint' },
+                                    (resp && resp.message) ? ('该记录明细读取失败: ' + resp.message) : '该记录暂无可渲染的明细。'));
+                                return;
+                            }
+                            renderUqDetail(holder, d, rec);
+                        })
+                        .catch(e => {
+                            holder.innerHTML = '';
+                            holder.appendChild(WB().h('div', { class: 'wb-hint' }, '明细加载失败:' + e.message));
+                        });
+                    return box;
+                }
                 window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id || '') + '/uq-records')
                     .then(resp => {
                         const list = resp && (resp.success || resp.code === 200) && Array.isArray(resp.data) ? resp.data : [];
@@ -2479,7 +2508,7 @@
                         const d = resp && (resp.success || resp.code === 200) ? resp.data : null;
                         if (!d) { holder.appendChild(uqSummaryKv(t)); return; }
                         try {
-                            renderUqDetail(holder, d);
+                            renderUqDetail(holder, d, null);
                         } catch (e) {
                             window.__uqErr = (e && e.stack) || String(e);
                             console.error('renderUqDetail异常', e);
@@ -2517,12 +2546,14 @@
             /** UQ运行结果页(无独立效果图,按旧版steady-model-adapt设计):
              *  Card1 采样摘要指标 / Card2 参数95%置信区间图(ECharts区间条+后验中心+确定性标记)
              *  Card3 结果解释与验收(✓清单) / Card4 输出区间与测量对照表(含覆盖状态列)。 */
-            function renderUqDetail(holder, d) {
+            function renderUqDetail(holder, d, rec) {
                 const dl = (d && d.delivery) || {};
                 const mf = dl.manifest || {};
                 const ptAll = Array.isArray(d.parameterTable) ? d.parameterTable
                     : Array.isArray(dl.parameterTable) ? dl.parameterTable : [];
                 if (!ptAll.length) { holder.appendChild(uqSummaryKv(t)); return; }
+                const st0 = rec ? rec.startedAt : t.uqStartedAt;
+                const st1 = rec ? rec.finishedAt : t.uqFinishedAt;
 
                 /* —— 顶部摘要(真实manifest字段) —— */
                 const metricGrid = WB().h('div', { style: 'display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:10px 0 4px' });
@@ -2534,7 +2565,7 @@
                     ['正式状态', mf.formal_status === 'FORMAL_ACCEPTED' ? '正式验收通过' : (mf.formal_status || '—')],
                     ['参数维度 / 后验样本', (mf.parameter_count || ptAll.length) + ' / ' + (mf.sample_count != null ? mf.sample_count : '—')],
                     ['后验有效样本量 ESS', mf.posterior_ess != null ? Number(mf.posterior_ess).toFixed(1) : '—'],
-                    ['实际计算耗时', t.uqStartedAt && t.uqFinishedAt ? fmtDur((t.uqFinishedAt - t.uqStartedAt) / 1000) : '—']
+                    ['实际计算耗时', st0 && st1 ? fmtDur((st1 - st0) / 1000) : '—']
                 ].forEach(([k, v]) => metricGrid.appendChild(WB().h('div',
                     { style: 'background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:12px 16px' },
                     WB().h('div', { class: 'wb-hint', style: 'margin:0 0 4px' }, k),
@@ -2727,55 +2758,35 @@
             }
 
             /** 已有评估记录列表(02-05:同一模型/任务下的多份评估,方法/条件/状态独立)。
-             *  点「查看结果」把本卡整体切换成该次评估的结果视图(带返回),不在列表下方追加。 */
-            function uqRecordList() {
-                const box = WB().h('div', { class: 'wb-card', style: 'padding:14px;max-width:1180px' });
-                const renderList = () => {
-                    box.innerHTML = '';
-                    box.appendChild(WB().h('div', { class: 'wb-section-title', style: 'margin-bottom:8px' }, '此任务的评估记录'));
-                    const holder = WB().h('div', null, WB().h('div', { class: 'wb-hint' }, '正在加载...'));
-                    box.appendChild(holder);
-                    window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id || '') + '/uq-records')
-                        .then(resp => {
-                            const list = resp && (resp.success || resp.code === 200) && Array.isArray(resp.data) ? resp.data : [];
-                            const mine = list.filter(r => r.taskId === state.task.id);
-                            holder.innerHTML = '';
-                            if (!mine.length) {
-                                holder.appendChild(WB().h('div', { class: 'wb-hint' }, '暂无评估记录。'));
-                                return;
-                            }
-                            holder.appendChild(WB().h('table', { class: 'wb-table' },
-                                WB().h('tr', null, ['运行标识', '方法', '粒子数', '状态', '开始时间', '说明', '操作'].map(x => WB().h('th', null, x))),
-                                mine.map(r => WB().h('tr', { class: 'clickable', onclick: () => {
-                                    if (r.status === 'COMPLETED') showDetail(r);
-                                    else WB().toast(r.status === 'FAILED' ? '该次评估失败:' + (r.message || '见本页评估日志') : '该次评估尚未完成,暂无结果明细', 'info');
-                                } },
-                                    WB().h('td', null, r.runId || r.id),
-                                    WB().h('td', null, r.method || '—'),
-                                    WB().h('td', null, r.particleCount || '默认'),
-                                    WB().h('td', null, r.status === 'COMPLETED' ? '已完成' : r.status === 'FAILED' ? '失败' : (r.status || '—')),
-                                    WB().h('td', { class: 'wb-hint' }, r.startedAt ? new Date(r.startedAt).toLocaleString() : '—'),
-                                    WB().h('td', { class: 'wb-hint' }, r.message || '—'),
-                                    WB().h('td', null, r.status === 'COMPLETED' ? WB().h('button', {
-                                        class: 'wb-btn wb-btn-outline', style: 'padding:3px 10px;font-size:12px',
-                                        onclick: ev => { ev.stopPropagation(); showDetail(r); }
-                                    }, '查看结果') : WB().h('span', { class: 'wb-hint' }, '—'))))));
-                        })
-                        .catch(e => { holder.innerHTML = ''; holder.appendChild(WB().h('div', { class: 'wb-hint' }, '加载失败:' + e.message)); });
-                };
-                /* 点哪条记录,本卡就显示哪条的结果;列表由上方「查看此模型的已有评估」
-                 *  按钮重建(每次点击都重新拉取,即最新列表),无需单独的返回按钮。 */
-                const showDetail = (r) => {
-                    box.innerHTML = '';
-                    box.appendChild(WB().h('div', { style: 'display:flex;align-items:baseline;gap:12px;margin-bottom:8px' },
-                        WB().h('div', { class: 'wb-section-title', style: 'margin:0' },
-                            '评估结果 · ' + (r.runId || r.id) + ' · 方法' + (r.method || '—')),
-                        WB().h('span', { class: 'wb-hint' }, '点上方「查看此模型的已有评估」重新加载记录列表')));
-                    const target = WB().h('div');
-                    box.appendChild(target);
-                    WB().openUqResultDetail(ctx.project.id, r, target);
-                };
-                renderList();
+             *  列表只做选择器,保持不动;点已完成记录 → onPick(r),由页面下方内容区渲染结果。 */
+            function uqRecordList(onPick) {
+                const box = WB().h('div', { class: 'wb-card', style: 'padding:14px;max-width:1180px' },
+                    WB().h('div', { class: 'wb-section-title', style: 'margin-bottom:8px' }, '此任务的评估记录'));
+                const holder = WB().h('div', null, WB().h('div', { class: 'wb-hint' }, '正在加载...'));
+                box.appendChild(holder);
+                window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id || '') + '/uq-records')
+                    .then(resp => {
+                        const list = resp && (resp.success || resp.code === 200) && Array.isArray(resp.data) ? resp.data : [];
+                        const mine = list.filter(r => r.taskId === state.task.id);
+                        holder.innerHTML = '';
+                        if (!mine.length) {
+                            holder.appendChild(WB().h('div', { class: 'wb-hint' }, '暂无评估记录。'));
+                            return;
+                        }
+                        holder.appendChild(WB().h('table', { class: 'wb-table' },
+                            WB().h('tr', null, ['运行标识', '方法', '粒子数', '状态', '开始时间', '说明'].map(x => WB().h('th', null, x))),
+                            mine.map(r => WB().h('tr', { class: 'clickable', onclick: () => {
+                                if (r.status === 'COMPLETED') { if (onPick) onPick(r); }
+                                else WB().toast(r.status === 'FAILED' ? '该次评估失败:' + (r.message || '见本页评估日志') : '该次评估尚未完成,暂无结果明细', 'info');
+                            } },
+                                WB().h('td', null, r.runId || r.id),
+                                WB().h('td', null, r.method || '—'),
+                                WB().h('td', null, r.particleCount || '默认'),
+                                WB().h('td', null, r.status === 'COMPLETED' ? '已完成' : r.status === 'FAILED' ? '失败' : (r.status || '—')),
+                                WB().h('td', { class: 'wb-hint' }, r.startedAt ? new Date(r.startedAt).toLocaleString() : '—'),
+                                WB().h('td', { class: 'wb-hint' }, r.message || '—')))));
+                    })
+                    .catch(e => { holder.innerHTML = ''; holder.appendChild(WB().h('div', { class: 'wb-hint' }, '加载失败:' + e.message)); });
                 return box;
             }
         }
