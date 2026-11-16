@@ -150,8 +150,14 @@
         const api = (p, params) => window.AppConfig.engineGet('projects/' + encodeURIComponent(pid) + '/afo' + p, params);
         const apiPost = (p, body) => window.AppConfig.enginePost('projects/' + encodeURIComponent(pid) + '/afo' + p, body || {});
 
-        const S = window.__WB_AFO__ = window.__WB_AFO__ || {
-            phase: 'IDLE', message: '', error: '', live: null, result: null,
+        // 会话状态按项目隔离缓存:同项目内导航往返保留状态,切换项目各自独立,
+        // 避免上个项目的会话状态(phase/live)残留到本项目页面误导操作(后端已按pid隔离)
+        const S = (() => {
+            const cache = window.__WB_AFO_BY_PID__ = window.__WB_AFO_BY_PID__ || {};
+            if (!cache[pid]) {
+                cache[pid] = {
+                    __pid: pid,
+                    phase: 'IDLE', message: '', error: '', live: null, result: null,
             readonlyRunId: null, readonlyLoading: false,
             cfg: {
                 engineId: ctx.project.engineId || 'ENGINE-001', runId: '',
@@ -173,7 +179,11 @@
             procLost: false, statusOutputDir: null, // D8:心跳长期停止判定"该实例不能续算";D12:会话输出目录(只读)
             applyBusy: false, lastSubmit: null, // 规格3.3:物理输入在途提交/最近提交回执(仅桥接显示,生效仍以applied为准)
             es: null, streamMode: '', pullTimer: null,
-        };
+                };
+            }
+            return cache[pid];
+        })();
+        window.__WB_AFO__ = S; // 兼容调试入口
         S.tab = S.tab || 'main';
 
         /* ---------- 显示配置另存(不改原始数值) ---------- */
@@ -2277,7 +2287,10 @@
         async function startRun() {
             try {
                 S.applyBusy = false; S.lastSubmit = null; S.npDraft = null; // 新会话:清上一次的提交回执与草稿
-                await apiPost('/run', {});
+                const resp = await apiPost('/run', {});
+                if (resp && (resp.success === false || (resp.code != null && Number(resp.code) !== 200))) {
+                    toast('启动被拒绝:' + (resp.message || '无权操作'), 'error'); return;
+                }
                 toast('仿真已启动', 'success');
                 startLoops();
                 refresh(); if (S.streamMode !== 'sse') quickPoll();
@@ -2298,7 +2311,10 @@
             const okc = await W.confirmDialog(msg, { danger: live.saveState !== 'saved', okText: '确认关闭' });
             if (!okc) return;
             try {
-                await apiPost('/close', {});
+                const resp = await apiPost('/close', {});
+                if (resp && (resp.success === false || (resp.code != null && Number(resp.code) !== 200))) {
+                    toast('关闭被拒绝:' + (resp.message || '无权操作'), 'error'); return;
+                }
                 S.phase = 'IDLE'; S.live = null; S.result = null; S.message = ''; S.error = '';
                 S.cfgFrozen = null; S.tab = 'main';
                 S.compare = null; S.compareOverlay = false;
@@ -2326,7 +2342,10 @@
         };
         async function retrySave() {
             try {
-                await apiPost('/save', {});
+                const resp = await apiPost('/save', {});
+                if (resp && (resp.success === false || (resp.code != null && Number(resp.code) !== 200))) {
+                    toast('保存被拒绝:' + (resp.message || '无权操作'), 'error'); return;
+                }
                 toast('已发起保存重试(不重新仿真)', 'info');
                 refresh();
             } catch (e) { toast('保存重试失败:' + e.message, 'error'); }

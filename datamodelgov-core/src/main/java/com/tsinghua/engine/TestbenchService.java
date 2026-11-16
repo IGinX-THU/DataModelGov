@@ -1,6 +1,7 @@
 package com.tsinghua.engine;
 
 import com.mathworks.engine.MatlabEngine;
+import com.tsinghua.auth.util.AuthUtil;
 import com.tsinghua.matlab.MatlabNativeLibrary;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -75,6 +76,8 @@ public class TestbenchService {
         String projectId;
         String runId;
         String engineId;
+        /** 会话发起人(用户名);仅发起人或管理员可 run/command/close */
+        String initiatorUser;
         String outputDir;
         String adapterDir;
         /** PREPARING / READY / RUNNING / PAUSED / ENDED / FAILED / CLOSED */
@@ -195,9 +198,21 @@ public class TestbenchService {
     public Map<String, Object> fullmodeStatus(String projectId) throws IOException {
         FullmodeSession s = fmSession;
         Map<String, Object> out = new LinkedHashMap<>();
-        if (s == null || (projectId != null && !projectId.equals(s.projectId))) {
+        if (s == null) {
             out.put("phase", "IDLE");
             out.put("message", "无活动会话");
+            return out;
+        }
+        // 会话可见性按项目隔离,但如实披露占用方,避免用户发起准备时无声卡死
+        if (projectId != null && !projectId.equals(s.projectId)) {
+            out.put("phase", "IDLE");
+            out.put("occupied", true);
+            out.put("occupantProjectId", s.projectId);
+            out.put("initiatorUser", s.initiatorUser);
+            out.put("runId", s.runId);
+            out.put("phaseOfOccupying", s.phase);
+            out.put("message", "全模式通道被项目[" + s.projectId + "]的会话占用(发起人:"
+                    + s.initiatorUser + ",runId=" + s.runId + "),请等待其结束并关闭后再发起");
             return out;
         }
         out.put("runId", s.runId);
@@ -206,6 +221,8 @@ public class TestbenchService {
         out.put("message", s.message);
         out.put("error", s.error);
         out.put("config", s.config);
+        // 发起人披露:前端据此隐藏非授权用户的操作按钮(后端仍强制校验)
+        out.put("initiatorUser", s.initiatorUser);
         // 运行中状态以适配器原子写的 status.json 为准(含lifecycle/time/操纵回执等)
         File sf = new File(s.adapterDir, "status.json");
         if (sf.exists()) {
@@ -225,6 +242,7 @@ public class TestbenchService {
                 // READY态允许"重新准备"(效果图08-02):尚未推进,自动关闭旧会话后重建;
                 // RUNNING/PAUSED仍要求先结束计算/关闭会话,不允许静默丢弃推进状态
                 if ("READY".equals(cur.phase)) {
+                    checkFullmodeOperator(cur); // 替换他人会话同样视为操作,须发起人或管理员
                     log.info("全模式重新准备: 自动关闭未推进的READY会话 runId={}", cur.runId);
                     if (cur.engine != null) {
                         try { fevalFullmode(cur, "close", null); } catch (Exception e) { log.warn("fullmode close失败(仍关闭引擎)", e); }
@@ -235,7 +253,9 @@ public class TestbenchService {
                     cur.message = "被重新准备替换";
                     writeFullmodeIndex(cur);
                 } else {
-                    throw new IllegalStateException("已有全模式会话在" + cur.phase + "(runId=" + cur.runId + "),请先关闭");
+                    // 占用方归属(可能是其他项目的会话):让发起人知道在等谁
+                    throw new IllegalStateException("已有全模式会话在" + cur.phase + "(runId=" + cur.runId
+                            + ",由用户[" + cur.initiatorUser + "]在项目[" + cur.projectId + "]发起),请先等待其结束并关闭");
                 }
             }
             String runId = "FM-" + new java.text.SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
@@ -252,6 +272,7 @@ public class TestbenchService {
             s.adapterDir = adapterDir.getAbsolutePath();
             s.createdAt = System.currentTimeMillis();
             s.config = cfg;
+            s.initiatorUser = AuthUtil.getCurrentUsername();
             s.message = "准备全模式运行资产";
             fmSession = s;
             writeFullmodeIndex(s);
@@ -266,6 +287,7 @@ public class TestbenchService {
     /** 开始推进循环(READY→RUNNING;分块advance,块间处理命令并刷新status.json)。 */
     public Map<String, Object> fullmodeRun(String projectId) throws IOException {
         FullmodeSession s = requireFullmode(projectId);
+        checkFullmodeOperator(s);
         if (!"READY".equals(s.phase) && !"PAUSED".equals(s.phase)) {
             throw new IllegalStateException("当前会话状态为" + s.phase + ",需要READY/PAUSED");
         }
@@ -423,6 +445,7 @@ public class TestbenchService {
     /** 命令:pause即时;save在暂停时即时保存;stop/操纵类入块间队列;恢复推进必须走run(队列只在推进循环中被消费)。 */
     public Map<String, Object> fullmodeCommand(String projectId, String kind, Object value) throws IOException {
         FullmodeSession s = requireFullmode(projectId);
+        checkFullmodeOperator(s);
         if (!"RUNNING".equals(s.phase) && !"READY".equals(s.phase) && !"PAUSED".equals(s.phase)) {
             throw new IllegalStateException("当前状态" + s.phase + "不接受命令");
         }
@@ -483,6 +506,7 @@ public class TestbenchService {
 
     public Map<String, Object> fullmodeClose(String projectId) throws IOException {
         FullmodeSession s = requireFullmode(projectId);
+        checkFullmodeOperator(s);
         if ("RUNNING".equals(s.phase)) throw new IllegalStateException("运行中不能关闭;先结束计算");
         if (s.engine != null) {
             try {
@@ -526,7 +550,8 @@ public class TestbenchService {
         synchronized (fmLock) {
             FullmodeSession cur = fmSession;
             if (cur != null && !isTerminal(cur.phase)) {
-                throw new IllegalStateException("已有全模式会话在" + cur.phase + "(runId=" + cur.runId + "),请先关闭");
+                throw new IllegalStateException("已有全模式会话在" + cur.phase + "(runId=" + cur.runId
+                        + ",由用户[" + cur.initiatorUser + "]在项目[" + cur.projectId + "]发起),请先等待其结束并关闭");
             }
             File snap = findFileRecursive(store.testbenchWorkDir(projectId, runId), "snapshot.mat");
             if (snap == null) throw new IOException("该记录未找到快照文件(snapshot.mat)");
@@ -589,6 +614,17 @@ public class TestbenchService {
             throw new IllegalStateException("无活动全模式会话;请先发起准备");
         }
         return s;
+    }
+
+    /** 操作权限:仅会话发起人或管理员可执行 run/command/close(与AfoService同口径)。
+     *  发起人未记录(旧版本会话)时放行,避免把自己锁死。 */
+    private void checkFullmodeOperator(FullmodeSession s) {
+        if (s == null || s.initiatorUser == null || s.initiatorUser.isEmpty()) return;
+        if (AuthUtil.isAdmin()) return;
+        String cur = AuthUtil.getCurrentUsername();
+        if (!s.initiatorUser.equals(cur)) {
+            throw new IllegalStateException("该会话由用户[" + s.initiatorUser + "]发起,仅发起人或管理员可操作");
+        }
     }
 
     /** prepare动作:启动专用引擎→prepare(user)→begin。 */
@@ -678,6 +714,7 @@ public class TestbenchService {
         idx.put("runId", s.runId);
         idx.put("projectId", s.projectId);
         idx.put("engineId", s.engineId);
+        idx.put("initiatorUser", s.initiatorUser);
         idx.put("phase", s.phase);
         idx.put("message", s.message);
         idx.put("error", s.error);

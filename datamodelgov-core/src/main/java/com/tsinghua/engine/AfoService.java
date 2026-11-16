@@ -1,6 +1,7 @@
 package com.tsinghua.engine;
 
 import com.mathworks.engine.MatlabEngine;
+import com.tsinghua.auth.util.AuthUtil;
 import com.tsinghua.matlab.MatlabNativeLibrary;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -112,6 +113,8 @@ public class AfoService {
         String projectId;
         String runId;
         String engineId;
+        /** 会话发起人(用户名);仅发起人或管理员可 run/command/save/close */
+        String initiatorUser;
         String outputDir;
         String adapterDir;
         /** PREPARING / READY / RUNNING / PAUSED / ENDED / FAILED */
@@ -723,14 +726,27 @@ public class AfoService {
             out.put("message", "无活动会话");
             return out;
         }
-        // 会话是进程级单例:即使从别的项目上下文发起,也要如实暴露,
-        // 否则用户永远看不到已就绪的会话,也无法关闭(卡死新准备)
+        // 会话可见性按项目隔离:他人项目的会话不直接暴露(与项目owner过滤同口径),
+        // 但全局引擎互斥仍在——如实披露占用方信息,避免用户发起准备时无声卡死
+        if (projectId != null && !projectId.equals(s.projectId)) {
+            out.put("phase", "IDLE");
+            out.put("occupied", true);
+            out.put("occupantProjectId", s.projectId);
+            out.put("initiatorUser", s.initiatorUser);
+            out.put("runId", s.runId);
+            out.put("phaseOfOccupying", s.phase);
+            out.put("message", "联合仿真通道被项目[" + s.projectId + "]的会话占用(发起人:"
+                    + s.initiatorUser + ",runId=" + s.runId + "),请等待其结束并关闭后再发起");
+            return out;
+        }
         out.put("runId", s.runId);
         out.put("engineId", s.engineId);
         out.put("phase", s.phase);
         out.put("message", s.message);
         out.put("error", s.error);
         out.put("config", s.config);
+        // 发起人披露:前端据此隐藏非授权用户的操作按钮(后端仍强制校验)
+        out.put("initiatorUser", s.initiatorUser);
         // D12:输出目录只读披露(会话结果/status.json/inbox 落盘位置)
         out.put("outputDir", s.outputDir);
         // 运行中状态以程序原子写的 status.json 为准(含 time/Np/Ng/Wf/events/values)
@@ -752,7 +768,10 @@ public class AfoService {
         synchronized (sessionLock) {
             AfoSession cur = session;
             if (cur != null && !isTerminal(cur.phase)) {
-                throw new IllegalStateException("已有AFO会话在" + cur.phase + "(runId=" + cur.runId + "),请先结束并关闭");
+                // 占用方归属(可能是其他项目的会话):让发起人知道在等谁,而不是无声卡死
+                String who = "由用户[" + cur.initiatorUser + "]在项目[" + cur.projectId + "]发起, ";
+                throw new IllegalStateException("已有AFO会话在" + cur.phase + "(runId=" + cur.runId + ","
+                        + who + "请先等待其结束并关闭)");
             }
             String runId;
             Object userRunId = cfg.get("runId");
@@ -785,6 +804,7 @@ public class AfoService {
             s.adapterDir = workTmp.getAbsolutePath();
             s.createdAt = System.currentTimeMillis();
             s.config = cfg;
+            s.initiatorUser = AuthUtil.getCurrentUsername();
             s.message = "准备AFO程序工作副本";
             session = s;
 
@@ -799,6 +819,17 @@ public class AfoService {
 
     private boolean isTerminal(String phase) {
         return "ENDED".equals(phase) || "FAILED".equals(phase) || "CLOSED".equals(phase);
+    }
+
+    /** 操作权限:仅会话发起人或管理员可执行 run/command/save/close。
+     *  发起人未记录(旧版本会话)时放行,避免把自己锁死。 */
+    private void checkOperator(AfoSession s) {
+        if (s == null || s.initiatorUser == null || s.initiatorUser.isEmpty()) return;
+        if (AuthUtil.isAdmin()) return;
+        String cur = AuthUtil.getCurrentUsername();
+        if (!s.initiatorUser.equals(cur)) {
+            throw new IllegalStateException("该会话由用户[" + s.initiatorUser + "]发起,仅发起人或管理员可操作");
+        }
     }
 
     private void runPrepare(AfoSession s) {
@@ -846,6 +877,7 @@ public class AfoService {
     /** 开始运行(阻塞sim,放线程;运行中状态与命令走文件通道)。 */
     public Map<String, Object> run(String projectId) throws IOException {
         AfoSession s = requireSession(projectId, "READY");
+        checkOperator(s);
         logLine("仿真开始运行"); s.phase = "RUNNING";
         s.message = "仿真运行中";
         writeSessionIndex(s);
@@ -888,6 +920,7 @@ public class AfoService {
      *  R065合同:命令携带sessionId/runId由会话校验身份,防串任务施加。 */
     public Map<String, Object> command(String projectId, String kind, Object value) throws IOException {
         AfoSession s = requireSession(projectId, null);
+        checkOperator(s);
         if (!java.util.Arrays.asList("np", "load", "pause", "resume", "stop").contains(kind)) {
             throw new IllegalArgumentException("不支持的命令类型: " + kind + "(管理命令save/release/discard走专用端点)");
         }
@@ -1013,6 +1046,7 @@ public class AfoService {
     /** 保存重试(ended/failed后;不重新计算)。 */
     public Map<String, Object> save(String projectId) throws IOException {
         AfoSession s = requireSession(projectId, "ENDED");
+        checkOperator(s);
         if (s.engine == null) throw new IllegalStateException("会话引擎已关闭;结果已在运行结束时保存");
         executor.submit(() -> {
             try {
@@ -1032,6 +1066,7 @@ public class AfoService {
     /** 关闭会话(persistent单例清位;ENDED/FAILED后)。 */
     public Map<String, Object> close(String projectId) throws IOException {
         AfoSession s = requireSession(projectId, null);
+        checkOperator(s);
         if (!isTerminal(s.phase) && !"READY".equals(s.phase)) {
             throw new IllegalStateException("运行中不能关闭;先结束计算");
         }
@@ -1367,6 +1402,13 @@ public class AfoService {
         if (s == null) {
             throw new IllegalStateException("无活动AFO会话;请先发起准备");
         }
+        // 会话按项目隔离:他人项目(或本项目之外)的会话对本项目上下文不可见也不可操作;
+        // 若通道确实被占用,附带占用方提示,避免"刚在别的项目发起却被告知无会话"的困惑
+        if (projectId != null && !projectId.equals(s.projectId)) {
+            throw new IllegalStateException("当前项目无活动AFO会话;请先发起准备"
+                    + "(联合仿真通道被项目[" + s.projectId + "]的会话占用,发起人:" + s.initiatorUser
+                    + ",runId=" + s.runId + ")");
+        }
         if (expectPhase != null && !expectPhase.equals(s.phase)) {
             throw new IllegalStateException("当前会话状态为" + s.phase + ",需要" + expectPhase);
         }
@@ -1378,6 +1420,7 @@ public class AfoService {
         idx.put("runId", s.runId);
         idx.put("projectId", s.projectId);
         idx.put("engineId", s.engineId);
+        idx.put("initiatorUser", s.initiatorUser);
         idx.put("phase", s.phase);
         idx.put("message", s.message);
         idx.put("error", s.error);

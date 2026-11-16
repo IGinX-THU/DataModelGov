@@ -6318,11 +6318,20 @@ window.Workbench = (() => {
         const pid = ctx.project.id || '';
         const api = p => window.AppConfig.engineGet('projects/' + encodeURIComponent(pid) + '/afo' + p);
         const apiPost = (p, body) => window.AppConfig.enginePost('projects/' + encodeURIComponent(pid) + '/afo' + p, body || {});
-        const S = window.__WB_AFO__ = window.__WB_AFO__ || {
-            phase: 'IDLE', message: '', live: null, samples: [], lastSampleT: -1,
-            result: null, readonlyRunId: null, readonlyLoading: false, tab: 'main',
-            cfg: { engineId: ctx.project.engineId || 'ENGINE-001', duration: '30', recordStep: '0.1', pace: 'realtime', loadMode: 'power', powerW: '2176600', mkpNm: '1000', pitchDeg: '12', mainPitchDeg: '12', tailPitchDeg: '10', externalAir: false, npRatio: '1' }
-        };
+        // 会话状态按项目隔离缓存(同afo-r138.js):避免上个项目的会话状态残留误导操作
+        const S = (() => {
+            const cache = window.__WB_AFO_BY_PID__ = window.__WB_AFO_BY_PID__ || {};
+            if (!cache[pid]) {
+                cache[pid] = {
+                    __pid: pid,
+                    phase: 'IDLE', message: '', live: null, samples: [], lastSampleT: -1,
+                    result: null, readonlyRunId: null, readonlyLoading: false, tab: 'main',
+                    cfg: { engineId: ctx.project.engineId || 'ENGINE-001', duration: '30', recordStep: '0.1', pace: 'realtime', loadMode: 'power', powerW: '2176600', mkpNm: '1000', pitchDeg: '12', mainPitchDeg: '12', tailPitchDeg: '10', externalAir: false, npRatio: '1' }
+                };
+            }
+            return cache[pid];
+        })();
+        window.__WB_AFO__ = S; // 兼容调试入口
         S.tab = S.tab || 'main';
         const running = () => S.phase === 'RUNNING' || S.phase === 'PAUSED';
         const canCmd = () => running();
