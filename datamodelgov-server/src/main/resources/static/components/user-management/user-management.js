@@ -317,6 +317,9 @@ class UserManagement extends HTMLElement {
         }
 
         this.users.forEach((user) => {
+            // 内置管理员与当前登录账户不允许删除(与后端删除保护一致),不渲染删除按钮
+            const currentUser = window.AppConfig ? window.AppConfig.getUsername() : null;
+            const isProtected = user.username === 'admin' || user.username === currentUser;
             const row = document.createElement('tr');
             row.innerHTML = `
                 <td>${this.escapeHtml(user.username)}</td>
@@ -326,7 +329,7 @@ class UserManagement extends HTMLElement {
                 <td>
                     <div class="action-buttons">
                         <button type="button" class="action-btn edit" data-username="${this.escapeHtml(user.username)}">编辑</button>
-                        <button type="button" class="action-btn delete" data-username="${this.escapeHtml(user.username)}">删除</button>
+                        ${isProtected ? '' : '<button type="button" class="action-btn delete" data-username="' + this.escapeHtml(user.username) + '">删除</button>'}
                     </div>
                 </td>
             `;

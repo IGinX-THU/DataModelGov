@@ -182,9 +182,10 @@ public class AfoController {
                 for (com.tsinghua.entity.EngineTestbenchEntity e : fFull) merged.add(toRow(e, "fm"));
             }
             if (wantSs) {
-                List<com.tsinghua.entity.EngineTestbenchEntity> fDpSs =
-                        testbenchRecordService.queryFiltered(pid, 1, pn * ps,
-                                joinWhere("kind IN ('design_point','startstop')", where));
+                // 设计点/起动停要先归并成工作流再切片:若只取 pn*ps 条原始记录，
+                // 归并后行数变少，后面的页会取不到数据(总数说有、翻页是空)。
+                List<com.tsinghua.entity.EngineTestbenchEntity> fDpSs = queryAllWorkflowRecords(pid,
+                        joinWhere("kind IN ('design_point','startstop')", where));
                 // 起动停工作流归并:设计点校核并入起动停工作流行,一行=一次工作流执行
                 for (com.tsinghua.entity.EngineTestbenchEntity e : mergeTestbenchWorkflow(pid, fDpSs)) {
                     merged.add(toRow(e, "fm"));
@@ -211,7 +212,7 @@ public class AfoController {
             long total = afoSessionService.countFiltered(pid, where)
                     + testbenchRecordService.countFiltered(pid, joinWhere("kind = 'fullmode'", where))
                     // 设计点校核并入起动停工作流行后再计数,与列表口径一致
-                    + mergeTestbenchWorkflow(pid, testbenchRecordService.queryFiltered(pid, 1, 1000,
+                    + mergeTestbenchWorkflow(pid, queryAllWorkflowRecords(pid,
                             joinWhere("kind IN ('design_point','startstop')", where))).size();
             return Result.success(total);
         } catch (Exception e) {
@@ -230,7 +231,7 @@ public class AfoController {
             if (!a.isEmpty()) out.add(toRow(a.get(0), "afo"));
             // 起动停工作流归并后取最新一条(设计点校核不单列,概览口径=工作流)
             List<com.tsinghua.entity.EngineTestbenchEntity> ss = mergeTestbenchWorkflow(pid,
-                    testbenchRecordService.queryFiltered(pid, 1, 1000, "kind IN ('design_point','startstop')"));
+                    queryAllWorkflowRecords(pid, "kind IN ('design_point','startstop')"));
             if (!ss.isEmpty()) out.add(toRow(ss.get(0), "fm"));
             List<com.tsinghua.entity.EngineTestbenchEntity> fm = testbenchRecordService.queryFiltered(
                     pid, 1, 1, "kind = 'fullmode'");
@@ -242,18 +243,62 @@ public class AfoController {
         }
     }
 
+    /**
+     * 全量拉取设计点/起动停记录(按页累加)。
+     *
+     * <p>这些记录必须先归并成"工作流"再计数与切片，所以不能像普通分页那样只取前 N 条：
+     * 以前硬编码 1000 条，超过 1000 条记录时总数会少算、页数偏少，表现为"分页翻不到后面"。
+     */
+    private List<com.tsinghua.entity.EngineTestbenchEntity> queryAllWorkflowRecords(String pid, String where) {
+        final int pageSize = 500;
+        final int maxPages = 200; // 10 万条上限，防止异常数据无限翻页
+        List<com.tsinghua.entity.EngineTestbenchEntity> all = new java.util.ArrayList<>();
+        for (int page = 1; page <= maxPages; page++) {
+            List<com.tsinghua.entity.EngineTestbenchEntity> part =
+                    testbenchRecordService.queryFiltered(pid, page, pageSize, where);
+            if (part == null || part.isEmpty()) {
+                break;
+            }
+            all.addAll(part);
+            if (part.size() < pageSize) {
+                break;
+            }
+        }
+        return all;
+    }
+
     /** 前端状态筛选映射 phase SQL 条件 + 运行编号模糊匹配。 */
     private String sessionsWhere(String status, String kw) {
         StringBuilder sb = new StringBuilder();
-        if ("ok".equals(status)) sb.append("phase = 'ENDED'");
-        else if ("failed".equals(status)) sb.append("phase = 'FAILED'");
-        else if ("running".equals(status)) sb.append("phase IN ('READY','PREPARING','RUNNING','PAUSED')");
-        if (kw != null && !kw.trim().isEmpty()) {
-            String like = kw.trim().replace("'", "''").replace("%", "\\%").replace("_", "\\_");
+        // 兼容历史前端把未填的可选项序列化成字面量 "undefined"/"null":一律视为"未筛选"。
+        // 否则会生成 runId LIKE '%undefined%',使 total=0,分页条只剩第 1 页(列表却仍有数据)。
+        String st = blankAsNull(status);
+        String key = blankAsNull(kw);
+        if ("ok".equals(st)) sb.append("phase = 'ENDED'");
+        else if ("failed".equals(st)) sb.append("phase = 'FAILED'");
+        else if ("running".equals(st)) sb.append("phase IN ('READY','PREPARING','RUNNING','PAUSED')");
+        if (key != null) {
             if (sb.length() > 0) sb.append(" AND ");
-            sb.append("runId LIKE '%").append(like).append("%'");
+            // IginX 的 LIKE 是正则匹配(与其他 service 的 name LIKE '^.*x.*' 写法一致),
+            // SQL 的 % 通配在正则里是字面字符,曾导致按运行编号搜索永远 0 行。
+            // (?i) 忽略大小写;先转义正则元字符,再转义单引号,关键字始终按字面匹配。
+            sb.append("runId LIKE '(?i)^.*").append(escapeLikeRegex(key)).append(".*'");
         }
         return sb.length() == 0 ? null : sb.toString();
+    }
+
+    /** 转义 IginX LIKE 正则里的元字符与单引号,使用户输入按字面匹配。 */
+    private String escapeLikeRegex(String s) {
+        String escaped = s.replaceAll("([\\\\\\.\\[\\]\\{\\}()\\*\\+\\?\\^\\$\\|])", "\\\\$1");
+        return escaped.replace("'", "''");
+    }
+
+    /** 归一化可选查询参数:空白串与 "undefined"/"null" 字面量都视为未提供。 */
+    private String blankAsNull(String s) {
+        if (s == null) return null;
+        String t = s.trim();
+        if (t.isEmpty() || "undefined".equalsIgnoreCase(t) || "null".equalsIgnoreCase(t)) return null;
+        return t;
     }
 
     private String joinWhere(String a, String b) {

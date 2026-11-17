@@ -29,7 +29,7 @@
 
         _render() {
             this.innerHTML = '';
-            this.appendChild(WB().h('link', { rel: 'stylesheet', href: './workbench/workbench.css?v=r33' }));
+            this.appendChild(WB().h('link', { rel: 'stylesheet', href: './workbench/workbench.css' }));
             const username = localStorage.getItem('username') || '';
 
             const rootEl = WB().h('div', { class: 'wb-root' },
@@ -38,7 +38,7 @@
                         WB().h('span', { class: 'wb-brand-icon', html: WB().ICONS.logo }),
                         WB().h('span', { class: 'wb-app-name' }, '数据与模型一体化管理软件')),
                     WB().h('div', { class: 'wb-topbar-right' },
-                        WB().h('span', { class: 'wb-hint', style: 'margin:0' }, username ? '当前用户:' + username : ''),
+                        this._buildUserMenu(username),
                         WB().h('button', {
                             class: 'wb-btn wb-btn-outline', title: '退出登录',
                             onclick: () => window.AppConfig && window.AppConfig.logout()
@@ -65,6 +65,105 @@
                 WB().h('div', { class: 'wb-root-inner' }, header, recent, form));
             rootEl.appendChild(main);
             this.appendChild(rootEl);
+            this._applyUserMenuRole();
+            this._bindUserMenuOutsideClose();
+        }
+
+        /**
+         * 用户菜单(保留旧版「用户」下拉的功能入口):用户管理仅管理员可见,
+         * 修改密码对所有登录用户可见。组件直接复用旧版 user-management / change-password。
+         */
+        _buildUserMenu(username) {
+            const menu = WB().h('div', { class: 'wb-user-menu' },
+                WB().h('span', {
+                    class: 'wb-user-trigger',
+                    onclick: (e) => { e.stopPropagation(); this._toggleUserDropdown(); }
+                }, username ? '当前用户: ' + username + ' ▾' : '用户 ▾'),
+                WB().h('div', { class: 'wb-user-dropdown', id: 'wbUserDropdown' },
+                    WB().h('div', {
+                        class: 'wb-user-item', id: 'wbUserManagementItem',
+                        style: 'display:none', // 默认隐藏,确认角色为 ADMIN 后显示
+                        onclick: () => this._openUserManagement()
+                    }, '用户管理'),
+                    WB().h('div', {
+                        class: 'wb-user-item',
+                        onclick: () => this._openChangePassword()
+                    }, '修改密码')));
+            return menu;
+        }
+
+        _toggleUserDropdown(force) {
+            const dd = this.querySelector('#wbUserDropdown');
+            if (!dd) return;
+            const open = force !== undefined ? force : !dd.classList.contains('open');
+            dd.classList.toggle('open', open);
+        }
+
+        _bindUserMenuOutsideClose() {
+            if (this._userMenuOutsideBound) return;
+            this._userMenuOutsideBound = true;
+            document.addEventListener('click', (e) => {
+                const menu = this.querySelector('.wb-user-menu');
+                if (menu && !menu.contains(e.target)) this._toggleUserDropdown(false);
+            });
+        }
+
+        /** 用户管理入口仅管理员可见:拉取当前角色,失败时保持隐藏(失败关闭)。 */
+        async _applyUserMenuRole() {
+            const item = this.querySelector('#wbUserManagementItem');
+            if (!item) return;
+            try {
+                const resp = await window.AppConfig.request(
+                    window.AppConfig.api.baseURL + '/api/user/current', { loading: false });
+                const role = resp && resp.data && resp.data.role;
+                if (item.isConnected) item.style.display = role === 'ADMIN' ? '' : 'none';
+            } catch (e) { /* 拉取角色失败:用户管理入口保持隐藏,修改密码不受影响 */ }
+        }
+
+        /** 全屏面板承载旧版 user-management 工作区组件;关闭时整块移除。
+         *  组件 shadow HTML 为异步 fetch,等 tableBody 就绪再 show(),避免首查落空。 */
+        _openUserManagement() {
+            this._toggleUserDropdown(false);
+            if (this.querySelector('.wb-user-panel-mask')) return;
+            const mask = WB().h('div', { class: 'wb-user-panel-mask' },
+                WB().h('div', { class: 'wb-user-panel' },
+                    WB().h('div', { class: 'wb-user-panel-head' },
+                        WB().h('span', { class: 'wb-user-panel-title' }, '用户管理'),
+                        WB().h('button', {
+                            class: 'wb-user-panel-close', title: '关闭',
+                            onclick: () => this._closeUserManagement()
+                        }, '×')),
+                    WB().h('div', { class: 'wb-user-panel-body' })));
+            const comp = document.createElement('user-management');
+            mask.querySelector('.wb-user-panel-body').appendChild(comp);
+            this.appendChild(mask);
+            this._whenReady(comp, 'tableBody', () => comp.show());
+        }
+
+        _closeUserManagement() {
+            const mask = this.querySelector('.wb-user-panel-mask');
+            if (mask) mask.remove();
+        }
+
+        /** 修改密码:change-password 自带全屏遮罩弹窗,懒创建、复用实例(自带 show/hide)。
+         *  其 :host 的 z-index 取自旧版页面的全局变量 --z-modal(新版页面未定义,失效回退 auto),
+         *  会被 .wb-root(11000)盖住,故在宿主元素上内联抬高到工作台层级之上。 */
+        _openChangePassword() {
+            this._toggleUserDropdown(false);
+            let comp = this.querySelector('change-password');
+            if (!comp) {
+                comp = document.createElement('change-password');
+                comp.style.zIndex = '11500';
+                this.appendChild(comp);
+            }
+            this._whenReady(comp, 'changePasswordForm', () => comp.show());
+        }
+
+        /** 组件 shadow 资源异步加载,轮询等关键节点出现后回调(组件均为一次性 fetch,无超时风险)。 */
+        _whenReady(comp, elementId, cb) {
+            const ready = comp.shadowRoot && comp.shadowRoot.getElementById(elementId);
+            if (ready || !comp.isConnected) { if (ready) cb(); return; }
+            setTimeout(() => this._whenReady(comp, elementId, cb), 50);
         }
 
         _buildNewForm() {

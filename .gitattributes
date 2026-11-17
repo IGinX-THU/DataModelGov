@@ -1,2 +1,7 @@
 /mvnw text eol=lf
 *.cmd text eol=crlf
+# MATLAB 交付树资产必须字节保真:runtime_packages 等运行资产带 SHA-256 哈希校验
+# (sht_tc24_runtime_package.m 按 R065 交付包原始字节计算基准)。
+# core.autocrlf=true 会把文本资产行尾规范化(CRLF<->LF),改变 SHA-256 导致
+# "运行资产缺失或哈希改变"校验失败(2026-11-12 TC24 准备踩坑)。-text = git 不做任何行尾转换。
+datamodelgov-server/src/main/resources/matlab/** -text

@@ -2,6 +2,8 @@ package com.tsinghua.engine;
 
 import com.tsinghua.matlab.MatlabEnginePool;
 import com.tsinghua.util.MojibakeUtil;
+import com.tsinghua.util.UqDiagnostics;
+import com.tsinghua.util.UqPointLocator;
 import com.tsinghua.matlab.MatlabFunctionRunner;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -350,6 +352,32 @@ public class Tc24Service {
      * 取消受理即落终态(FAILED+已取消),前端轮询立刻回到可重新发起的状态;
      * MATLAB侧在最近的协作检查点退出,catch里幂等重写同一状态,不产生二次影响。
      */
+    /**
+     * 服务重启后陈旧UQ状态对账:running 无登记且无挂起取消、uqStatus 仍是执行态 → 重置为 FAILED(会话中断)。
+     * /status 轮询时调用,与 F3 通道 reconcileStaleUq 同一口径,避免前端永远显示"执行中"。
+     */
+    public boolean reconcileStaleUq(EngineModels.ModelingTask task) {
+        final String taskId = task.getId();
+        String st = task.getUqStatus();
+        if (!"EXECUTING".equals(st) && !"PREPARING".equals(st)) return false;
+        if (running.get(taskId + ":uq") != null) return false; // 真在跑,不动
+        if (Boolean.TRUE.equals(uqCancelPending.get(taskId + ":uq"))) return false; // 已挂起取消,交给执行线程落终态
+        try {
+            EngineModels.ModelingTask tk = store.getTask(task.getProjectId(), taskId);
+            if (tk != null && ("EXECUTING".equals(tk.getUqStatus()) || "PREPARING".equals(tk.getUqStatus()))) {
+                long now = System.currentTimeMillis();
+                tk.setUqStatus("FAILED");
+                tk.setUqFinishedAt(now);
+                tk.setUqMessage("评估会话已中断(服务重启或异常退出),状态已重置;可重新发起评估");
+                store.saveTask(tk);
+                task.setUqStatus("FAILED");
+                task.setUqMessage(tk.getUqMessage());
+                return true;
+            }
+        } catch (IOException ignore) { }
+        return false;
+    }
+
     public boolean requestUqCancel(String projectId, String taskId) {
         try {
             EngineModels.ModelingTask t = store.getTask(projectId, taskId);
@@ -516,21 +544,152 @@ public class Tc24Service {
             viewMat = alt;
         }
         File out = new File(viewMat.getParentFile(), detailFileName);
-        return runReadAdapter(viewMat.getAbsolutePath(), out, fields, projectId) ? out : null;
+        return runReadAdapter(viewMat.getAbsolutePath(), out, fields, projectId, null) ? out : null;
     }
 
     /** 回读交付 Excel(UQ parameterTable 视图)生成明细 JSON。 */
     public File readExcelDetail(String projectId, File excel, File out) throws IOException {
+        return readExcelDetailVerbose(projectId, excel, out, null);
+    }
+
+    /**
+     * 带根因透出的回读:errorOut 非空时,失败根因(MATLAB断言消息/异常message)写回调用方,
+     * 供接口响应直接给出可读原因;堆栈仍由内部 log.warn 全量打印。
+     */
+    public File readExcelDetailVerbose(String projectId, File excel, File out, StringBuilder errorOut)
+            throws IOException {
+        // F3系列交付(自演化局部D / 稳态飞参R1):Manifest是F34自己的合同,TC24通用回读器会报
+        // "Manifest缺少schema_version或route"。改用Java POI直接读Excel,产出同构parameterTable,
+        // 彻底绕开MATLAB reader(避免DLL/编码/table列数问题)。局部D若POI失败再回退MATLAB适配器。
+        if (F3DeliveryDetailReader.isLocalDDelivery(excel)) {
+            if (F3DeliveryDetailReader.read(excel, out, errorOut, null)) return out;
+            log.warn("F3局部D交付POI回读失败,回退MATLAB适配器: {}", excel);
+            if (errorOut != null) errorOut.setLength(0);
+            return runF34DReadAdapter(excel.getAbsolutePath(), out, errorOut, projectId) ? out : null;
+        }
+        if (F3DeliveryDetailReader.isR1Delivery(excel)) {
+            return F3DeliveryDetailReader.read(excel, out, errorOut, null) ? out : null;
+        }
+        // 兼容旧探测(workbook.xml含LocalDistribution组合但POI列探测未命中)
+        if (isF34MethodDDelivery(excel)) {
+            return runF34DReadAdapter(excel.getAbsolutePath(), out, errorOut, projectId) ? out : null;
+        }
         // TC27 UQ交付(tc27_uq_*/tc27_deterministic_*):Manifest结构与TC24不同,须用TC27专用读取器
         String name = excel.getName().toLowerCase();
         if (name.startsWith("tc27_uq_") || name.startsWith("tc27_deterministic_")) {
-            return runTc27ReadAdapter(excel.getAbsolutePath(), out, projectId) ? out : null;
+            return runTc27ReadAdapter(excel.getAbsolutePath(), out, projectId, errorOut) ? out : null;
         }
-        return runReadAdapter(excel.getAbsolutePath(), out, null, projectId) ? out : null;
+        return runReadAdapter(excel.getAbsolutePath(), out, null, projectId, errorOut) ? out : null;
+    }
+
+    /** F34局部D交付探测:xlsx 的 sheet 名同时含 LocalDistribution/ParameterDictionary/ShapeNodeMap
+     *  (sht_f34_method_d_artifacts 写出的工件;TC24/TC27 交付无此组合)。 */
+    private boolean isF34MethodDDelivery(File excel) {
+        try (java.util.zip.ZipFile zip = new java.util.zip.ZipFile(excel)) {
+            java.util.zip.ZipEntry entry = zip.getEntry("xl/workbook.xml");
+            if (entry == null) return false;
+            String wb = org.apache.commons.io.IOUtils.toString(
+                    zip.getInputStream(entry), StandardCharsets.UTF_8);
+            return wb.contains("LocalDistribution") && wb.contains("ParameterDictionary")
+                    && wb.contains("ShapeNodeMap");
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * F34局部D交付回读:走交付包自带免DLL的 sht_f34_method_d_artifacts('inspect',file,'') 只读入口
+     * (local_read 不校验运行资产、不打开DLL),产出与TC24 UQ明细同构的 parameterTable。
+     * 语义:局部高斯边缘近似——中位数=后验均值(theta空间);q05–q95=边缘95%区间(±1.959964σ);
+     * 点估计=参考基线(ParameterDictionary.center_value,即theta=0);区间说明经 intervalNote 传给前端。
+     */
+    private boolean runF34DReadAdapter(String resultFile, File detailOut, StringBuilder errorOut,
+                                       String projectId) throws IOException {
+        if (detailOut.exists()) return true; // 已生成过,直接复用
+        try {
+            File programCopy = ensureTc24Source(projectId);
+            File adapterDir = new File(System.getProperty("java.io.tmpdir"), "datamodelgov-read-adapter");
+            if (!adapterDir.exists() && !adapterDir.mkdirs()) throw new IOException("无法创建回读适配器目录");
+            StringBuilder m = new StringBuilder();
+            m.append("function r = dmg_f34_d_read(configFile)\n");
+            m.append("c = jsondecode(fileread(configFile));\n");
+            m.append("addpath('").append(programCopy.getAbsolutePath().replace(File.separatorChar, '/'))
+                    .append("', '-begin');\n");
+            m.append("rehash;\n");
+            m.append("pkg = sht_f34_method_d_artifacts('inspect', c.resultFile, '');\n");
+            m.append("p = pkg.context.parameterContract;\n");
+            m.append("d = pkg.distribution;\n");
+            m.append("n = double(d.explicitDimension);\n");
+            m.append("map = double(d.jointMean(1:n));\n");
+            m.append("sd = sqrt(max(diag(double(d.jointCovariance(1:n,1:n))),0));\n");
+            m.append("z95 = 1.959963984540054;\n");
+            m.append("pe = nan(n,1);\n");
+            m.append("if ismember('center_value',p.Properties.VariableNames), pe = double(p.center_value); end\n");
+            m.append("unit = strings(n,1); pname = strings(n,1);\n");
+            m.append("if ismember('unit',p.Properties.VariableNames), unit = string(p.unit); end\n");
+            m.append("if ismember('name',p.Properties.VariableNames), pname = string(p.name); end\n");
+            // 9个数据列必须配9个VariableNames(原8个导致MATLAB table报"每个变量必须有一个名称"):
+            // parameter=参数名(前端0415按parameter列展示),parameter_id=合同id,其余语义不变。
+            m.append("T = table(cellstr(pname),cellstr(string(p.parameter_id)),cellstr(unit),pe,map, ...\n");
+            m.append("    map-z95.*sd,map+z95.*sd,double(p.lower_bound),double(p.upper_bound), ...\n");
+            m.append("    'VariableNames',{'parameter','parameter_id','unit','point_estimate','median','q05','q95', ...\n");
+            m.append("    'lower_bound','upper_bound'});\n");
+            m.append("man = readtable(c.resultFile,'Sheet','Manifest','PreserveVariableNames',true);\n");
+            m.append("mf = struct();\n");
+            m.append("fns = man.Properties.VariableNames;\n");
+            m.append("for k = 1:numel(fns)\n");
+            m.append("    col = man.(fns{k});\n");
+            m.append("    if numel(col) >= 1 && iscell(col), mf.(fns{k}) = char(string(col{1,1}));\n");
+            m.append("    elseif numel(col) >= 1, mf.(fns{k}) = char(string(col(1,1))); end\n");
+            m.append("end\n");
+            m.append("view = struct('kind','f34_local_d_delivery', ...\n");
+            m.append("    'parameterTable',table2struct(T),'message',c.intervalNote, ...\n");
+            m.append("    'delivery',struct('manifest',mf,'workbookFile',c.resultFile, ...\n");
+            m.append("    'converged',logical(d.converged), ...\n");
+            m.append("    'qualityLevel',cellstr(string(d.qualityLevel)), ...\n");
+            m.append("    'intervalInterpretation',cellstr(string(d.intervalInterpretation))));\n");
+            m.append("payload = jsonencode(view);\n");
+            m.append("fid = fopen(c.detailFile, 'w', 'n', 'UTF-8');\n");
+            m.append("fwrite(fid, payload, 'char');\n");
+            m.append("fclose(fid);\n");
+            m.append("r = 'ok';\n");
+            m.append("end\n");
+            Files.write(new File(adapterDir, "dmg_f34_d_read.m").toPath(),
+                    m.toString().getBytes(StandardCharsets.UTF_8));
+
+            Map<String, Object> cfg = new LinkedHashMap<>();
+            cfg.put("resultFile", resultFile.replace(File.separatorChar, '/'));
+            cfg.put("detailFile", detailOut.getAbsolutePath().replace(File.separatorChar, '/'));
+            // 中文说明经 config JSON 传入(ESCAPE_NON_ASCII 转义),避免 .m 文件编码问题
+            cfg.put("intervalNote", "局部D高斯近似交付:中位数与q05–q95为局部后验(相对参考中心的修正量空间,"
+                    + "q05–q95为边缘95%区间±1.96σ);黑色点=参数合同参考中心(center_value);"
+                    + "lower_bound/upper_bound为交付参数合同的物理边界;区间越窄=该参数辨识越充分。"
+                    + "完整局部联合矩见交付Excel的LocalDistribution表。");
+            File configFile = new File(adapterDir, "f34-read-config.json");
+            com.fasterxml.jackson.databind.ObjectMapper om = new com.fasterxml.jackson.databind.ObjectMapper();
+            om.configure(com.fasterxml.jackson.core.JsonGenerator.Feature.ESCAPE_NON_ASCII, true);
+            Files.write(configFile.toPath(), om.writerWithDefaultPrettyPrinter().writeValueAsBytes(cfg));
+            MatlabFunctionRunner runner = new MatlabFunctionRunner(adapterDir, "dmg_f34_d_read",
+                    new Object[]{configFile.getAbsolutePath()},
+                    new File(adapterDir, "f34-read.log"), enginePool,
+                    new MatlabFunctionRunner.ProgressCancellationSink() {
+                        @Override public void onProgress(String message) { MatlabLogRing.append(message); }
+                        @Override public boolean isCancellationRequested() { return false; }
+                    });
+            runner.run();
+            return detailOut.exists();
+        } catch (Exception e) {
+            if (errorOut != null) {
+                errorOut.append(e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+            }
+            log.warn("F34局部D交付明细回读失败: {}", resultFile, e);
+            return false;
+        }
     }
 
     /** 生成并执行 task='read' 适配器;fields 非空时只保留白名单顶层字段。 */
-    private boolean runReadAdapter(String resultFile, File detailOut, String[] fields, String projectId) throws IOException {
+    private boolean runReadAdapter(String resultFile, File detailOut, String[] fields, String projectId,
+                                   StringBuilder errorOut) throws IOException {
         if (detailOut.exists()) return true; // 已生成过,直接复用
         try {
             File programCopy = ensureTc24Source(projectId);
@@ -610,6 +769,9 @@ public class Tc24Service {
             runner.run();
             return detailOut.exists();
         } catch (Exception e) {
+            if (errorOut != null) {
+                errorOut.append(e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+            }
             log.warn("结果明细回读失败: {}", resultFile, e);
             return false;
         }
@@ -704,11 +866,11 @@ public class Tc24Service {
                 fresh = store.getUqRecord(record.getProjectId(), record.getId());
                 fresh.setFinishedAt(System.currentTimeMillis());
                 File delivery = findUqDeliveryExcel(uqOutputDir, fresh.getRunId());
+                // 先落常规摘要，失败时再由 applyUqFailure 并入结构化诊断(两者合并在同一个 uqResult)
+                t.setUqResult(summarizeResult(result, uqOutputDir));
                 if ("failed".equals(status)) {
-                    t.setUqStatus("FAILED");
-                    t.setUqMessage("UQ程序返回失败,详见日志");
-                    fresh.setStatus(UqRecord.ST_FAILED);
-                    fresh.setMessage("UQ程序返回失败,详见日志");
+                    // 失败原因必须能从 status 接口直接读到，不能只留「详见日志」
+                    applyUqFailure(t, fresh, m, key, uqOutputDir, fresh.getRunId(), "UQ程序返回失败");
                 } else {
                     t.setUqStatus("COMPLETED");
                     t.setUqMessage("UQ评估完成;结果另存,不覆盖确定性估计值");
@@ -716,7 +878,6 @@ public class Tc24Service {
                     fresh.setMessage("UQ评估完成;结果另存,不覆盖确定性估计值");
                     fresh.setDeliveryFile(delivery != null ? delivery.getAbsolutePath() : null);
                 }
-                t.setUqResult(summarizeResult(result, uqOutputDir));
                 store.saveTask(t);
                 store.saveUqRecord(fresh);
 
@@ -763,14 +924,13 @@ public class Tc24Service {
                 log.error("TC24 UQ执行失败: {}", key, e);
                 try {
                     EngineModels.ModelingTask t = store.getTask(task.getProjectId(), task.getId());
-                    t.setUqStatus("FAILED");
                     t.setUqFinishedAt(System.currentTimeMillis());
-                    t.setUqMessage(e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
-                    store.saveTask(t);
                     UqRecord fresh = store.getUqRecord(record.getProjectId(), record.getId());
-                    fresh.setStatus(UqRecord.ST_FAILED);
                     fresh.setFinishedAt(System.currentTimeMillis());
-                    fresh.setMessage("UQ评估失败: " + MojibakeUtil.repair(e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
+                    applyUqFailure(t, fresh, m, key,
+                            store.taskWorkDir(task.getProjectId(), key), record.getRunId(),
+                            e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+                    store.saveTask(t);
                     store.saveUqRecord(fresh);
                 } catch (IOException io) {
                     log.error("UQ状态写回失败", io);
@@ -863,6 +1023,12 @@ public class Tc24Service {
                 // 每次发起用带runId的全新批次目录
                 File uqOutputDir = new File(workDir, "tc27-uq-output-" + record.getRunId());
                 if (!uqOutputDir.exists() && !uqOutputDir.mkdirs()) throw new IOException("无法创建UQ输出目录");
+                // 同一秒内重复发起会落到同一个批次目录:清掉上次残留的物理回放缓存，
+                // 避免命中历史失败候选(缓存命中时不校验 valid，会把失败当结果复用)。
+                int staleCache = purgePhysicsCache(new File(uqOutputDir, "MiddleData"), 3);
+                if (staleCache > 0) {
+                    emitLog(key, "已清理上次残留的物理回放缓存 " + staleCache + " 组，本次将重新求值");
+                }
                 writeTc27UqAdapter(adapterDir, programCopy);
 
                 Map<String, Object> options = new LinkedHashMap<>();
@@ -932,10 +1098,8 @@ public class Tc24Service {
                 fresh.setFinishedAt(System.currentTimeMillis());
                 File delivery = findUqDeliveryExcelDeep(uqOutputDir);
                 if ("failed".equals(status)) {
-                    t.setUqStatus("FAILED");
-                    t.setUqMessage("UQ程序返回失败,详见日志");
-                    fresh.setStatus(UqRecord.ST_FAILED);
-                    fresh.setMessage("UQ程序返回失败,详见日志");
+                    // 失败原因必须能从 status 接口直接读到，不能只留「详见日志」
+                    applyUqFailure(t, fresh, m, key, uqOutputDir, record.getRunId(), "UQ程序返回失败");
                 } else {
                     t.setUqStatus("COMPLETED");
                     t.setUqMessage("UQ评估完成;结果另存,不覆盖确定性估计值");
@@ -982,14 +1146,13 @@ public class Tc24Service {
                 log.error("TC27 UQ执行失败: {}", key, e);
                 try {
                     EngineModels.ModelingTask t = store.getTask(task.getProjectId(), key);
-                    t.setUqStatus("FAILED");
                     t.setUqFinishedAt(System.currentTimeMillis());
-                    t.setUqMessage("UQ评估失败: " + MojibakeUtil.repair(e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
-                    store.saveTask(t);
                     UqRecord fresh = store.getUqRecord(record.getProjectId(), record.getId());
-                    fresh.setStatus(UqRecord.ST_FAILED);
                     fresh.setFinishedAt(System.currentTimeMillis());
-                    fresh.setMessage(t.getUqMessage());
+                    applyUqFailure(t, fresh, m, key,
+                            store.taskWorkDir(task.getProjectId(), key), record.getRunId(),
+                            e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+                    store.saveTask(t);
                     store.saveUqRecord(fresh);
                 } catch (IOException io) {
                     log.error("UQ失败状态写回失败", io);
@@ -1000,6 +1163,83 @@ public class Tc24Service {
             }
         });
         return record;
+    }
+
+    /**
+     * UQ 失败统一收尾：把日志还原成结构化诊断，写进 uqMessage 与 uqResult.diagnostics，
+     * 并把完整日志落盘为报告文件。
+     *
+     * <p>生产环境常常无法登录服务器看日志，只能调 status 接口；因此失败原因(阶段、气热平衡四项、
+     * 越界工况坐标、候选统计)必须直接体现在 uqMessage 里，而不是只留一句「详见日志」。
+     */
+    private void applyUqFailure(EngineModels.ModelingTask task, UqRecord record, String method,
+                                String key, File workDir, String prefix, String fallbackMessage) {
+        Map<String, Object> diag;
+        try {
+            List<String> lines = new ArrayList<>(logBuffers.getOrDefault(key, java.util.Collections.emptyList()));
+            diag = UqDiagnostics.analyze(task.getKind(), method, lines);
+            // 点级失败消息本身不含 point_id，用工况坐标在本次运行的稳态均值表里反查
+            List<Map<String, Object>> suspected = UqPointLocator.locate(workDir,
+                    diag.get("outOfRange") instanceof List ? (List<?>) diag.get("outOfRange") : null);
+            if (!suspected.isEmpty()) {
+                diag.put("suspectedPoints", suspected);
+            }
+            File report = UqDiagnostics.writeReport(workDir, prefix, diag, lines);
+            if (report != null) {
+                diag.put("reportFile", report.getAbsolutePath());
+            }
+        } catch (Exception e) {
+            // 诊断本身失败不能影响失败状态与原始报错写回
+            log.warn("UQ诊断生成失败(不影响失败状态写回): {}", e.toString());
+            diag = new LinkedHashMap<>();
+            diag.put("failureClass", "unknown");
+            diag.put("stage", "未识别阶段");
+        }
+        String text = UqDiagnostics.summaryText(diag);
+        if ("unknown".equals(String.valueOf(diag.get("failureClass")))
+                && fallbackMessage != null && !fallbackMessage.isEmpty()) {
+            text = "UQ评估失败：" + MojibakeUtil.repair(fallbackMessage) + "\n" + text;
+        }
+        task.setUqStatus("FAILED");
+        Map<String, Object> res = task.getUqResult();
+        if (res == null) {
+            res = new LinkedHashMap<>();
+            task.setUqResult(res);
+        }
+        res.put("diagnostics", diag);
+        task.setUqMessage(text);
+        if (record != null) {
+            record.setStatus(UqRecord.ST_FAILED);
+            record.setMessage(text);
+        }
+    }
+
+    /** 删除输出目录下的物理回放缓存(uq_replay_*)，让下次评估重新求值而不是命中历史失败候选。 */
+    private int purgePhysicsCache(File root, int maxDepth) {
+        if (root == null || !root.isDirectory()) {
+            return 0;
+        }
+        int removed = 0;
+        File[] kids = root.listFiles();
+        if (kids == null) {
+            return 0;
+        }
+        for (File f : kids) {
+            if (!f.isDirectory()) {
+                continue;
+            }
+            if (f.getName().startsWith("uq_replay_")) {
+                try {
+                    deleteRecursively(f);
+                    removed++;
+                } catch (IOException ignore) {
+                    log.warn("物理回放缓存清理失败(不影响本次评估): {}", f.getAbsolutePath());
+                }
+            } else if (maxDepth > 1) {
+                removed += purgePhysicsCache(f, maxDepth - 1);
+            }
+        }
+        return removed;
     }
 
     /** dmg_tc27_uq_task.m(ASCII-only):透传Start_TC27_UQ_ModelAssessment_01并回写JSON结果。 */
@@ -1024,7 +1264,8 @@ public class Tc24Service {
 
     /** TC27 UQ交付扫描:交付Excel可能落在report_outputs等较深目录,走6层取最新。 */
     /** dmg_tc27_read.m:TC27 UQ交付的参数区间表(ParameterDictionary逐参数 + PosteriorSamples加权分位数)。 */
-    private boolean runTc27ReadAdapter(String resultFile, File detailOut, String projectId) throws IOException {
+    private boolean runTc27ReadAdapter(String resultFile, File detailOut, String projectId,
+                                       StringBuilder errorOut) throws IOException {
         // schema自检:旧版明细(无posteriorQ025字段)视为无效,按新schema重新生成
         if (detailOut.exists()) {
             try {
@@ -1091,7 +1332,10 @@ public class Tc24Service {
             runner.run();
             return detailOut.exists();
         } catch (Exception e) {
-            log.warn("TC27结果明细回读失败: {}", e.getMessage());
+            if (errorOut != null) {
+                errorOut.append(e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+            }
+            log.warn("TC27结果明细回读失败: {}", resultFile, e);
             return false;
         }
     }
@@ -2255,6 +2499,8 @@ public class Tc24Service {
     }
 
     private void emitLog(String taskId, String line) {
+        // 统一修复 MATLAB 中文乱码：覆盖任务日志缓冲、logTail 回放与 SSE 实时推送。
+        line = MojibakeUtil.repair(line);
         MatlabLogRing.append(line);
         List<String> buf = logBuffers.get(taskId);
         if (buf == null) return;

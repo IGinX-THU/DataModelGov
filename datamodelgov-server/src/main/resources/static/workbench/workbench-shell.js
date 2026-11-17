@@ -37,7 +37,7 @@
             const cfg = this._config;
             const p = this._ctx.project;
             this.innerHTML = '';
-            this.appendChild(WB().h('link', { rel: 'stylesheet', href: './workbench/workbench.css?v=r33' }));
+            this.appendChild(WB().h('link', { rel: 'stylesheet', href: './workbench/workbench.css' }));
 
             const app = WB().h('div', { class: 'wb-app' });
 
@@ -168,6 +168,9 @@
         }
 
         _enterTask(business) {
+            /* 进入业务任务页前停掉旧页面轮询:与_navigate一致。否则旧任务页的SSE/轮询
+               (引用已被覆盖的__WB_PAGE_STOP__)泄漏,旧任务状态toast会在新页面/保存流程后
+               继续弹出,甚至僵尸渲染把页面搞乱(2026-11-13 保存后误弹F3错误即此因)。 */
             this._stopActivePage();
             if (business && (business.id === 'flightSteady' || business.id === 'flightTransient' || business.id === 'evolution')) {
                 this._navKey = 'tasks';
@@ -213,11 +216,15 @@
         }
 
         /* 切页前停掉旧页面轮询:旧任务的轮询定时器和共享轮询窗口若残留,
-           会不断刷新全局 __WB_ENGINE_POLL_UNTIL__,让新页面被旧任务的状态"顶着"跑 */
+           会不断刷新全局 __WB_ENGINE_POLL_UNTIL__,让新页面被旧任务的状态"顶着"跑；
+           更糟的是旧页 SSE 还活着时会照旧 applyData,把上一个任务的失败提示弹到当前页(串状态)。
+           单槽 __WB_PAGE_STOP__ 只能记住最后一次渲染的页面——多任务并行时前一个页面必然泄漏,
+           所以改成登记表:每个任务页渲染时登记自己的 stop,切页时全部停掉。 */
         _stopActivePage() {
-            if (typeof window.__WB_PAGE_STOP__ === 'function') {
-                try { window.__WB_PAGE_STOP__(); } catch (e) { /* 忽略 */ }
-            }
+            const stops = window.__WB_PAGE_STOPS__ || [];
+            window.__WB_PAGE_STOPS__ = [];
+            if (typeof window.__WB_PAGE_STOP__ === 'function') stops.push(window.__WB_PAGE_STOP__);
+            stops.forEach(fn => { try { fn(); } catch (e) { /* 忽略 */ } });
             window.__WB_PAGE_STOP__ = null;
             window.__WB_ENGINE_POLL_UNTIL__ = 0;
         }
