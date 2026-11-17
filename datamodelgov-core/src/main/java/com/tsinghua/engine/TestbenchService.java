@@ -987,10 +987,21 @@ public class TestbenchService {
         return out;
     }
 
-    /** 安全停止请求(效果07-20):阶段完成后协同中断;cancel=true撤销请求。 */
+    /** 安全停止请求(效果07-20):阶段完成后协同中断;cancel=true撤销请求。
+     *  Java内存标志只影响等待循环,传不进MATLAB——真正生效的是文件通道:
+     *  写 <taskDirectory>/stop_requested,适配器在每个阶段开始前检查,发现则置status='stopped'退出。 */
     public Map<String, Object> requestTaskStop(String projectId, String taskId, boolean cancel) throws IOException {
         TaskRun r = requireTask(projectId, taskId);
         r.stopRequested = !cancel;
+        // 文件通道:M-file适配器按阶段轮询该标志(写入/删除即生效,无需引擎调用)
+        if (r.taskDirectory != null && !r.taskDirectory.isEmpty()) {
+            File flag = new File(r.taskDirectory, "stop_requested");
+            if (cancel) {
+                flag.delete();
+            } else if (!flag.exists() && !flag.createNewFile()) {
+                throw new IOException("无法写入停止标志文件: " + flag);
+            }
+        }
         r.appendLog(cancel ? "[java] 已取消安全停止请求,任务将继续执行"
                 : "[java] 已请求安全停止:当前阶段完成后退出(不卸载DLL,不伪装成内部续跑)");
         Map<String, Object> out = new LinkedHashMap<>();
@@ -1081,9 +1092,16 @@ public class TestbenchService {
             boolean dp = "design_point".equals(r.kind);
             if (dp) writeDesignPointAdapter(new File(r.adapterDir), progCopy);
             else writeStartStopAdapter(new File(r.adapterDir), progCopy);
-            runTaskViaRunner(r, dp ? "dmg_designpoint_task" : "dmg_startstop_task", dp ? "solve" : "run", null);
-            r.phase = "ENDED";
-            r.message = dp ? "设计点求解完成;可查看结果或commit" : "起动停车任务完成";
+            Map<String, Object> res = runTaskViaRunner(r, dp ? "dmg_designpoint_task" : "dmg_startstop_task", dp ? "solve" : "run", null);
+            if (!dp && r.stopRequested
+                    && "stopped".equalsIgnoreCase(String.valueOf(res.get("status")))) {
+                // MATLAB按文件通道在阶段间协同退出(效果07-20):已完成阶段与产物保留
+                r.phase = "STOPPED";
+                r.message = "已按请求在安全点停止;已完成阶段与产物保留";
+            } else {
+                r.phase = "ENDED";
+                r.message = dp ? "设计点求解完成;可查看结果或commit" : "起动停车任务完成";
+            }
             r.finishedAt = System.currentTimeMillis();
         } catch (java.util.concurrent.CancellationException e) {
             // 安全停止(效果07-20):阶段完成后协同中断;已保存产物保留,不伪装成内部续跑
@@ -1288,8 +1306,15 @@ public class TestbenchService {
         m.append("        u.taskDirectory = fullfile(c.taskDirectory, 'task');\n");
         m.append("        cfg = sht_startstop_modeling_config(u);\n");
         m.append("        task = sht_startstop_modeling_task('prepare', cfg);\n");
+        m.append("        stopFlag = fullfile(c.taskDirectory, 'stop_requested');\n");
         m.append("        if ~strcmp(task.status, 'blocked')\n");
         m.append("            for k = 1:numel(cfg.requestedStages)\n");
+        m.append("                % cooperative stop: Java writes the flag file between stages\n");
+        m.append("                if exist(stopFlag, 'file')\n");
+        m.append("                    task.status = 'stopped';\n");
+        m.append("                    task.message = 'stop requested; finished stages and artifacts kept';\n");
+        m.append("                    break;\n");
+        m.append("                end\n");
         m.append("                task = sht_startstop_modeling_task('runstage', task.taskDirectory, cfg.requestedStages{k});\n");
         m.append("                if any(strcmp(task.status, {'paused','failed','blocked'})), break; end\n");
         m.append("            end\n");
