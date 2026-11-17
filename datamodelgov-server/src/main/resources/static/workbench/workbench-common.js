@@ -5469,10 +5469,12 @@ window.Workbench = (() => {
             a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
             a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 3000);
         }
-        /** 从产物清单定位某阶段前缀的最新目录前缀(如 report_outputs/matrix_xxx)。 */
+        /** 从产物清单定位某阶段前缀的最新目录前缀(如 report_outputs/matrix_xxx)。
+         *  合同产物实际落在任务目录的 task/report_outputs/ 子层,匹配时剥离 task/ 前缀;
+         *  返回值保留原始路径(调用方用它做 arts 前缀匹配与 artifactData 读取)。 */
         function stageDirOf(arts, prefix) {
-            const dirs = arts.filter(a => a.dir && a.path.indexOf('report_outputs/' + prefix + '_') === 0)
-                .map(a => a.path).sort();
+            const hit = p => p.replace(/^task\//, '').indexOf('report_outputs/' + prefix + '_') === 0;
+            const dirs = arts.filter(a => a.dir && hit(a.path)).map(a => a.path).sort();
             return dirs.length ? dirs[dirs.length - 1] : null;
         }
         const STAGE_DESC = { maps: '全部图生成与局域核对', design: '设计解与设计状态文件', matrix: '逐点矩阵与受约束调图', physics: '物理校核与扰动检查', continuous: '连续起停算例', thermal: '热效应与热浸校核' };
