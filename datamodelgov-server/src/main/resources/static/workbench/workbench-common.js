@@ -489,8 +489,528 @@ window.Workbench = (() => {
         return box;
     }
 
-    /** UQ评估结果明细(参数区间表+区间图,就地渲染):模型库页(02-05)与任务页
-     *  「查看此模型的已有评估」列表共用;record 形如 {id, runId, status}。
+    /** UQ结果区(按《界面页面与操作流程关联图》图01-09「参数分布、节点区间与确定性值分列」效果图布局):
+     *  顶部三字段行(运行记录/数据范围/关联不确定性评估下拉=记录选择器) → 左「全部参数」族列表
+     *  → 右节点曲线(确定性估计线+后验均值线+95%区间误差棒,x=节点坐标) → 左下「节点N的概率分布」
+     *  直方图(加权后验样本;无样本时按高斯近似) → 右下统计量表(确定性估计/后验均值/95%区间+统计质量)。
+     *  opts: {rows:[{name,family,coordinate,axis,unit,det,mean,q025,q975,pIndex}],
+     *         manifest, rec, recs, onPickRec, samples:{theta,weights}|null, title} */
+    function renderUqDesignSection(host, opts) {
+        opts = opts || {};
+        const rowsAll = Array.isArray(opts.rows) ? opts.rows : [];
+        const mf = opts.manifest || {};
+        if (!rowsAll.length) {
+            host.appendChild(h('div', { class: 'wb-hint' }, '该评估明细中未包含参数区间数据。'));
+            return;
+        }
+        // 族分组(按 family;保持首次出现顺序)
+        const families = [];
+        const famIdx = {};
+        rowsAll.forEach(p => {
+            const fam = String(p.family || p.name || '—');
+            if (famIdx[fam] == null) { famIdx[fam] = families.length; families.push({ name: fam, rows: [], axis: p.axis, unit: p.unit }); }
+            families[famIdx[fam]].rows.push(p);
+        });
+        families.forEach(f => f.rows.sort((a, b) => (toNum(a.coordinate) != null ? toNum(a.coordinate) : 0) - (toNum(b.coordinate) != null ? toNum(b.coordinate) : 0)));
+        let selFam = 0;
+        let selNode = Math.floor((families[0].rows.length - 1) / 2);
+
+        const num = v => (v == null || v === '' || !isFinite(parseFloat(v))) ? null : parseFloat(v);
+        const fmt = v => { const n = num(v); if (n == null) return '—';
+            const a = Math.abs(n); return a >= 1000 ? n.toFixed(1) : a >= 1 ? n.toFixed(4) : n.toPrecision(4); };
+        const nodeCoord = p => num(p.coordinate) != null ? Number(p.coordinate).toFixed(3) : String(p.coordinate == null ? '—' : p.coordinate);
+
+        /* 顶部三字段行(运行记录/数据范围/关联不确定性评估下拉) */
+        const topRow = h('div', { class: 'wb-form-grid', style: 'grid-template-columns:repeat(3,1fr);max-width:1180px;margin:0 0 12px' });
+        const mkField = (label, valueNode) => h('div', { class: 'wb-field' }, h('label', null, label), valueNode);
+        topRow.appendChild(mkField('运行记录', h('input', { readonly: '', value: opts.title || (opts.rec ? (opts.rec.runId || opts.rec.id) : '—') })));
+        topRow.appendChild(mkField('数据范围', h('input', { readonly: '', value: opts.dataRange || '—' })));
+        if (Array.isArray(opts.recs) && opts.recs.length && typeof opts.onPickRec === 'function') {
+            const sel = h('select', { style: 'width:100%' }, opts.recs.map(r => h('option', {
+                value: r.id, selected: (opts.rec && opts.rec.id === r.id) ? '' : null
+            }, (r.runId || r.id) + ' · 方法' + (r.method || '—'))));
+            sel.addEventListener('change', () => {
+                const pick = opts.recs.find(x => x.id === sel.value);
+                if (pick) opts.onPickRec(pick);
+            });
+            topRow.appendChild(mkField('关联不确定性评估', sel));
+        } else {
+            topRow.appendChild(mkField('关联不确定性评估',
+                h('input', { readonly: '', value: opts.rec ? ((opts.rec.runId || opts.rec.id) + ' · 方法' + (opts.rec.method || '—')) : '—' })));
+        }
+        host.appendChild(topRow);
+
+        /* 「输出与误差」区块标题(01-09口径) + 「参数与调度曲线」页签 + 右侧节点区间标注 */
+        host.appendChild(h('div', { style: 'display:flex;align-items:baseline;gap:18px;max-width:1180px;margin:4px 0 10px' },
+            h('span', { class: 'wb-section-title' }, '输出与误差'),
+            h('span', { style: 'font-weight:700;color:#0e7490;font-size:13px;border-bottom:2px solid #0e7490;padding-bottom:2px' }, '参数与调度曲线'),
+            h('span', { style: 'flex:1' }),
+            h('span', { class: 'wb-hint' }, '节点区间 · 95%')));
+        const body = h('div', { style: 'display:grid;grid-template-columns:280px 1fr;gap:18px;max-width:1180px;align-items:start' });
+        const famList = h('div', { style: 'border:1px solid #e5e7eb;border-radius:8px;background:#fff;overflow:hidden;align-self:start' });
+        const right = h('div', null);
+        const lower = h('div', { style: 'display:grid;grid-template-columns:1fr 360px;gap:18px;max-width:1180px;margin-top:14px;align-items:start' });
+        const distBox = h('div', null);
+        const statBox = h('div', null);
+        body.appendChild(famList);
+        body.appendChild(right);
+        lower.appendChild(distBox);
+        lower.appendChild(statBox);
+        host.appendChild(body);
+        host.appendChild(lower);
+
+        const ensureChartLib = cb => {
+            if (window.echarts) { cb(window.echarts); return; }
+            if (!window.__wbEchartsLoading) {
+                window.__wbEchartsLoading = true;
+                const sc = document.createElement('script');
+                sc.src = './lib/echarts/echarts.min.js';
+                sc.onload = () => cb(window.echarts);
+                sc.onerror = () => { window.__wbEchartsLoading = false; };
+                document.head.appendChild(sc);
+            } else {
+                const timer = setInterval(() => { if (window.echarts) { clearInterval(timer); cb(window.echarts); } }, 120);
+            }
+        };
+
+        /* 左列表(族,点击局部重绘) */
+        const paintFamList = () => {
+            famList.innerHTML = '';
+            famList.appendChild(h('div', { style: 'display:flex;justify-content:space-between;padding:10px 14px;border-bottom:1px solid #f1f2f4' },
+                h('span', { style: 'font-weight:700;font-size:13px;color:#111827' }, '全部参数'),
+                h('span', { class: 'wb-hint' }, families.length + '类')));
+            families.forEach((f, i) => {
+                famList.appendChild(h('div', {
+                    style: 'display:flex;justify-content:space-between;padding:9px 14px;font-size:13px;cursor:pointer;'
+                        + (i === selFam ? 'background:#e6f4f2;color:#0e7490;font-weight:600;' : 'color:#374151;')
+                        + (i < families.length - 1 ? 'border-bottom:1px solid #f7f8f9;' : ''),
+                    onclick: () => { if (selFam !== i) { selFam = i; selNode = Math.floor((families[i].rows.length - 1) / 2); paintRight(); paintLower(); } }
+                }, h('span', null, f.name),
+                   h('span', { class: 'wb-hint' }, f.rows.length + (f.unit && f.unit !== '1' ? ' · ' + f.unit : ''))));
+            });
+        };
+
+        /* 右:节点曲线(确定性线/后验均值线/95%误差棒) + 节点按钮行 */
+        const paintRight = () => {
+            const f = families[selFam];
+            right.innerHTML = '';
+            right.appendChild(h('div', { class: 'wb-section-title' }, f.name + '修正'));
+            right.appendChild(h('div', { class: 'wb-hint', style: 'margin:2px 0 6px' },
+                (f.axis || '坐标') + (f.unit && f.unit !== '1' ? ' / ' + f.unit : '')
+                + ' · 深线=确定性估计,浅线=后验均值,竖线=95%区间;点击图或下方节点切换统计量'));
+            const chartHost = h('div', { style: 'width:100%;height:300px' });
+            right.appendChild(chartHost);
+            const nodeRow = h('div', { style: 'display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 0' });
+            f.rows.forEach((p, i) => nodeRow.appendChild(h('button', {
+                class: 'wb-btn ' + (i === selNode ? 'wb-btn-primary' : 'wb-btn-outline'),
+                style: 'padding:2px 10px;font-size:12px',
+                onclick: () => { if (selNode !== i) { selNode = i; paintRight(); paintLower(); } }
+            }, '节点 ' + nodeCoord(p))));
+            right.appendChild(nodeRow);
+            ensureChartLib(() => {
+                if (chartHost.isConnected === false) return;
+                const chart = window.echarts.init(chartHost, null, { renderer: 'canvas' });
+                const pts = f.rows.map(p => ({
+                    x: num(p.coordinate), det: num(p.det), mean: num(p.mean),
+                    q025: num(p.q025), q975: num(p.q975)
+                }));
+                const hasX = pts.some(p => p.x != null);
+                const errData = pts.map((p, i) => (p.q025 != null && p.q975 != null && p.mean != null)
+                    ? [hasX ? p.x : i, p.mean, p.q025, p.q975] : null).filter(Boolean);
+                const errRender = (params, api) => {
+                    const x = api.coord([api.value(0), api.value(1)]);
+                    const lo = api.coord([api.value(0), api.value(2)]);
+                    const hi = api.coord([api.value(0), api.value(3)]);
+                    return { type: 'group', children: [
+                        { type: 'line', shape: { x1: x[0], y1: lo[1], x2: x[0], y2: hi[1] }, style: { stroke: '#9db9c9', lineWidth: 1.6 } },
+                        { type: 'line', shape: { x1: x[0] - 4, y1: lo[1], x2: x[0] + 4, y2: lo[1] }, style: { stroke: '#9db9c9', lineWidth: 1.6 } },
+                        { type: 'line', shape: { x1: x[0] - 4, y1: hi[1], x2: x[0] + 4, y2: hi[1] }, style: { stroke: '#9db9c9', lineWidth: 1.6 } }
+                    ] };
+                };
+                chart.setOption({
+                    animation: false,
+                    tooltip: {
+                        trigger: 'axis',
+                        formatter: params => {
+                            const i = params && params[0] ? params[0].dataIndex : 0;
+                            const p = pts[i]; if (!p) return '';
+                            const lbl = f.rows[i] ? ('节点 ' + nodeCoord(f.rows[i]) + ' · ' + (f.rows[i].name || '')) : '';
+                            return '<div style="font-size:12px">' + lbl + '</div>'
+                                + '<div style="font-size:11px;color:#666">确定性估计: ' + fmt(p.det) + '</div>'
+                                + '<div style="font-size:11px;color:#666">后验均值: ' + fmt(p.mean) + '</div>'
+                                + '<div style="font-size:11px;color:#666">95%区间: [' + fmt(p.q025) + ', ' + fmt(p.q975) + ']</div>';
+                        }
+                    },
+                    legend: { data: ['确定性估计', '后验均值', '95%区间'], left: 'center', bottom: 0, itemGap: 16, textStyle: { fontSize: 11 } },
+                    grid: { left: 64, right: 30, top: 20, bottom: 52 },
+                    xAxis: { type: hasX ? 'value' : 'category', scale: true, data: hasX ? null : pts.map((p, i) => '节点' + (i + 1)), axisLabel: { fontSize: 10 } },
+                    yAxis: { type: 'value', scale: true, splitLine: { show: true, lineStyle: { color: '#f0f0f0' } }, axisLabel: { fontSize: 10 } },
+                    series: [
+                        { name: '确定性估计', type: 'line', data: pts.map((p, i) => [hasX ? p.x : i, p.det]), showSymbol: pts.length <= 24,
+                          lineStyle: { color: '#16697a', width: 2 }, itemStyle: { color: '#16697a' }, symbolSize: 6, z: 3 },
+                        { name: '后验均值', type: 'line', data: pts.map((p, i) => [hasX ? p.x : i, p.mean]), showSymbol: pts.length <= 24,
+                          lineStyle: { color: '#6aa8c9', width: 2 }, itemStyle: { color: '#6aa8c9' }, symbolSize: 6, z: 3 },
+                        { name: '95%区间', type: 'custom', renderItem: errRender, data: errData,
+                          encode: { x: 0, y: 1 }, silent: false, z: 2 }
+                    ]
+                });
+                chart.on('click', params => {
+                    if (params && params.componentType === 'series' && params.seriesType === 'line' && params.dataIndex != null
+                        && params.dataIndex !== selNode && params.dataIndex < f.rows.length) {
+                        selNode = params.dataIndex; paintRight(); paintLower();
+                    }
+                });
+            });
+        };
+
+        /* 下方:节点概率分布(加权样本直方图;无样本按高斯近似曲线) + 统计量表 */
+        const paintLower = () => {
+            const f = families[selFam];
+            const p = f.rows[selNode];
+            distBox.innerHTML = '';
+            statBox.innerHTML = '';
+            distBox.appendChild(h('div', { class: 'wb-section-title' }, '节点 ' + nodeCoord(p) + ' 的概率分布'));
+            const distHost = h('div', { style: 'width:100%;height:220px' });
+            distBox.appendChild(distHost);
+            const theta = opts.samples && Array.isArray(opts.samples.theta) ? opts.samples.theta : null;
+            const weights = opts.samples && Array.isArray(opts.samples.weights) ? opts.samples.weights : null;
+            const pi = num(p.pIndex) != null ? Math.round(num(p.pIndex)) - 1 : selNode;
+            const hasSamples = !!(theta && weights && theta.length && theta[0] && theta[0].length > pi && isFinite(pi) && pi >= 0);
+            ensureChartLib(() => {
+                if (distHost.isConnected === false) return;
+                const chart = window.echarts.init(distHost, null, { renderer: 'canvas' });
+                if (hasSamples) {
+                    const vals = theta.map(row => (Array.isArray(row) ? row[pi] : null)).filter(v => typeof v === 'number' && isFinite(v));
+                    const wts = weights.map(w => (typeof w === 'number' && isFinite(w) && w > 0) ? w : 0);
+                    const usable = Math.min(vals.length, wts.length);
+                    const B = 26;
+                    let vmin = Infinity, vmax = -Infinity;
+                    for (let j = 0; j < usable; j++) { if (vals[j] < vmin) vmin = vals[j]; if (vals[j] > vmax) vmax = vals[j]; }
+                    if (isFinite(vmin) && vmax > vmin) {
+                        const wsum = wts.slice(0, usable).reduce((a, b) => a + b, 0) || 1;
+                        const cnt = new Array(B).fill(0);
+                        for (let j = 0; j < usable; j++) {
+                            let b = Math.floor((vals[j] - vmin) / (vmax - vmin) * B);
+                            if (b >= B) b = B - 1; if (b < 0) b = 0;
+                            cnt[b] += wts[j];
+                        }
+                        const cats = [], pct = [];
+                        for (let b = 0; b < B; b++) {
+                            cats.push((vmin + (vmax - vmin) * b / B).toPrecision(3));
+                            pct.push(+(cnt[b] / wsum * 100).toFixed(2));
+                        }
+                        chart.setOption({
+                            animation: false,
+                            grid: { left: 56, right: 16, top: 14, bottom: 40 },
+                            xAxis: { type: 'category', data: cats, axisLabel: { fontSize: 9, interval: 5 } },
+                            yAxis: { type: 'value', name: '相对频数 %', nameTextStyle: { fontSize: 10 }, axisLabel: { fontSize: 10 } },
+                            series: [{ type: 'bar', data: pct, barWidth: '88%', itemStyle: { color: '#5b8ff9' } }]
+                        });
+                        return;
+                    }
+                }
+                // 无样本:按95%区间反推高斯近似曲线(mean=后验均值,σ=(q975-q025)/3.92)
+                const mu = num(p.mean), sd = (num(p.q025) != null && num(p.q975) != null) ? (num(p.q975) - num(p.q025)) / 3.919928 : null;
+                if (mu != null && sd != null && sd > 0) {
+                    const N = 60, lo = mu - 3.2 * sd, hi = mu + 3.2 * sd, xs = [], ys = [];
+                    for (let j = 0; j <= N; j++) {
+                        const x = lo + (hi - lo) * j / N;
+                        xs.push(x.toPrecision(4));
+                        ys.push(+(Math.exp(-0.5 * Math.pow((x - mu) / sd, 2)) / (sd * Math.sqrt(2 * Math.PI)) * 100 * sd).toFixed(2));
+                    }
+                    chart.setOption({
+                        animation: false,
+                        grid: { left: 56, right: 16, top: 14, bottom: 40 },
+                        xAxis: { type: 'category', data: xs, axisLabel: { fontSize: 9, interval: 9 } },
+                        yAxis: { type: 'value', name: '相对频数 %', nameTextStyle: { fontSize: 10 }, axisLabel: { fontSize: 10 } },
+                        series: [{ type: 'line', data: ys, smooth: true, showSymbol: false,
+                            areaStyle: { color: 'rgba(91,143,249,0.25)' }, lineStyle: { color: '#5b8ff9', width: 2 } }]
+                    });
+                    distBox.appendChild(h('div', { class: 'wb-hint', style: 'margin:4px 0 0' },
+                        '该交付未含后验样本,分布按局部高斯近似(均值/95%区间反推)展示。'));
+                    return;
+                }
+                distHost.innerHTML = '';
+                distHost.appendChild(h('div', { class: 'wb-hint', style: 'padding:40px 0;text-align:center' },
+                    '该节点暂无可展示的分布数据。'));
+            });
+            // 统计量表(效果图右下:结果/数值 两列)
+            const quality = mf.formal_status === 'FORMAL_ACCEPTED' ? '已验收'
+                : (mf.uncertainty_quality === 'LOCAL_APPROXIMATION' ? '局部近似·待核查' : '待核查');
+            statBox.appendChild(h('div', { style: 'display:flex;align-items:baseline;justify-content:space-between;margin-bottom:6px' },
+                h('span', { class: 'wb-section-title' }, '统计量'),
+                h('span', { style: 'font-size:12px;color:#b45309;font-weight:600' }, '统计质量: ' + quality)));
+            const statTbl = h('table', { class: 'wb-table' },
+                h('tr', null, ['结果', '数值'].map(x => h('th', null, x))),
+                h('tr', null, h('td', null, '确定性估计'), h('td', null, fmt(p.det))),
+                h('tr', null, h('td', null, '后验均值'), h('td', null, fmt(p.mean))),
+                h('tr', null, h('td', null, '95%置信区间'), h('td', null, '[' + fmt(p.q025) + ', ' + fmt(p.q975) + ']')));
+            statBox.appendChild(statTbl);
+            statBox.appendChild(h('div', { class: 'wb-hint', style: 'margin:6px 0 0;line-height:1.6' },
+                '区间按节点展示,非测点时要重叠显示;' + (mf.uncertainty_quality === 'SINGLE_RUN_SMC_RESULT'
+                    ? '单次SMC运行结果,统计校准未经多次运行确认。' : '局部D为有限局部非驻点证明,不标为全局校准后验。')));
+        };
+
+        paintFamList();
+        paintRight();
+        paintLower();
+    }
+
+    /** UQ结果区(图04-15「所有参数及燃油偏置都能追溯区间来源」布局,三页面共用):
+     *  sheet页签+右上预计/实际 → 参数/节点曲线下拉+对照对象下拉 → 节点图(圆点均值+竖线95%区间+蓝×确定性,灰色=未独立抽样)
+     *  → 注释行 → 明细表格(所选参数节点行) → 底部导出/返回。
+     *  cfg: {projectId, taskId, rec|null(评估记录), durTxt(预计/实际字符串), exportUrl|null, onBack|null, onBackLabel} */
+    const META_SHEET_BLOCK = ['Manifest', 'FixedAnchors', 'RuntimeAssets', 'PosteriorCovariance', 'PosteriorCorrelation', 'Verification', 'SamplingDiagnostics', 'PredictionDiagnostics', 'PosteriorSamples', 'ModelState', 'LocalDistribution', 'ShapeNodeMap'];
+    function renderUqInterval0415(host, cfg) {
+        cfg = cfg || {};
+        const rec = cfg.rec || null;
+        const recQ = rec ? ('?recordId=' + encodeURIComponent(rec.id)) : '';
+        const durTxt = cfg.durTxt || '—';
+        const num = v => (v == null || v === '' || !isFinite(parseFloat(v))) ? null : parseFloat(v);
+        const fmt = v => { const n = num(v); if (n == null) return '—';
+            const a = Math.abs(n); return a >= 1000 ? n.toFixed(1) : a >= 1 ? n.toFixed(4) : n.toPrecision(4); };
+        const ensureChart = cb => {
+            if (window.echarts) { cb(); return; }
+            if (!window.__wbEchartsLoading) {
+                window.__wbEchartsLoading = true;
+                const sc = document.createElement('script');
+                sc.src = './lib/echarts/echarts.min.js';
+                sc.onload = () => { window.__wbEchartsLoading = false; cb(); };
+                sc.onerror = () => { window.__wbEchartsLoading = false; };
+                document.head.appendChild(sc);
+            } else {
+                const timer = setInterval(() => { if (window.echarts) { clearInterval(timer); cb(); } }, 120);
+            }
+        };
+        /* 表格(先定义,任何分支可用) */
+        const drawTable = (box, dd) => {
+            box.innerHTML = '';
+            const headers2 = dd.headers || [], rows2 = dd.rows || [];
+            if (!headers2.length) { box.appendChild(h('div', { class: 'wb-hint' }, '该Sheet无表头数据。')); return; }
+            const tbl = h('table', { class: 'wb-table', style: 'max-width:1180px' });
+            const tr = h('tr', null);
+            headers2.forEach(hd => tr.appendChild(h('th', null, hd || '')));
+            tbl.appendChild(tr);
+            rows2.forEach(rw => {
+                const r3 = h('tr', null);
+                headers2.forEach((hd, i) => r3.appendChild(h('td', null, String(rw[i] == null ? '' : rw[i]))));
+                tbl.appendChild(r3);
+            });
+            box.appendChild(tbl);
+        };
+        /* 节点图(圆点均值+竖线95%区间+蓝×对照值,灰色=未独立抽样;pts[i]={x,m,lo,up,ref,gray};hasX=false时x为类目) */
+        const renderNodeChart = (chartHost, pts, hasX, xName) => {
+            ensureChart(() => {
+                if (chartHost.isConnected === false) return;
+                const chart = window.echarts.init(chartHost, null, { renderer: 'canvas' });
+                const errData = pts.map((pp, i) => (pp.m != null && pp.lo != null && pp.up != null)
+                    ? [hasX ? pp.x : i, pp.m, pp.lo, pp.up, pp.gray ? 1 : 0] : null).filter(Boolean);
+                const errRender = (params, api) => {
+                    const xm = api.coord([api.value(0), api.value(1)]);
+                    const ylo = api.coord([api.value(0), api.value(2)]);
+                    const yup = api.coord([api.value(0), api.value(3)]);
+                    const gray = api.value(4) === 1;
+                    const c = gray ? '#9aa7b5' : '#0f766e';
+                    return { type: 'group', children: [
+                        { type: 'line', shape: { x1: xm[0], y1: yup[1], x2: xm[0], y2: ylo[1] }, style: { stroke: c, lineWidth: 2 } },
+                        { type: 'line', shape: { x1: xm[0] - 5, y1: yup[1], x2: xm[0] + 5, y2: yup[1] }, style: { stroke: c, lineWidth: 2 } },
+                        { type: 'line', shape: { x1: xm[0] - 5, y1: ylo[1], x2: xm[0] + 5, y2: ylo[1] }, style: { stroke: c, lineWidth: 2 } }
+                    ] };
+                };
+                const refData = pts.map((pp, i) => (pp.ref != null) ? [hasX ? pp.x : i, pp.ref] : null).filter(Boolean);
+                const crossRender = (params, api) => {
+                    const p = api.coord([api.value(0), api.value(1)]);
+                    const s0 = 5;
+                    return { type: 'group', children: [
+                        { type: 'line', shape: { x1: p[0] - s0, y1: p[1] - s0, x2: p[0] + s0, y2: p[1] + s0 }, style: { stroke: '#2f6fb5', lineWidth: 2 } },
+                        { type: 'line', shape: { x1: p[0] - s0, y1: p[1] + s0, x2: p[0] + s0, y2: p[1] - s0 }, style: { stroke: '#2f6fb5', lineWidth: 2 } }
+                    ] };
+                };
+                chart.setOption({
+                    animation: false,
+                    tooltip: {
+                        trigger: 'axis',
+                        formatter: params => {
+                            const i = params && params[0] ? params[0].dataIndex : 0;
+                            const pp = pts[i]; if (!pp) return '';
+                            return '<div style="font-size:12px">节点' + (i + 1) + '</div>'
+                                + '<div style="font-size:11px;color:#666">评估均值: ' + fmt(pp.m) + '</div>'
+                                + '<div style="font-size:11px;color:#666">95%区间: [' + fmt(pp.lo) + ', ' + fmt(pp.up) + ']</div>'
+                                + '<div style="font-size:11px;color:#666">对照: ' + (pp.ref != null ? fmt(pp.ref) : '无') + '</div>';
+                        }
+                    },
+                    legend: { data: ['评估均值', '95%参数区间', '对照值'], left: 'center', bottom: 0, itemGap: 16, textStyle: { fontSize: 11 } },
+                    grid: { left: 64, right: 30, top: 20, bottom: 52 },
+                    xAxis: { type: hasX ? 'value' : 'category', scale: true,
+                        data: hasX ? null : pts.map((pp, i) => '节点' + (i + 1)),
+                        name: xName || '', nameLocation: 'middle', nameGap: 24, axisLabel: { fontSize: 10 } },
+                    yAxis: { type: 'value', scale: true, splitLine: { show: true, lineStyle: { color: '#f0f0f0' } }, axisLabel: { fontSize: 10 } },
+                    series: [
+                        { name: '评估均值', type: 'scatter', data: pts.map((pp, i) => [hasX ? pp.x : i, pp.m, pp.gray ? 1 : 0]),
+                          symbolSize: 9, z: 3,
+                          itemStyle: { color: p2 => (p2.value && p2.value[2] === 1) ? '#9aa7b5' : '#0f766e' } },
+                        { name: '95%参数区间', type: 'custom', renderItem: errRender, data: errData, encode: { x: 0, y: 1 }, z: 2 },
+                        { name: '对照值', type: 'custom', renderItem: crossRender, data: refData, encode: { x: 0, y: 1 }, z: 4 }
+                    ]
+                });
+            });
+        };
+        const holder = h('div', null, h('div', { class: 'wb-hint' }, '区间表加载中...'));
+        host.appendChild(holder);
+        const loadSheet = sn => {
+            const url = 'projects/' + encodeURIComponent(cfg.projectId)
+                + '/tasks/' + encodeURIComponent(cfg.taskId) + '/uq/interval-table' + recQ
+                + (sn ? (recQ ? '&' : '?') + 'sheet=' + encodeURIComponent(sn) : '');
+            window.AppConfig.engineGet(url).then(resp => {
+                if (holder.isConnected === false) return;
+                paint(resp, sn || (resp && resp.data && resp.data.sheet) || '');
+            }).catch(e => {
+                if (holder.isConnected === false) return;
+                holder.innerHTML = '';
+                holder.appendChild(h('div', { class: 'wb-hint' }, '区间表加载失败:' + e.message));
+            });
+        };
+        const paint = (resp, sn) => {
+            holder.innerHTML = '';
+            if (!(resp && (resp.success || resp.code === 200) && resp.data)) {
+                holder.appendChild(h('div', { class: 'wb-hint' },
+                    '区间表暂不可读: ' + ((resp && resp.message) || '详见评估记录') + ';交付Excel可通过「导出参数表」获取。'));
+                return;
+            }
+            const d = resp.data;
+            const hs = (d.headers || []).map(x => String(x || ''));
+            const colNode = hs.findIndex(x => /节点|node|参数|name/i.test(x));
+            const colXi = (() => { const i = hs.findIndex(x => /coordinate|坐标/i.test(x) && !/max|最大/i.test(x)); return i >= 0 ? i : hs.findIndex(x => /流量|质量流量/i.test(x)); })();
+            const colMi = (() => { const i = hs.findIndex(x => /posteriorMean|评估均值/i.test(x)); return i >= 0 ? i : hs.findIndex(x => /均值/i.test(x)); })();
+            const colLi = (() => { const i = hs.findIndex(x => /posteriorQ025|95%.*下限/i.test(x)); return i >= 0 ? i : hs.findIndex(x => /下限|q025/i.test(x)); })();
+            const colUi = (() => { const i = hs.findIndex(x => /posteriorQ975|95%.*上限/i.test(x)); return i >= 0 ? i : hs.findIndex(x => /上限|q975/i.test(x)); })();
+            const colDet = hs.findIndex(x => /确定性/i.test(x));
+            const colAct = hs.findIndex(x => /本次处理|处理/i.test(x));
+            const colTruth = hs.findIndex(x => /真值|truth/i.test(x));
+            const rowsAll = (d.rows || []).map(r => ({
+                node: colNode >= 0 ? String(r[colNode] == null ? '' : r[colNode]) : '',
+                x: colXi >= 0 ? parseFloat(r[colXi]) : NaN,
+                m: colMi >= 0 ? parseFloat(r[colMi]) : NaN,
+                lo: colLi >= 0 ? parseFloat(r[colLi]) : null,
+                up: colUi >= 0 ? parseFloat(r[colUi]) : null,
+                det: colDet >= 0 ? parseFloat(r[colDet]) : null,
+                truth: colTruth >= 0 ? parseFloat(r[colTruth]) : null,
+                act: colAct >= 0 ? String(r[colAct] == null ? '' : r[colAct]) : ''
+            }));
+            const baseName = node => (node || '参数').replace(/_node\d+$/i, '');
+            const paramNames = [];
+            const pset = {};
+            rowsAll.forEach(r => { const b = baseName(r.node); if (!pset[b]) { pset[b] = true; paramNames.push(b); } });
+            let curParam = paramNames[0] || '';
+            const cmpOpts = colTruth >= 0 ? ['确定性值 + 本次区间', '真值 + 本次区间'] : ['确定性值 + 本次区间：无真值'];
+            let curCmp = cmpOpts[0];
+            /* sheet 页签行 + 右上预计/实际(04-15) */
+            const sheetBar = h('div', { style: 'display:flex;align-items:baseline;gap:18px;max-width:1180px;margin:2px 0 10px;border-bottom:1px solid #e5e7eb;padding-bottom:6px' });
+            (Array.isArray(d.sheetNames) && d.sheetNames.length ? d.sheetNames.filter(x => META_SHEET_BLOCK.indexOf(x) < 0) : [sn || '全部参数']).forEach(sn2 => {
+                sheetBar.appendChild(h('span', {
+                    style: 'font-size:14px;cursor:pointer;padding:2px 0;' + (sn2 === sn ? 'color:#0e7490;font-weight:700;border-bottom:2px solid #0e7490;' : 'color:#6b7280;'),
+                    onclick: () => { if (sn2 !== sn) loadSheet(sn2); }
+                }, sn2));
+            });
+            sheetBar.appendChild(h('span', { style: 'flex:1' }));
+            sheetBar.appendChild(h('span', { class: 'wb-hint' }, '预计 / 实际: ' + durTxt));
+            holder.appendChild(sheetBar);
+            if (!paramNames.length || colMi < 0) {
+                /* 该sheet无后验列(F34局部D的ParameterDictionary等):回退detail接口取逐参数区间(04-15形态) */
+                if (rec && rec.id) {
+                    holder.appendChild(h('div', { class: 'wb-hint' }, '该Sheet无后验统计列;按评估明细渲染参数区间...'));
+                    window.AppConfig.engineGet('projects/' + encodeURIComponent(cfg.projectId)
+                        + '/uq-records/' + encodeURIComponent(rec.id) + '/detail')
+                        .then(resp2 => {
+                            if (holder.isConnected === false) return;
+                            const d2 = resp2 && (resp2.success || resp2.code === 200) ? resp2.data : null;
+                            const pt = d2 && (Array.isArray(d2.parameterTable) ? d2.parameterTable
+                                : (d2.delivery && d2.delivery.parameterTable)) || [];
+                            holder.innerHTML = '';
+                            if (!pt.length) {
+                                holder.appendChild(h('div', { class: 'wb-hint' },
+                                    '未取得参数区间数据: ' + ((resp2 && resp2.message) || '明细为空') + '。'));
+                                return;
+                            }
+                            const detHdr = '对照(' + (curCmp.indexOf('真值') === 0 ? '真值' : '确定性') + ')';
+                            const hdr = ['参数', detHdr, '评估均值', '95%下限', '95%上限'];
+                            const rws = pt.map(p0 => [
+                                String(p0.parameter || p0.name || ''),
+                                String(curCmp.indexOf('真值') === 0 ? fmt(p0.truth != null ? p0.truth : p0.point_estimate) : fmt(p0.point_estimate)),
+                                fmt(p0.median != null ? p0.median : p0.mean),
+                                fmt(p0.q05 != null ? p0.q05 : p0.lower95),
+                                fmt(p0.q95 != null ? p0.q95 : p0.upper95)
+                            ]);
+                            const out = h('div', null);
+                            holder.appendChild(out);
+                            const chartHost = h('div', { style: 'width:100%;height:320px' });
+                            out.appendChild(h('div', { class: 'wb-hint', style: 'margin:2px 0 8px' },
+                                '参数 / 节点曲线 · ' + (rec.runId || rec.id)));
+                            out.appendChild(chartHost);
+                            out.appendChild(h('div', { class: 'wb-hint', style: 'margin:6px 0 10px' },
+                                '圆点：均值；竖线：本次95%参数区间；蓝×：对照值。'));
+                            const pts = pt.map((p0, i) => ({
+                                x: null,
+                                m: num(p0.median != null ? p0.median : p0.mean),
+                                lo: num(p0.q05 != null ? p0.q05 : p0.lower95),
+                                up: num(p0.q95 != null ? p0.q95 : p0.upper95),
+                                ref: num(curCmp.indexOf('真值') === 0 ? (p0.truth != null ? p0.truth : p0.point_estimate) : p0.point_estimate),
+                                gray: false
+                            }));
+                            renderNodeChart(chartHost, pts, false, '');
+                            const tblHolder = h('div', null);
+                            out.appendChild(tblHolder);
+                            drawTable(tblHolder, { headers: hdr, rows: rws, totalRows: rws.length });
+                        })
+                        .catch(e => {
+                            if (holder.isConnected === false) return;
+                            holder.appendChild(h('div', { class: 'wb-hint' }, '明细加载失败:' + e.message));
+                        });
+                } else {
+                    holder.appendChild(h('div', { class: 'wb-hint' }, '该Sheet无后验统计列,仅提供表格视图。'));
+                    drawTable(holder, d);
+                }
+                return;
+            }
+            /* 参数/节点曲线 下拉 + 对照对象 下拉(04-15) */
+            const selRow = h('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:18px;max-width:1180px;margin:2px 0 8px' });
+            const paramSel = h('select', { style: 'width:100%' },
+                paramNames.map(nm => h('option', { value: nm, selected: nm === curParam ? '' : null }, nm)));
+            const cmpSel = h('select', { style: 'width:100%' },
+                cmpOpts.map(nm => h('option', { value: nm, selected: nm === curCmp ? '' : null }, nm)));
+            selRow.appendChild(h('div', { class: 'wb-field' }, h('label', null, '参数 / 节点曲线'), paramSel));
+            selRow.appendChild(h('div', { class: 'wb-field' }, h('label', null, '对照对象'), cmpSel));
+            holder.appendChild(selRow);
+            const chartHost = h('div', { style: 'width:100%;height:320px' });
+            holder.appendChild(chartHost);
+            holder.appendChild(h('div', { class: 'wb-hint', style: 'margin:6px 0 10px' },
+                '圆点：均值；竖线：本次95%参数区间；蓝×：确定性值；灰色：未独立抽样节点。'));
+            const tblHolder = h('div', null);
+            holder.appendChild(tblHolder);
+            const redraw = () => {
+                const sub = rowsAll.filter(r => baseName(r.node) === curParam);
+                const idxs = [];
+                (d.rows || []).forEach((r, i) => { if (baseName(colNode >= 0 ? String(r[colNode] == null ? '' : r[colNode]) : '参数') === curParam) idxs.push(i); });
+                drawTable(tblHolder, { headers: d.headers, rows: idxs.map(i => d.rows[i]), totalRows: idxs.length });
+                const useTruth = curCmp.indexOf('真值') === 0;
+                const pts = sub.map(r => ({
+                    x: isFinite(r.x) ? r.x : null,
+                    m: r.m, lo: r.lo, up: r.up,
+                    ref: useTruth ? (r.truth != null ? r.truth : null) : (r.det != null ? r.det : null),
+                    gray: /传播/i.test(r.act)
+                }));
+                const hasX = pts.some(pp => pp.x != null);
+                const xName = hasX && colXi >= 0 ? hs[colXi] : '';
+                renderNodeChart(chartHost, pts, hasX, xName);
+            };
+            paramSel.addEventListener('change', () => { curParam = paramSel.value; redraw(); });
+            cmpSel.addEventListener('change', () => { curCmp = cmpSel.value; redraw(); });
+            redraw();
+        };
+        loadSheet(null);
+    }
+
+    /** UQ评估结果明细(参数区间表+区间图,就地渲染):模型库页(02-05)使用;record 形如 {id, runId, status}。
      *  明细JSON缺失时后端会即时回读交付Excel补生成,未完成/失败返回可读错误信息。 */
     function openUqResultDetail(projectId, record, target) {
         if (!target || !record || !record.id) return;
@@ -7107,7 +7627,7 @@ window.Workbench = (() => {
     return {
         ICONS, DEMO, WORKBENCHES, pages, h, toast, confirmDialog, showFilePreview,
         lineChart, timelineChart, timelinePreviewBlock, chartLegend, dataTable, groupSeriesColumns, numericColumns, toNum,
-        openUqResultDetail,
+        openUqResultDetail, renderUqDesignSection, renderUqInterval0415,
         /** 渲染页面:workbenchKey + navKey → DOM */
         renderPage(workbenchKey, navKey, ctx) {
             const fn = pages[workbenchKey + '.' + navKey];

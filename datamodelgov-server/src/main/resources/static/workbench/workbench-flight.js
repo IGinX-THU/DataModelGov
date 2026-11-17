@@ -36,6 +36,20 @@
         flight_transient: { title: '过渡态飞参建模' }
     };
 
+    /** F34局部D交付明细(parameterTable) → 图01-09效果图布局统一行结构。
+     *  F34无后验样本(jointCovariance解析形式),概率分布按高斯近似展示。 */
+    function f34DetailRows(d) {
+        const pt = d && (Array.isArray(d.parameterTable) ? d.parameterTable
+            : (d.delivery && d.delivery.parameterTable)) || [];
+        return pt.map(p => ({
+            name: String(p.parameter || p.name || ''),
+            family: String(p.parameter || p.name || '—').replace(/_node\d+$/i, ''),
+            coordinate: null, axis: '', unit: p.unit || '',
+            det: p.point_estimate, mean: p.median,
+            q025: p.q05, q975: p.q95, pIndex: null
+        }));
+    }
+
     function taskPage(ctx) {
         const isSteady = ctx.flightKind === 'flight_steady';
         const L = KIND[ctx.flightKind] || KIND.flight_steady;
@@ -801,9 +815,27 @@
             const uqPrevBox = WB().h('div', null);
             const uqMainBox = WB().h('div', null);
             const showRecordResult = (r) => {
-                // 用原有结果区 wb-section 结构渲染所选记录,不换展示形态
+                // 按图04-15效果图布局渲染所选记录(renderUqResultBlock → common 渲染器)
                 uqMainBox.innerHTML = '';
-                renderUqResultBlock(uqMainBox, r);
+                uqMainBox.appendChild(WB().h('div', { class: 'wb-hint' }, '正在加载 ' + (r.runId || r.id) + ' 结果...'));
+                window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id || '')
+                    + '/uq-records/' + encodeURIComponent(r.id) + '/detail')
+                    .then(resp => {
+                        if (uqMainBox.isConnected === false) return;
+                        uqMainBox.innerHTML = '';
+                        const d = resp && (resp.success || resp.code === 200) ? resp.data : null;
+                        if (!d) {
+                            uqMainBox.appendChild(WB().h('div', { class: 'wb-infobar', style: 'background:#fdf6ec;border-color:#f5d0a9;color:#94623c' },
+                                (resp && resp.message) ? ('该记录明细读取失败: ' + resp.message) : '该记录暂无可渲染的明细。'));
+                            return;
+                        }
+                        renderUqResultBlock(uqMainBox, r);
+                    })
+                    .catch(e => {
+                        if (uqMainBox.isConnected === false) return;
+                        uqMainBox.innerHTML = '';
+                        uqMainBox.appendChild(WB().h('div', { class: 'wb-hint' }, '明细加载失败:' + e.message));
+                    });
             };
             wrap.appendChild(WB().h('div', { class: 'wb-actions-row', style: 'margin-bottom:10px' },
                 WB().h('button', {
@@ -935,198 +967,50 @@
                 }, (state.log && state.log.length ? state.log.join('\n') : '(无日志)')));
             }
 
-            /* 04-15 结果视图:默认渲染当前评估;点「已有评估」列表记录时,同款 wb-section 结构渲染所选记录(rec)。 */
+            /* 04-15 结果视图(效果图图04-15布局,渲染器在 common):点「已有评估」列表记录时渲染所选记录。 */
             const renderUqResultBlock = (host, rec) => {
                 const uqRes = rec
-                    ? { method: rec.method, runTag: rec.runId, workbook: rec.deliveryFile, intervalStatus: rec.message }
+                    ? { method: rec.method, runTag: rec.runId, workbook: rec.deliveryFile }
                     : (t.uqResult || {});
                 const start0 = rec ? rec.startedAt : t.uqStartedAt;
                 const end0 = rec ? rec.finishedAt : t.uqFinishedAt;
-                const recQ = rec ? ('?recordId=' + encodeURIComponent(rec.id)) : '';
-                // 状态提示(rec=所选历史记录;否则当前评估的有限样本提示)
-                host.appendChild(WB().h('div', { class: 'wb-infobar', style: 'border-left:4px solid #d97706;background:#fffbeb;color:#92400e;margin-bottom:12px' },
-                    rec
-                        ? ('历史评估记录 · ' + (rec.runId || rec.id) + ' · 方法' + (rec.method || '—')
-                            + (rec.message ? ';状态: ' + rec.message : '') + '。')
-                        : ('⚠ 有限样本条件评估:统计限制随结果保存,不标为全局完备后验。'
-                            + (uqRes.intervalStatus ? ('区间状态: ' + uqRes.intervalStatus + '。') : ''))));
-                // 身份与追溯摘要(04-15标题区:建模/模型/UQ标识/参数分布)
-                const kv = WB().h('div', { class: 'wb-kv', style: 'max-width:1180px' });
-                [
-                    ['评估标识', uqRes.runTag ? ('UQ-' + uqRes.runTag) : (rec ? ('UQ-' + rec.id) : (t.runId ? 'UQ-' + t.runId : '—'))],
-                    ['评估方法', uqRes.method === 'C' ? 'C:非线性粒子评估' : uqRes.method === 'D' ? 'D:快速局部初评' : (uqRes.method || '—')],
-                    ['预计 / 实际', (start0 && end0) ? formatDur(end0 - start0) : '—'],
-                    ['概率先验来源', rec ? '—' : (uqRes.sourceWorkbook ? fileName(String(uqRes.sourceWorkbook)) : '—')],
-                    ['区间交付Excel', uqRes.workbook ? fileName(String(uqRes.workbook)) : '未找到'],
-                    ['输出目录', rec ? '—' : (uqRes.outputRoot || '—')]
-                ].forEach(([k, v]) => { kv.appendChild(WB().h('div', { class: 'k' }, k)); kv.appendChild(WB().h('div', { class: 'v' }, String(v))); });
-                host.appendChild(kv);
-                // 区间参数表(04-15主体:节点坐标/确定性值/评估均值/95%参数区间/本次处理)
-                host.appendChild(WB().h('div', { class: 'wb-section-title', style: 'margin:14px 0 8px' }, '全部参数区间与来源追溯'));
-                const holder = WB().h('div', null, WB().h('div', { class: 'wb-hint' }, '区间表加载中...'));
-                host.appendChild(holder);
-                window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id)
-                    + '/tasks/' + encodeURIComponent(t.id) + '/uq/interval-table' + recQ)
-                    .then(resp => {
-                        holder.innerHTML = '';
-                        if (!(resp && (resp.success || resp.code === 200) && resp.data)) {
-                            holder.appendChild(WB().h('div', { class: 'wb-hint' },
-                                '区间表暂不可读: ' + ((resp && resp.message) || '详见评估记录') + ';交付Excel可通过「导出参数表」获取。'));
-                            return;
-                        }
-                        const d = resp.data;
-                        // 页签切换(全部参数/燃油偏置/工程补偿与诊断≈按Sheet拆分)
-                        const names = Array.isArray(d.sheetNames) ? d.sheetNames : [];
-                        let curSheet = d.sheet;
-                        const tblHolder = WB().h('div', null);
-                        const renderSheet = sn => {
-                            const load = sn2 => window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id)
-                                + '/tasks/' + encodeURIComponent(t.id) + '/uq/interval-table' + recQ
-                                + (recQ ? '&' : '?') + 'sheet=' + encodeURIComponent(sn2));
-                            load(sn).then(r2 => {
-                                if ((r2 && (r2.success || r2.code === 200)) && r2.data) {
-                                    drawTable(tblHolder, r2.data);
-                                } else { drawTable(tblHolder, d); }
-                            }).catch(() => drawTable(tblHolder, d));
-                        };
-                        const drawTable = (box, dd) => {
-                            box.innerHTML = '';
-                            const headers = dd.headers || [], rows = dd.rows || [];
-                            if (!headers.length) {
-                                box.appendChild(WB().h('div', { class: 'wb-hint' }, '该Sheet无表头数据。'));
-                                return;
-                            }
-                            const tbl = WB().h('table', { class: 'wb-table', style: 'max-width:1180px' });
-                            const tr = WB().h('tr', null);
-                            headers.forEach(hd => tr.appendChild(WB().h('th', null, hd || '')));
-                            tbl.appendChild(tr);
-                            rows.forEach(rw => {
-                                const r2 = WB().h('tr', null);
-                                headers.forEach((hd, i) => r2.appendChild(WB().h('td', null, String(rw[i] == null ? '' : rw[i]))));
-                                tbl.appendChild(r2);
-                            });
-                            box.appendChild(tbl);
-                            drawErrBars(box, dd);
-                            if (dd.totalRows > rows.length) {
-                                box.appendChild(WB().h('div', { class: 'wb-hint', style: 'margin-top:6px' },
-                                    '共 ' + dd.totalRows + ' 行,页内展示前 ' + rows.length + ' 行;完整数据请导出参数表。'));
-                            }
-                        };
-                        /* —— 04-25 逐点/逐节点区间误差棒图:坐标列+均值列±95%区间列,圆点为均值竖线为区间 —— */
-                        const drawErrBars = (box, dd) => {
-                            try {
-                                const hs = (dd.headers || []).map(h => String(h || ''));
-                                const xi = hs.findIndex(h => /(坐标|x_|^x$|流量|质量流量)/i.test(h) && !/max|最大/i.test(h));
-                                const mi = hs.findIndex(h => /均值|mean/i.test(h));
-                                const li = hs.findIndex(h => /下限|lower|2\.5/i.test(h));
-                                const ui = hs.findIndex(h => /上限|upper|97\.5/i.test(h));
-                                if (xi < 0 || mi < 0) return;
-                                const pts = (dd.rows || []).map(r => ({
-                                    x: parseFloat(r[xi]), m: parseFloat(r[mi]),
-                                    lo: li >= 0 ? parseFloat(r[li]) : null,
-                                    up: ui >= 0 ? parseFloat(r[ui]) : null
-                                })).filter(p => isFinite(p.x) && isFinite(p.m));
-                                if (pts.length < 2) return;
-                                const W = 900, H = 240, PADL = 64, PADB = 34, PADT = 14, PADR = 14;
-                                const xs = pts.map(p => p.x);
-                                const xmin = Math.min.apply(null, xs), xmax = Math.max.apply(null, xs);
-                                const vals = [];
-                                pts.forEach(p => { vals.push(p.m); if (isFinite(p.lo)) vals.push(p.lo); if (isFinite(p.up)) vals.push(p.up); });
-                                const vmin = Math.min.apply(null, vals), vmax = Math.max.apply(null, vals);
-                                const vpad = (vmax - vmin) * 0.1 || Math.abs(vmax) * 0.05 || 1;
-                                const x2px = v => PADL + (v - xmin) / ((xmax - xmin) || 1) * (W - PADL - PADR);
-                                const y2px = v => H - PADB - (v - (vmin - vpad)) / ((vmax + vpad) - (vmin - vpad) || 1) * (H - PADT - PADB);
-                                const NS = 'http://www.w3.org/2000/svg';
-                                const svg = document.createElementNS(NS, 'svg');
-                                svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
-                                svg.setAttribute('style', 'width:100%;max-width:960px;background:#fff;border:1px solid #e5e7eb;border-radius:8px;margin-top:12px');
-                                // y 轴刻度(5档)
-                                for (let k = 0; k <= 4; k++) {
-                                    const vv = (vmin - vpad) + k * ((vmax + vpad) - (vmin - vpad)) / 4;
-                                    const yy = y2px(vv);
-                                    const ln = document.createElementNS(NS, 'line');
-                                    ln.setAttribute('x1', PADL); ln.setAttribute('x2', W - PADR);
-                                    ln.setAttribute('y1', yy); ln.setAttribute('y2', yy);
-                                    ln.setAttribute('stroke', '#f1f5f9'); svg.appendChild(ln);
-                                    const tx = document.createElementNS(NS, 'text');
-                                    tx.setAttribute('x', PADL - 6); tx.setAttribute('y', yy + 4);
-                                    tx.setAttribute('text-anchor', 'end'); tx.setAttribute('font-size', '11');
-                                    tx.setAttribute('fill', '#64748b');
-                                    tx.textContent = Math.abs(vv) >= 1000 ? vv.toFixed(0) : vv.toPrecision(3);
-                                    svg.appendChild(tx);
-                                }
-                                // x 轴刻度(6档)
-                                for (let k = 0; k <= 5; k++) {
-                                    const vv = xmin + k * (xmax - xmin) / 5;
-                                    const tx = document.createElementNS(NS, 'text');
-                                    tx.setAttribute('x', x2px(vv)); tx.setAttribute('y', H - PADB + 16);
-                                    tx.setAttribute('text-anchor', 'middle'); tx.setAttribute('font-size', '11');
-                                    tx.setAttribute('fill', '#64748b');
-                                    tx.textContent = Math.abs(vv) >= 1000 ? vv.toFixed(0) : vv.toPrecision(3);
-                                    svg.appendChild(tx);
-                                }
-                                // 误差棒+均值点
-                                pts.forEach(p => {
-                                    const hasInt = isFinite(p.lo) && isFinite(p.up);
-                                    if (hasInt) {
-                                        const ln = document.createElementNS(NS, 'line');
-                                        ln.setAttribute('x1', x2px(p.x)); ln.setAttribute('x2', x2px(p.x));
-                                        ln.setAttribute('y1', y2px(p.up)); ln.setAttribute('y2', y2px(p.lo));
-                                        ln.setAttribute('stroke', '#0f766e'); ln.setAttribute('stroke-width', '1.6');
-                                        svg.appendChild(ln);
-                                    }
-                                    const c = document.createElementNS(NS, 'circle');
-                                    c.setAttribute('cx', x2px(p.x)); c.setAttribute('cy', y2px(p.m));
-                                    c.setAttribute('r', 4);
-                                    c.setAttribute('fill', hasInt ? '#0f766e' : '#94a3b8');
-                                    svg.appendChild(c);
-                                });
-                                box.appendChild(svg);
-                                box.appendChild(WB().h('div', { class: 'wb-hint', style: 'margin-top:4px' },
-                                    '圆点为均值,竖线为本次95%参数区间;灰色表示未独立抽样,不表示区间为等(04-25)。'));
-                            } catch (e) { /* 误差棒为增强项,失败不影响表格 */ }
-                        };
-                        if (names.length > 1) {
-                            const bar = WB().h('div', { class: 'wb-actions-row', style: 'margin-bottom:8px' });
-                            names.forEach(sn => {
-                                bar.appendChild(WB().h('button', {
-                                    class: 'wb-btn wb-btn-outline',
-                                    onclick: () => { curSheet = sn; renderSheet(sn); }
-                                }, sn));
-                            });
-                            holder.appendChild(bar);
-                        }
-                        holder.appendChild(tblHolder);
-                        drawTable(tblHolder, d);
-                    })
-                    .catch(e => { holder.innerHTML = ''; holder.appendChild(WB().h('div', { class: 'wb-hint' }, '区间表加载失败:' + e.message)); });
-                host.appendChild(holder);
-                host.appendChild(WB().h('div', { class: 'wb-hint', style: 'margin:10px 0;max-width:1180px' },
-                    '全部参数及燃油偏置的区间来源逐节点可追溯(04-15);结果另存,不覆盖确定性估计值。'));
-                // 04-26:不同区间回答不同工程问题,不使用含义不清的总区间
-                const rng = WB().h('table', { class: 'wb-table', style: 'max-width:1180px' },
-                    WB().h('tr', null, ['区间范围', '含义'].map(x => WB().h('th', null, x))));
-                [
-                    ['参数传播区间', '固定输入下传播参数不确定性(后验样本直接传播)'],
-                    ['物理输出区间', '在参数传播基础上加入输入误差与模型差异;不含输出量噪声'],
-                    ['测量输出区间', '在物理输出基础上再加输出测量误差;与实测对照时使用']
-                ].forEach(([a, b]) => rng.appendChild(WB().h('tr', null,
-                    WB().h('td', null, a), WB().h('td', { class: 'wb-hint' }, b))));
-                host.appendChild(rng);
-                host.appendChild(WB().h('div', { class: 'wb-hint', style: 'margin:6px 0;max-width:1180px' },
-                    '有限样本下按成功子集保存权重与未计算范围;灰色节点表示未独立抽样,不表示区间为零(04-25)。'));
-                host.appendChild(WB().h('div', { class: 'wb-actions-row', style: 'margin-bottom:16px' },
-                    (!rec && uqRes.workbook) ? WB().h('a', {
-                        class: 'wb-btn wb-btn-outline',
-                        href: window.AppConfig.api.baseURL + '/api/engine/projects/' + encodeURIComponent(ctx.project.id)
-                            + '/tasks/' + encodeURIComponent(t.id) + '/uq/workbook',
-                        download: ''
-                    }, '⬇ 导出参数表') : null,
-                    WB().h('div', { class: 'wb-spacer' }),
-                    WB().h('button', { class: 'wb-btn wb-btn-primary', onclick: () => { state.tab = 'result'; renderBody(); } }, '返回飞行模型结果')));
+                host.appendChild(WB().h('div', { class: 'wb-hint', style: 'margin:0 0 8px;max-width:1180px' },
+                    (rec ? '历史评估记录 · ' : '') + '评估标识 UQ-' + (uqRes.runTag || (rec ? rec.id : (t.runId || '—')))
+                    + ' · 方法' + (uqRes.method || '—')
+                    + ' · 区间交付Excel: ' + (uqRes.workbook ? fileName(String(uqRes.workbook)) : '未找到')));
+                WB().renderUqInterval0415(host, {
+                    projectId: ctx.project.id,
+                    taskId: t.id,
+                    rec: rec || null,
+                    durTxt: (start0 && end0) ? formatDur(end0 - start0) : '—',
+                    exportUrl: (!rec && uqRes.workbook)
+                        ? (window.AppConfig.api.baseURL + '/api/engine/projects/' + encodeURIComponent(ctx.project.id)
+                            + '/tasks/' + encodeURIComponent(t.id) + '/uq/workbook')
+                        : null,
+                    onBack: () => { state.tab = 'result'; renderBody(); },
+                    onBackLabel: '返回飞行模型结果'
+                });
             };
             if (t.uqStatus === 'COMPLETED') {
-                renderUqResultBlock(uqMainBox, null);
+                // 默认渲染最新一条完成评估(图01-09效果图布局);点「已有评估」列表可切换其他记录
+                let latestRec = null;
+                uqMainBox.appendChild(WB().h('div', { class: 'wb-hint' }, '正在加载最新评估结果...'));
+                window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id || '') + '/uq-records')
+                    .then(resp => {
+                        if (uqMainBox.isConnected === false) return null;
+                        const list = resp && (resp.success || resp.code === 200) && Array.isArray(resp.data) ? resp.data : [];
+                        const mine = list.filter(r2 => r2.taskId === t.id && r2.status === 'COMPLETED');
+                        state.uqRecsMine = mine;
+                        latestRec = mine[0] || null;
+                        if (!latestRec) {
+                            uqMainBox.innerHTML = '';
+                            uqMainBox.appendChild(WB().h('div', { class: 'wb-hint' }, '暂无已完成的评估记录;可在下方发起评估。'));
+                            return null;
+                        }
+                        renderUqResultBlock(uqMainBox, latestRec);
+                        return null;
+                    })
+                    .catch(() => { });
                 wrap.appendChild(WB().h('div', { class: 'wb-section-title', style: 'margin:6px 0 8px' }, '重新发起评估'));
             }
 
@@ -2102,201 +1986,53 @@
             const uqMainBox = WB().h('div', null);
             /* 演化任务局部毫秒时长(与稳态飞参页同款) */
             function formatDur(ms) { const s0 = Math.max(0, Math.floor(ms / 1000)); const m0 = Math.floor(s0 / 60), h0 = Math.floor(m0 / 60); return (h0 ? h0 + '时' : '') + (m0 ? m0 + '分' : '') + (s0 % 60) + '秒'; }
-            /* 04-15 结果视图:默认渲染当前评估;点「已有评估」列表记录时,同款 wb-section 结构渲染所选记录(rec)。 */
+            /* 04-15 结果视图(效果图图04-15布局,渲染器在 common):点「已有评估」列表记录时渲染所选记录。 */
             const renderUqResultBlock = (host, rec) => {
                 const uqRes = rec
-                    ? { method: rec.method, runTag: rec.runId, workbook: rec.deliveryFile, intervalStatus: rec.message }
+                    ? { method: rec.method, runTag: rec.runId, workbook: rec.deliveryFile }
                     : (t.uqResult || {});
                 const start0 = rec ? rec.startedAt : t.uqStartedAt;
                 const end0 = rec ? rec.finishedAt : t.uqFinishedAt;
-                const recQ = rec ? ('?recordId=' + encodeURIComponent(rec.id)) : '';
-                // 状态提示(rec=所选历史记录;否则当前评估的有限样本提示)
-                host.appendChild(WB().h('div', { class: 'wb-infobar', style: 'border-left:4px solid #d97706;background:#fffbeb;color:#92400e;margin-bottom:12px' },
-                    rec
-                        ? ('历史评估记录 · ' + (rec.runId || rec.id) + ' · 方法' + (rec.method || '—')
-                            + (rec.message ? ';状态: ' + rec.message : '') + '。')
-                        : ('⚠ 有限样本条件评估:统计限制随结果保存,不标为全局完备后验。'
-                            + (uqRes.intervalStatus ? ('区间状态: ' + uqRes.intervalStatus + '。') : ''))));
-                // 身份与追溯摘要(04-15标题区:建模/模型/UQ标识/参数分布)
-                const kv = WB().h('div', { class: 'wb-kv', style: 'max-width:1180px' });
-                [
-                    ['评估标识', uqRes.runTag ? ('UQ-' + uqRes.runTag) : (rec ? ('UQ-' + rec.id) : (t.runId ? 'UQ-' + t.runId : '—'))],
-                    ['评估方法', uqRes.method === 'C' ? 'C:非线性粒子评估' : uqRes.method === 'D' ? 'D:快速局部初评' : (uqRes.method || '—')],
-                    ['预计 / 实际', (start0 && end0) ? formatDur(end0 - start0) : '—'],
-                    ['概率先验来源', rec ? '—' : (uqRes.sourceWorkbook ? fileName(String(uqRes.sourceWorkbook)) : '—')],
-                    ['区间交付Excel', uqRes.workbook ? fileName(String(uqRes.workbook)) : '未找到'],
-                    ['输出目录', rec ? '—' : (uqRes.outputRoot || '—')]
-                ].forEach(([k, v]) => { kv.appendChild(WB().h('div', { class: 'k' }, k)); kv.appendChild(WB().h('div', { class: 'v' }, String(v))); });
-                host.appendChild(kv);
-                // 区间参数表(04-15主体:节点坐标/确定性值/评估均值/95%参数区间/本次处理)
-                host.appendChild(WB().h('div', { class: 'wb-section-title', style: 'margin:14px 0 8px' }, '全部参数区间与来源追溯'));
-                const holder = WB().h('div', null, WB().h('div', { class: 'wb-hint' }, '区间表加载中...'));
-                host.appendChild(holder);
-                window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id)
-                    + '/tasks/' + encodeURIComponent(t.id) + '/uq/interval-table' + recQ)
-                    .then(resp => {
-                        holder.innerHTML = '';
-                        if (!(resp && (resp.success || resp.code === 200) && resp.data)) {
-                            holder.appendChild(WB().h('div', { class: 'wb-hint' },
-                                '区间表暂不可读: ' + ((resp && resp.message) || '详见评估记录') + ';交付Excel可通过「导出参数表」获取。'));
-                            return;
-                        }
-                        const d = resp.data;
-                        // 页签切换(全部参数/燃油偏置/工程补偿与诊断≈按Sheet拆分)
-                        const names = Array.isArray(d.sheetNames) ? d.sheetNames : [];
-                        let curSheet = d.sheet;
-                        const tblHolder = WB().h('div', null);
-                        const renderSheet = sn => {
-                            const load = sn2 => window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id)
-                                + '/tasks/' + encodeURIComponent(t.id) + '/uq/interval-table' + recQ
-                                + (recQ ? '&' : '?') + 'sheet=' + encodeURIComponent(sn2));
-                            load(sn).then(r2 => {
-                                if ((r2 && (r2.success || r2.code === 200)) && r2.data) {
-                                    drawTable(tblHolder, r2.data);
-                                } else { drawTable(tblHolder, d); }
-                            }).catch(() => drawTable(tblHolder, d));
-                        };
-                        const drawTable = (box, dd) => {
-                            box.innerHTML = '';
-                            const headers = dd.headers || [], rows = dd.rows || [];
-                            if (!headers.length) {
-                                box.appendChild(WB().h('div', { class: 'wb-hint' }, '该Sheet无表头数据。'));
-                                return;
-                            }
-                            const tbl = WB().h('table', { class: 'wb-table', style: 'max-width:1180px' });
-                            const tr = WB().h('tr', null);
-                            headers.forEach(hd => tr.appendChild(WB().h('th', null, hd || '')));
-                            tbl.appendChild(tr);
-                            rows.forEach(rw => {
-                                const r2 = WB().h('tr', null);
-                                headers.forEach((hd, i) => r2.appendChild(WB().h('td', null, String(rw[i] == null ? '' : rw[i]))));
-                                tbl.appendChild(r2);
-                            });
-                            box.appendChild(tbl);
-                            drawErrBars(box, dd);
-                            if (dd.totalRows > rows.length) {
-                                box.appendChild(WB().h('div', { class: 'wb-hint', style: 'margin-top:6px' },
-                                    '共 ' + dd.totalRows + ' 行,页内展示前 ' + rows.length + ' 行;完整数据请导出参数表。'));
-                            }
-                        };
-                        /* —— 04-25 逐点/逐节点区间误差棒图:坐标列+均值列±95%区间列,圆点为均值竖线为区间 —— */
-                        const drawErrBars = (box, dd) => {
-                            try {
-                                const hs = (dd.headers || []).map(h => String(h || ''));
-                                const xi = hs.findIndex(h => /(坐标|x_|^x$|流量|质量流量)/i.test(h) && !/max|最大/i.test(h));
-                                const mi = hs.findIndex(h => /均值|mean/i.test(h));
-                                const li = hs.findIndex(h => /下限|lower|2\.5/i.test(h));
-                                const ui = hs.findIndex(h => /上限|upper|97\.5/i.test(h));
-                                if (xi < 0 || mi < 0) return;
-                                const pts = (dd.rows || []).map(r => ({
-                                    x: parseFloat(r[xi]), m: parseFloat(r[mi]),
-                                    lo: li >= 0 ? parseFloat(r[li]) : null,
-                                    up: ui >= 0 ? parseFloat(r[ui]) : null
-                                })).filter(p => isFinite(p.x) && isFinite(p.m));
-                                if (pts.length < 2) return;
-                                const W = 900, H = 240, PADL = 64, PADB = 34, PADT = 14, PADR = 14;
-                                const xs = pts.map(p => p.x);
-                                const xmin = Math.min.apply(null, xs), xmax = Math.max.apply(null, xs);
-                                const vals = [];
-                                pts.forEach(p => { vals.push(p.m); if (isFinite(p.lo)) vals.push(p.lo); if (isFinite(p.up)) vals.push(p.up); });
-                                const vmin = Math.min.apply(null, vals), vmax = Math.max.apply(null, vals);
-                                const vpad = (vmax - vmin) * 0.1 || Math.abs(vmax) * 0.05 || 1;
-                                const x2px = v => PADL + (v - xmin) / ((xmax - xmin) || 1) * (W - PADL - PADR);
-                                const y2px = v => H - PADB - (v - (vmin - vpad)) / ((vmax + vpad) - (vmin - vpad) || 1) * (H - PADT - PADB);
-                                const NS = 'http://www.w3.org/2000/svg';
-                                const svg = document.createElementNS(NS, 'svg');
-                                svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
-                                svg.setAttribute('style', 'width:100%;max-width:960px;background:#fff;border:1px solid #e5e7eb;border-radius:8px;margin-top:12px');
-                                // y 轴刻度(5档)
-                                for (let k = 0; k <= 4; k++) {
-                                    const vv = (vmin - vpad) + k * ((vmax + vpad) - (vmin - vpad)) / 4;
-                                    const yy = y2px(vv);
-                                    const ln = document.createElementNS(NS, 'line');
-                                    ln.setAttribute('x1', PADL); ln.setAttribute('x2', W - PADR);
-                                    ln.setAttribute('y1', yy); ln.setAttribute('y2', yy);
-                                    ln.setAttribute('stroke', '#f1f5f9'); svg.appendChild(ln);
-                                    const tx = document.createElementNS(NS, 'text');
-                                    tx.setAttribute('x', PADL - 6); tx.setAttribute('y', yy + 4);
-                                    tx.setAttribute('text-anchor', 'end'); tx.setAttribute('font-size', '11');
-                                    tx.setAttribute('fill', '#64748b');
-                                    tx.textContent = Math.abs(vv) >= 1000 ? vv.toFixed(0) : vv.toPrecision(3);
-                                    svg.appendChild(tx);
-                                }
-                                // x 轴刻度(6档)
-                                for (let k = 0; k <= 5; k++) {
-                                    const vv = xmin + k * (xmax - xmin) / 5;
-                                    const tx = document.createElementNS(NS, 'text');
-                                    tx.setAttribute('x', x2px(vv)); tx.setAttribute('y', H - PADB + 16);
-                                    tx.setAttribute('text-anchor', 'middle'); tx.setAttribute('font-size', '11');
-                                    tx.setAttribute('fill', '#64748b');
-                                    tx.textContent = Math.abs(vv) >= 1000 ? vv.toFixed(0) : vv.toPrecision(3);
-                                    svg.appendChild(tx);
-                                }
-                                // 误差棒+均值点
-                                pts.forEach(p => {
-                                    const hasInt = isFinite(p.lo) && isFinite(p.up);
-                                    if (hasInt) {
-                                        const ln = document.createElementNS(NS, 'line');
-                                        ln.setAttribute('x1', x2px(p.x)); ln.setAttribute('x2', x2px(p.x));
-                                        ln.setAttribute('y1', y2px(p.up)); ln.setAttribute('y2', y2px(p.lo));
-                                        ln.setAttribute('stroke', '#0f766e'); ln.setAttribute('stroke-width', '1.6');
-                                        svg.appendChild(ln);
-                                    }
-                                    const c = document.createElementNS(NS, 'circle');
-                                    c.setAttribute('cx', x2px(p.x)); c.setAttribute('cy', y2px(p.m));
-                                    c.setAttribute('r', 4);
-                                    c.setAttribute('fill', hasInt ? '#0f766e' : '#94a3b8');
-                                    svg.appendChild(c);
-                                });
-                                box.appendChild(svg);
-                                box.appendChild(WB().h('div', { class: 'wb-hint', style: 'margin-top:4px' },
-                                    '圆点为均值,竖线为本次95%参数区间;灰色表示未独立抽样,不表示区间为等(04-25)。'));
-                            } catch (e) { /* 误差棒为增强项,失败不影响表格 */ }
-                        };
-                        if (names.length > 1) {
-                            const bar = WB().h('div', { class: 'wb-actions-row', style: 'margin-bottom:8px' });
-                            names.forEach(sn => {
-                                bar.appendChild(WB().h('button', {
-                                    class: 'wb-btn wb-btn-outline',
-                                    onclick: () => { curSheet = sn; renderSheet(sn); }
-                                }, sn));
-                            });
-                            holder.appendChild(bar);
-                        }
-                        holder.appendChild(tblHolder);
-                        drawTable(tblHolder, d);
-                    })
-                    .catch(e => { holder.innerHTML = ''; holder.appendChild(WB().h('div', { class: 'wb-hint' }, '区间表加载失败:' + e.message)); });
-                host.appendChild(holder);
-                host.appendChild(WB().h('div', { class: 'wb-hint', style: 'margin:10px 0;max-width:1180px' },
-                    '全部参数及燃油偏置的区间来源逐节点可追溯(04-15);结果另存,不覆盖确定性估计值。'));
-                // 04-26:不同区间回答不同工程问题,不使用含义不清的总区间
-                const rng = WB().h('table', { class: 'wb-table', style: 'max-width:1180px' },
-                    WB().h('tr', null, ['区间范围', '含义'].map(x => WB().h('th', null, x))));
-                [
-                    ['参数传播区间', '固定输入下传播参数不确定性(后验样本直接传播)'],
-                    ['物理输出区间', '在参数传播基础上加入输入误差与模型差异;不含输出量噪声'],
-                    ['测量输出区间', '在物理输出基础上再加输出测量误差;与实测对照时使用']
-                ].forEach(([a, b]) => rng.appendChild(WB().h('tr', null,
-                    WB().h('td', null, a), WB().h('td', { class: 'wb-hint' }, b))));
-                host.appendChild(rng);
-                host.appendChild(WB().h('div', { class: 'wb-hint', style: 'margin:6px 0;max-width:1180px' },
-                    '有限样本下按成功子集保存权重与未计算范围;灰色节点表示未独立抽样,不表示区间为零(04-25)。'));
-                host.appendChild(WB().h('div', { class: 'wb-actions-row', style: 'margin-bottom:16px' },
-                    (!rec && uqRes.workbook) ? WB().h('a', {
-                        class: 'wb-btn wb-btn-outline',
-                        href: window.AppConfig.api.baseURL + '/api/engine/projects/' + encodeURIComponent(ctx.project.id)
-                            + '/tasks/' + encodeURIComponent(t.id) + '/uq/workbook',
-                        download: ''
-                    }, '⬇ 导出参数表') : null,
-                    WB().h('div', { class: 'wb-spacer' }),
-                    WB().h('button', { class: 'wb-btn wb-btn-primary', onclick: () => { state.tab = 'result'; renderBody(); } }, '返回飞行模型结果')));
+                host.appendChild(WB().h('div', { class: 'wb-hint', style: 'margin:0 0 8px;max-width:1180px' },
+                    (rec ? '历史评估记录 · ' : '') + '评估标识 UQ-' + (uqRes.runTag || (rec ? rec.id : (t.runId || '—')))
+                    + ' · 方法' + (uqRes.method || '—')
+                    + ' · 区间交付Excel: ' + (uqRes.workbook ? fileName(String(uqRes.workbook)) : '未找到')));
+                WB().renderUqInterval0415(host, {
+                    projectId: ctx.project.id,
+                    taskId: t.id,
+                    rec: rec || null,
+                    durTxt: (start0 && end0) ? formatDur(end0 - start0) : '—',
+                    exportUrl: (!rec && uqRes.workbook)
+                        ? (window.AppConfig.api.baseURL + '/api/engine/projects/' + encodeURIComponent(ctx.project.id)
+                            + '/tasks/' + encodeURIComponent(t.id) + '/uq/workbook')
+                        : null,
+                    onBack: () => { state.tab = 'result'; renderBody(); },
+                    onBackLabel: '返回飞行模型结果'
+                });
             };
 
             const showRecordResult = (r) => {
-                // 用原有结果区 wb-section 结构渲染所选记录,不换展示形态
+                // 按图04-15效果图布局渲染所选记录(renderUqResultBlock → common 渲染器)
                 uqMainBox.innerHTML = '';
-                renderUqResultBlock(uqMainBox, r);
+                uqMainBox.appendChild(WB().h('div', { class: 'wb-hint' }, '正在加载 ' + (r.runId || r.id) + ' 结果...'));
+                window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id || '')
+                    + '/uq-records/' + encodeURIComponent(r.id) + '/detail')
+                    .then(resp => {
+                        if (uqMainBox.isConnected === false) return;
+                        uqMainBox.innerHTML = '';
+                        const d = resp && (resp.success || resp.code === 200) ? resp.data : null;
+                        if (!d) {
+                            uqMainBox.appendChild(WB().h('div', { class: 'wb-infobar', style: 'background:#fdf6ec;border-color:#f5d0a9;color:#94623c' },
+                                (resp && resp.message) ? ('该记录明细读取失败: ' + resp.message) : '该记录暂无可渲染的明细。'));
+                            return;
+                        }
+                        renderUqResultBlock(uqMainBox, r);
+                    })
+                    .catch(e => {
+                        if (uqMainBox.isConnected === false) return;
+                        uqMainBox.innerHTML = '';
+                        uqMainBox.appendChild(WB().h('div', { class: 'wb-hint' }, '明细加载失败:' + e.message));
+                    });
             };
             wrap.appendChild(WB().h('div', { class: 'wb-actions-row', style: 'margin-bottom:10px' },
                 WB().h('button', {

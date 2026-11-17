@@ -1780,9 +1780,23 @@ public class EngineWorkbenchController {
             EngineModels.UqRecord rec = null;
             Map<String, Object> uqRes = null;
             if (recordId != null && !recordId.trim().isEmpty()) {
-                // 指定历史评估记录:用该记录自己的交付Excel,追溯字段从记录取
                 rec = store.getUqRecord(pid, recordId.trim());
                 if (rec == null) return Result.error("评估记录不存在");
+            } else {
+                // 未指定记录:默认定位该任务最新一条已完成评估(进来即显示最新结果)
+                for (EngineModels.UqRecord r : store.listUqRecords(pid)) {
+                    if (tid.equals(r.getTaskId())
+                            && EngineModels.UqRecord.ST_COMPLETED.equals(r.getStatus())) { rec = r; break; }
+                }
+                uqRes = t.getUqResult();
+            }
+            // 04-15 结果优先取评估明细 delivery.parameterTable:
+            // 方法B/transient_instant 等交付Excel未必含后验统计列,直接读表会得到"尚无UQ区间交付"
+            if (rec != null) {
+                Map<String, Object> fromDetail = buildUqIntervalFromDetail(pid, rec, sheet);
+                if (fromDetail != null) return Result.success(fromDetail);
+            }
+            if (rec != null) {
                 if (rec.getDeliveryFile() != null && new File(rec.getDeliveryFile()).isFile()) {
                     wb = new File(rec.getDeliveryFile());
                 } else {
@@ -1790,7 +1804,6 @@ public class EngineWorkbenchController {
                 }
                 if (wb == null || !wb.isFile()) return Result.error("该评估记录的区间交付Excel不存在或已移动");
             } else {
-                uqRes = t.getUqResult();
                 if (uqRes == null || uqRes.get("workbook") == null) {
                     return Result.error("尚无UQ区间交付(评估完成后再查看)");
                 }
@@ -1819,6 +1832,77 @@ public class EngineWorkbenchController {
             return Result.error("区间表解析失败: " + e.getMessage());
         }
     }
+
+    /** 从UQ明细 delivery.parameterTable 构造04-15区间表(表头/行/sheet页签)。
+     *  明细文件缺失时按与 uqDetail 相同的回读逻辑即时补生成;不可用时返回null由调用方回退Excel。 */
+    private Map<String, Object> buildUqIntervalFromDetail(String pid, EngineModels.UqRecord rec, String sheet) {
+        try {
+            File detail = new File(rec.getDetailFile() == null ? "" : rec.getDetailFile());
+            if (!detail.isFile()) {
+                File excel = tc24Service.findUqDeliveryForRecord(pid, rec);
+                if (excel == null) return null;
+                StringBuilder err = new StringBuilder();
+                detail = tc24Service.readExcelDetailVerbose(pid, excel,
+                        new File(excel.getParentFile(), rec.getRunId() + "_dmg_uq_detail.json"), err);
+                if (detail == null) { log.warn("04-15区间表明细回读失败: {}", err); return null; }
+                rec.setDetailFile(detail.getAbsolutePath());
+                store.saveUqRecord(rec);
+            }
+            Object root = new com.fasterxml.jackson.databind.ObjectMapper().readValue(detail, Object.class);
+            if (!(root instanceof Map)) return null;
+            Map<?, ?> rm = (Map<?, ?>) root;
+            Object dv = rm.get("delivery");
+            Object ptObj = (dv instanceof Map) ? ((Map<?, ?>) dv).get("parameterTable") : rm.get("parameterTable");
+            if (!(ptObj instanceof List) || ((List<?>) ptObj).isEmpty()) return null;
+            String sh = (sheet == null || sheet.trim().isEmpty()) ? "全部参数" : sheet.trim();
+            List<String> headers = new ArrayList<>();
+            headers.add("参数节点"); headers.add("节点坐标"); headers.add("确定性值");
+            headers.add("评估均值"); headers.add("95%下限"); headers.add("95%上限"); headers.add("本次处理");
+            List<List<Object>> rows = new ArrayList<>();
+            for (Object o : (List<?>) ptObj) {
+                if (!(o instanceof Map)) continue;
+                Map<?, ?> p = (Map<?, ?>) o;
+                String kind = String.valueOf(p.get("groupKind") == null ? "" : p.get("groupKind"));
+                if ("燃油偏置".equals(sh)) {
+                    if (!"fuel_bias".equals(kind)) continue;
+                } else if ("工程补偿与诊断".equals(sh)) {
+                    if (!"constant".equals(kind) && !"health_constant".equals(kind)) continue;
+                } else if (!"全部参数".equals(sh)) {
+                    // 交付Excel原生页签(如 ParameterSummary)暂无明细映射时不臆造,回退Excel
+                    return null;
+                }
+                List<Object> row = new ArrayList<>();
+                row.add(uqCell(p.get("name")));
+                row.add(uqCell(p.get("coordinate")));
+                row.add(uqCell(p.get("deterministicEstimate")));
+                row.add(uqCell(p.get("posteriorMean")));
+                row.add(uqCell(p.get("posteriorQ025")));
+                row.add(uqCell(p.get("posteriorQ975")));
+                row.add(p.get("deterministicEstimate") == null ? "条件分布传播(未独立抽样)" : "本次抽样");
+                rows.add(row);
+            }
+            if (rows.isEmpty()) return null;
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("sheetNames", java.util.Arrays.asList("全部参数", "燃油偏置", "工程补偿与诊断"));
+            out.put("sheet", sh);
+            out.put("headers", headers);
+            out.put("rows", rows);
+            out.put("totalRows", rows.size());
+            out.put("recordMode", true);
+            out.put("source", "detail.parameterTable");
+            out.put("method", rec.getMethod());
+            out.put("runTag", rec.getRunId());
+            if (rec.getMessage() != null) out.put("intervalStatus", rec.getMessage());
+            out.put("uqStartedAt", rec.getStartedAt());
+            out.put("uqFinishedAt", rec.getFinishedAt());
+            return out;
+        } catch (Exception e) {
+            log.warn("从明细构造04-15区间表失败(回退Excel): {}", e.toString());
+            return null;
+        }
+    }
+
+    private static String uqCell(Object v) { return v == null ? "" : String.valueOf(v); }
 
     @ApiOperation("下载UQ区间交付Excel(导出参数表)")
     @GetMapping("/projects/{pid}/tasks/{tid}/uq/workbook")

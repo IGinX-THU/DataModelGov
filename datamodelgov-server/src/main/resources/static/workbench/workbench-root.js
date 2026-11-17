@@ -29,7 +29,7 @@
 
         _render() {
             this.innerHTML = '';
-            this.appendChild(WB().h('link', { rel: 'stylesheet', href: './workbench/workbench.css?v=r33' }));
+            this.appendChild(WB().h('link', { rel: 'stylesheet', href: './workbench/workbench.css' }));
             const username = localStorage.getItem('username') || '';
 
             const rootEl = WB().h('div', { class: 'wb-root' },
