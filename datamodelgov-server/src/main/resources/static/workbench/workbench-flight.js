@@ -2115,6 +2115,24 @@
                 uqMainBox.appendChild(WB().h('div', { class: 'wb-infobar', style: 'margin-bottom:12px' },
                     '上次评估已完成' + (t.uqResult && t.uqResult.workbook ? ';区间Excel: ' + fileName(String(t.uqResult.workbook)) : '')
                     + ';结果另存,不覆盖确定性估计值。可发起新评估(生成新评估批次)。'));
+                // 默认渲染本任务最新一条完成评估(图04-15),与点「已有评估」列表行为一致。
+                const loadingHint = WB().h('div', { class: 'wb-hint' }, '正在加载最新评估结果...');
+                uqMainBox.appendChild(loadingHint);
+                window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id || '') + '/uq-records')
+                    .then(resp => {
+                        if (uqMainBox.isConnected === false) return null;
+                        const list = resp && (resp.success || resp.code === 200) && Array.isArray(resp.data) ? resp.data : [];
+                        const mine = list.filter(r2 => r2.taskId === t.id && r2.status === 'COMPLETED');
+                        state.uqRecsMine = mine;
+                        const latestRec = mine[0] || null;
+                        if (!latestRec) {
+                            loadingHint.textContent = '暂无已完成的评估记录;可发起新评估(生成新评估批次)。';
+                            return null;
+                        }
+                        showRecordResult(latestRec);
+                        return null;
+                    })
+                    .catch(() => { loadingHint.textContent = '最新评估结果加载失败;可点「查看此模型的已有评估」重试。'; });
             } else {
                 uqMainBox.appendChild(WB().h('div', { class: 'wb-infobar', style: 'margin-bottom:12px' },
                     'UQ调用F3原算法(uqpreview→确认观测→绑定目标模型→uqrun):评估对象为本架次已交付模型,'
