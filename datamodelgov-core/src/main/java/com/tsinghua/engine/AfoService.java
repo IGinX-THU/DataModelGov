@@ -1063,10 +1063,15 @@ public class AfoService {
         return out;
     }
 
-    /** 关闭会话(persistent单例清位;ENDED/FAILED后)。 */
+    /** 关闭会话(persistent单例清位;ENDED/FAILED后)。
+     *  关闭是释放全局计算通道的清理动作:不受项目隔离限制,也不限发起人——
+     *  任何登录用户都可关闭,否则通道会被跨项目/跨用户占用死锁。
+     *  运行中仍不可关闭(先结束计算);运行/命令/保存仍限项目+发起人。 */
     public Map<String, Object> close(String projectId) throws IOException {
-        AfoSession s = requireSession(projectId, null);
-        checkOperator(s);
+        AfoSession s = session;
+        if (s == null) {
+            throw new IllegalStateException("无活动AFO会话;请先发起准备");
+        }
         if (!isTerminal(s.phase) && !"READY".equals(s.phase)) {
             throw new IllegalStateException("运行中不能关闭;先结束计算");
         }

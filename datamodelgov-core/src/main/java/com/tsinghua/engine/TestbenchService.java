@@ -504,9 +504,13 @@ public class TestbenchService {
         return out;
     }
 
+    /** 关闭会话:释放全局计算通道的清理动作,不受项目隔离与发起人限制(同AfoService.close口径),
+     *  任何登录用户都可关闭。运行中仍须先结束计算。 */
     public Map<String, Object> fullmodeClose(String projectId) throws IOException {
-        FullmodeSession s = requireFullmode(projectId);
-        checkFullmodeOperator(s);
+        FullmodeSession s = fmSession;
+        if (s == null) {
+            throw new IllegalStateException("无活动全模式会话;请先发起准备");
+        }
         if ("RUNNING".equals(s.phase)) throw new IllegalStateException("运行中不能关闭;先结束计算");
         if (s.engine != null) {
             try {

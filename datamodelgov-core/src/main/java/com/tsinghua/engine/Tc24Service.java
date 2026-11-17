@@ -558,8 +558,19 @@ public class Tc24Service {
      */
     public File readExcelDetailVerbose(String projectId, File excel, File out, StringBuilder errorOut)
             throws IOException {
-        // F34局部D工件(自演化/稳态飞参UQ的交付):Manifest合同为F34_LOCAL_D_EXCEL_V1(路由列叫
-        // model_route,无route列),TC24通用回读合同不认,须走交付包自带免DLL的inspect只读入口
+        // F3系列交付(自演化局部D / 稳态飞参R1):Manifest是F34自己的合同,TC24通用回读器会报
+        // "Manifest缺少schema_version或route"。改用Java POI直接读Excel,产出同构parameterTable,
+        // 彻底绕开MATLAB reader(避免DLL/编码/table列数问题)。局部D若POI失败再回退MATLAB适配器。
+        if (F3DeliveryDetailReader.isLocalDDelivery(excel)) {
+            if (F3DeliveryDetailReader.read(excel, out, errorOut, null)) return out;
+            log.warn("F3局部D交付POI回读失败,回退MATLAB适配器: {}", excel);
+            if (errorOut != null) errorOut.setLength(0);
+            return runF34DReadAdapter(excel.getAbsolutePath(), out, errorOut, projectId) ? out : null;
+        }
+        if (F3DeliveryDetailReader.isR1Delivery(excel)) {
+            return F3DeliveryDetailReader.read(excel, out, errorOut, null) ? out : null;
+        }
+        // 兼容旧探测(workbook.xml含LocalDistribution组合但POI列探测未命中)
         if (isF34MethodDDelivery(excel)) {
             return runF34DReadAdapter(excel.getAbsolutePath(), out, errorOut, projectId) ? out : null;
         }
@@ -617,9 +628,11 @@ public class Tc24Service {
             m.append("unit = strings(n,1); pname = strings(n,1);\n");
             m.append("if ismember('unit',p.Properties.VariableNames), unit = string(p.unit); end\n");
             m.append("if ismember('name',p.Properties.VariableNames), pname = string(p.name); end\n");
-            m.append("T = table(cellstr(string(p.parameter_id)),cellstr(pname),cellstr(unit),pe,map, ...\n");
+            // 9个数据列必须配9个VariableNames(原8个导致MATLAB table报"每个变量必须有一个名称"):
+            // parameter=参数名(前端0415按parameter列展示),parameter_id=合同id,其余语义不变。
+            m.append("T = table(cellstr(pname),cellstr(string(p.parameter_id)),cellstr(unit),pe,map, ...\n");
             m.append("    map-z95.*sd,map+z95.*sd,double(p.lower_bound),double(p.upper_bound), ...\n");
-            m.append("    'VariableNames',{'parameter','point_estimate','unit','median','q05','q95', ...\n");
+            m.append("    'VariableNames',{'parameter','parameter_id','unit','point_estimate','median','q05','q95', ...\n");
             m.append("    'lower_bound','upper_bound'});\n");
             m.append("man = readtable(c.resultFile,'Sheet','Manifest','PreserveVariableNames',true);\n");
             m.append("mf = struct();\n");
