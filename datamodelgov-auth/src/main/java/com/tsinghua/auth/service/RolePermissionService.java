@@ -165,8 +165,10 @@ public class RolePermissionService implements ApplicationContextAware {
             if (existingUsers.isEmpty() || existingRoles.isEmpty()) {
                 log.info("IGinX中没有RBAC数据，初始化默认数据");
                 initializeDefaultData();
+            } else {
+                // 数据存在但内置账户可能被误删(如admin被删后无人可管理用户),启动时补种缺失的默认账户
+                ensureDefaultUsersExist();
             }
-            
         } catch (Exception e) {
             log.error("初始化RBAC数据失败: {}", e.getMessage(), e);
         }
@@ -214,7 +216,7 @@ public class RolePermissionService implements ApplicationContextAware {
     private void initializeDefaultUsers() {
         // 创建默认用户 - 使用加密密码
         log.info("使用加密密码初始化默认用户");
-        
+
         // 获取角色的timestamp作为roleId
         Long adminRoleId = 2000000000000L;
         Long dataEngineerRoleId = 2000000000001L;
@@ -224,6 +226,35 @@ public class RolePermissionService implements ApplicationContextAware {
         userDao.saveUser(new UserEntity("user", getPasswordEncoder().encode("user123"), UserRole.DATA_ENGINEER, dataEngineerRoleId, 1000000000002L));
 
         log.info("默认用户初始化完成: admin/admin123, data/data123");
+    }
+
+    /**
+     * 确保内置默认账户存在:只补种缺失的默认账户,不动用户自建账户。
+     * 防止内置账户(admin/data/user)被误删后系统失去管理员入口。
+     */
+    private void ensureDefaultUsersExist() {
+        try {
+            Set<String> existingNames = new HashSet<>();
+            for (UserEntity u : userDao.queryAllUsers()) {
+                existingNames.add(u.getUsername());
+            }
+            Long adminRoleId = 2000000000000L;
+            Long dataEngineerRoleId = 2000000000001L;
+            if (!existingNames.contains("admin")) {
+                log.warn("内置管理员 admin 缺失,重新创建(默认密码 admin123)");
+                userDao.saveUser(new UserEntity("admin", getPasswordEncoder().encode("admin123"), UserRole.ADMIN, adminRoleId, 1000000000000L));
+            }
+            if (!existingNames.contains("data")) {
+                log.warn("内置账户 data 缺失,重新创建(默认密码 data123)");
+                userDao.saveUser(new UserEntity("data", getPasswordEncoder().encode("data123"), UserRole.DATA_ENGINEER, dataEngineerRoleId, 1000000000001L));
+            }
+            if (!existingNames.contains("user")) {
+                log.warn("内置账户 user 缺失,重新创建(默认密码 user123)");
+                userDao.saveUser(new UserEntity("user", getPasswordEncoder().encode("user123"), UserRole.DATA_ENGINEER, dataEngineerRoleId, 1000000000002L));
+            }
+        } catch (Exception e) {
+            log.error("补种内置默认账户失败: {}", e.getMessage(), e);
+        }
     }
     
     /**

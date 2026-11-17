@@ -354,3 +354,32 @@ a.wb-btn { display: inline-block; text-decoration: none; }
 .wb-root-pager { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-top: 1px solid #e5e7eb; background: #fafafa; }
 .wb-root-pager .wb-btn { min-width: 34px; padding: 5px 10px; font-size: 13px; }
 .wb-root-pager .wb-hint { margin-right: auto; }
+
+/* ===== 用户菜单(旧版「用户」菜单功能保留:用户管理/修改密码) ===== */
+.wb-user-menu { position: relative; }
+.wb-user-trigger {
+    display: flex; align-items: center; gap: 4px; cursor: pointer; user-select: none;
+    font-size: 13px; color: #4b5563; padding: 6px 10px; border-radius: 6px; white-space: nowrap;
+}
+.wb-user-trigger:hover { background: #f3f6f6; color: #111827; }
+.wb-user-dropdown {
+    position: absolute; top: calc(100% + 4px); right: 0; min-width: 132px; display: none;
+    background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 6px;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, .12); z-index: 30;
+}
+.wb-user-dropdown.open { display: block; }
+.wb-user-item { padding: 8px 12px; font-size: 13px; color: #374151; cursor: pointer; border-radius: 6px; white-space: nowrap; }
+.wb-user-item:hover { background: #f3f6f6; color: #0f766e; }
+
+/* 全屏面板遮罩:承载旧版 user-management 工作区组件;
+   它与 .wb-root(z-index:11000)同属根堆叠上下文,必须取更大的层级才能盖住主界面 */
+.wb-user-panel-mask { position: fixed; inset: 0; z-index: 11500; background: rgba(15, 23, 42, .45); display: flex; }
+.wb-user-panel {
+    background: #fff; width: min(1080px, 96vw); margin: 32px auto; border-radius: 10px;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, .2); display: flex; flex-direction: column; overflow: hidden;
+}
+.wb-user-panel-head { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; padding: 12px 18px; border-bottom: 1px solid #e5e7eb; }
+.wb-user-panel-title { font-size: 15px; font-weight: 600; color: #111827; }
+.wb-user-panel-close { border: none; background: transparent; font-size: 20px; line-height: 1; color: #6b7280; cursor: pointer; padding: 4px 8px; border-radius: 6px; }
+.wb-user-panel-close:hover { background: #f3f6f6; color: #111827; }
+.wb-user-panel-body { flex: 1; min-height: 0; overflow: auto; }

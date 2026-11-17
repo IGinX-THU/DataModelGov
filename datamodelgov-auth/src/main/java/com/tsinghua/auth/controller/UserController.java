@@ -102,6 +102,22 @@ public class UserController {
     @RequirePermission(Permission.USER_DELETE)
     @OperationLog(value = "删除用户", type = OperationLog.OperationType.DELETE)
     public Result<Void> deleteUser(@RequestParam("username") String username) throws Exception {
+        // 内置管理员账户是系统最后的管理入口,不允许删除
+        if ("admin".equals(username)) {
+            return Result.error("内置管理员账户 admin 不允许删除");
+        }
+        // 不能删除当前登录账户,否则会话立即失效且可能无人再持有管理员权限
+        if (username.equals(getCurrentUsername())) {
+            return Result.error("不能删除当前登录的账户");
+        }
+        // 系统至少保留一个管理员
+        UserEntity target = rolePermissionService.getUser(username);
+        if (target != null && UserRole.ADMIN.equals(target.getRole())) {
+            List<UserEntity> admins = rolePermissionService.queryUsers(null, UserRole.ADMIN, null, null, null);
+            if (admins.size() <= 1) {
+                return Result.error("系统至少需要保留一个管理员账户");
+            }
+        }
         rolePermissionService.removeUser(username);
         return Result.success("操作成功");
     }
@@ -111,6 +127,26 @@ public class UserController {
     @RequirePermission(Permission.USER_UPDATE)
     @OperationLog(value = "更新用户", type = OperationLog.OperationType.UPDATE)
     public Result<Void> updateUser(@RequestBody UserEntity user) throws Exception {
+        UserEntity original = rolePermissionService.getUser(user.getUsername());
+        if (original == null) {
+            return Result.error("用户不存在");
+        }
+        // 降级或禁用属于"变相删除",与删除接口做同等保护
+        boolean demoteOrDisable = !UserRole.ADMIN.equals(user.getRole()) || !user.isEnabled();
+        if (demoteOrDisable) {
+            if ("admin".equals(user.getUsername())) {
+                return Result.error("内置管理员账户 admin 必须保持管理员角色且启用");
+            }
+            if (user.getUsername().equals(getCurrentUsername())) {
+                return Result.error("不能禁用或降级当前登录的账户");
+            }
+            if (UserRole.ADMIN.equals(original.getRole())) {
+                List<UserEntity> admins = rolePermissionService.queryUsers(null, UserRole.ADMIN, null, null, null);
+                if (admins.size() <= 1) {
+                    return Result.error("系统至少需要保留一个管理员账户");
+                }
+            }
+        }
         rolePermissionService.updateUser(user);
         return Result.success("用户更新成功");
     }
