@@ -1508,12 +1508,19 @@ public class F3FlightService {
         return items == null || items.length == 0;
     }
 
-    /** MATLAB 的「工作表名称 'X' 不存在或不受支持」在无 Excel 服务时来自 xlsfinfo 回退失败
-     *  (见 XlsxDocPropsCompat),原样抛给用户完全看不懂;补一句可执行提示。 */
+    /** MATLAB 的「工作表名称 'X' 不存在或不受支持」有两类根因,原样抛给用户看不懂:
+     *  (a) 无 Excel 服务时 xlsfinfo 回退失败(缺 docProps,见 XlsxDocPropsCompat,已自动补齐);
+     *  (b) 传入的根本不是对应交付——尤其 flight 父模型误指向 results.xlsx(无 Model 表),
+     *      可执行交付应是同目录 model.xlsx。按缺失表名区分,给出可落地指引。 */
     private String friendlyF3Error(String msg) {
         if (msg != null && msg.contains("工作表名称") && msg.contains("不存在或不受支持")) {
+            if (msg.contains("'Model'") || msg.contains("Model")) {
+                return msg + "（flight 父模型必须是含 Model 工作表的模型交付 Excel;当前指向的文件很可能是"
+                        + " results.xlsx 结果表,请在「模型成果」里重新登记该任务的 model.xlsx 交付,或发起任务时"
+                        + "在「选择已有模型」中改选含 Model 表的模型;系统已尝试自动切换到同目录 model.xlsx）";
+            }
             return msg + "（本机 MATLAB 无法启动 Excel 服务,交付Excel缺少 docProps 元数据时按表名读取会失败;"
-                    + "已尝试自动补齐该元数据,若仍报此错请关闭残留的 EXCEL.EXE 进程后重试）";
+                    + "已尝试自动补齐该元数据,若仍报此错请确认所选Excel确含该工作表并关闭残留的 EXCEL.EXE 进程后重试）";
         }
         if (msg != null && msg.contains("目录路径过长")) {
             return msg + "。请把项目「保存位置」改到浅层短路径(如 D:\\dmg),新建项目后重试;"
@@ -1694,13 +1701,49 @@ public class F3FlightService {
         return s.length() > 32 ? s.substring(0, 32) : s;
     }
 
+    /** flight父工作簿合同归一(统一覆盖①②⑤各解析分支):瞬态与自演化(flight根)父模型都必须是
+     *  含Model工作表的F33模型交付(sht_f33_excel_delivery 'inspect'),而历史登记/自动解析常把
+     *  交付误指向 results.xlsx(结果Excel,无Model表,同目录model.xlsx才是可执行交付)。
+     *  这里在原解析结果之上做一次归一:无Model表且同目录有model.xlsx时自愈到后者,避免整个
+     *  flight父链(瞬态建模/自演化preview→run)把 results.xlsx 送进MATLAB报「Model 表不存在」。 */
+    private String resolveParentWorkbook(EngineModels.ModelingTask task) throws IOException {
+        String raw = resolveParentWorkbookRaw(task);
+        if (raw == null || raw.trim().isEmpty()) return raw;
+        boolean flightParent = "flight_transient".equals(task.getKind())
+                || ("evolution".equals(task.getKind()) && "flight".equalsIgnoreCase(task.getParentSource()));
+        if (!flightParent) return raw;
+        File f = new File(raw.replace('\\', '/'));
+        if (!f.isFile()) return raw;
+        File normalized = normalizeFlightParentWorkbook(f);
+        if (normalized != null && !normalized.getAbsolutePath().equals(f.getAbsolutePath())) {
+            log.info("F3 flight父工作簿自愈(原文件无Model表): task={} {} -> {}",
+                    task.getId(), f.getName(), normalized.getAbsolutePath());
+            return normalized.getAbsolutePath().replace('\\', '/');
+        }
+        return raw;
+    }
+
+    /** flight父合同归一:无Model表且同目录有合法model.xlsx时返回后者;否则原样返回。 */
+    private File normalizeFlightParentWorkbook(File f) {
+        if (f == null || !f.isFile()) return f;
+        if (isModelDeliveryWorkbook(f) && !hasEmbeddedManifestSheet(f)) return f;
+        File dir = f.getParentFile();
+        if (dir != null) {
+            File modelXlsx = new File(dir, "model.xlsx");
+            if (modelXlsx.isFile() && isModelDeliveryWorkbook(modelXlsx) && !hasEmbeddedManifestSheet(modelXlsx)) {
+                return modelXlsx;
+            }
+        }
+        return f;
+    }
+
     /**
      * 解析父工作簿,优先级:①登记值 ②用户在发起时「选择已有模型」指定的模型成果交付Excel
      * (parentModelId→模型清单deliveryFile,最直接的用户意图) ③项目内已完成F3任务的
      * 交付Excel(取最新)。MATLAB合同要求root.workbook必填单行文本,空串会被
      * "root.workbook为空或含换行"拒绝;找不到交付物时明确报错引导用户。
      */
-    private String resolveParentWorkbook(EngineModels.ModelingTask task) throws IOException {
+    private String resolveParentWorkbookRaw(EngineModels.ModelingTask task) throws IOException {
         boolean transientTask = "flight_transient".equals(task.getKind());
         // 自演化根来源=2p4试车模型时,sht_f3_current_contract('parent')按2p4参数化交付合同读取
         // (CorrectionSchedule/MeasurementBias表),F3/TC27模型交付会被readtable报"工作表不存在"

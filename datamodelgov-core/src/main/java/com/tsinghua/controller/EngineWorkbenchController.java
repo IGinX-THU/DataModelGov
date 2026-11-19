@@ -2520,16 +2520,38 @@ public class EngineWorkbenchController {
     /** F3交付Excel:结果子目录深度3内最新.xlsx。 */
     private String findF3DeliveryWorkbook(File dir) {
         if (!dir.isDirectory()) return null;
+        // 模型成果必须登记为可执行父模型交付(model.xlsx,含Model工作表)。results.xlsx是结果Excel,
+        // 通常比model.xlsx晚生成,若按lastModified取最新会误选它,导致下游flight父模型报
+        // 「工作表名称 'Model' 不存在」。优先取model.xlsx,其次按表名探测含Model表的交付。
         File best = null;
         try (java.util.stream.Stream<Path> walk = java.nio.file.Files.walk(dir.toPath(), 3)) {
-            best = walk.map(Path::toFile)
+            java.util.List<File> xlsxs = walk.map(Path::toFile)
                     .filter(f -> f.isFile() && f.getName().toLowerCase().endsWith(".xlsx"))
-                    .max(Comparator.comparingLong(File::lastModified))
-                    .orElse(null);
+                    .collect(java.util.stream.Collectors.toList());
+            for (File f : xlsxs) if (f.getName().equalsIgnoreCase("model.xlsx")) return f.getAbsolutePath();
+            for (File f : xlsxs) if (hasModelSheet(f)) return f.getAbsolutePath();
+            best = xlsxs.stream().max(Comparator.comparingLong(File::lastModified)).orElse(null);
         } catch (IOException e) {
             log.warn("扫描F3交付目录失败: {}", dir, e);
         }
         return best != null ? best.getAbsolutePath() : null;
+    }
+
+    /** 轻量探测xlsx是否含Model工作表(只读workbook.xml,不依赖Excel COM)。 */
+    private boolean hasModelSheet(File xlsx) {
+        try (java.util.zip.ZipFile z = new java.util.zip.ZipFile(xlsx)) {
+            java.util.zip.ZipEntry e = z.getEntry("xl/workbook.xml");
+            if (e == null) return false;
+            byte[] b = new byte[8192];
+            StringBuilder sb = new StringBuilder();
+            try (java.io.InputStream in = z.getInputStream(e)) {
+                int n;
+                while ((n = in.read(b)) > 0) sb.append(new String(b, 0, n, java.nio.charset.StandardCharsets.UTF_8));
+            }
+            return sb.toString().contains("name=\"Model\"");
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     /** 结果状态:已交付 | 诊断(未收敛但有效仍可交付,convergenceDoesNotBlockDelivery)。 */
