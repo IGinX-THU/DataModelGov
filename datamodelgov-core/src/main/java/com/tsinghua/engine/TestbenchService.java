@@ -1562,7 +1562,12 @@ m.append("    case 'savepackage'\n");
                 log.warn("交付程序补丁写入失败({}): {}", target, ex.getMessage());
             }
         }
-        touchProgramScripts(programsRoot);
+        // 只 touch 被补丁涉及的程序子树:整树 touch 会把其他页签常驻引擎(如AFO专属引擎)
+        // 的全部函数标记过期,下一次 prepare 全量重解析,实测准备耗时 67s→570s
+        for (Map.Entry<String, String> e : PROGRAM_PATCHES.entrySet()) {
+            File patchedDir = new File(programsRoot, e.getKey()).getParentFile();
+            if (patchedDir != null && patchedDir.isDirectory()) touchProgramScripts(patchedDir);
+        }
     }
 
     /**
