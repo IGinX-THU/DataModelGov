@@ -1220,8 +1220,17 @@ public class EngineWorkbenchController {
             String denied = accessDenied(store.getProject(pid));
             if (denied != null) return Result.error(denied);
             FileLibraryEntity e = fileLibraryMetaService.queryById(fileId);
-            if (e == null || !"data".equals(e.getCategory())) {
-                return Result.error("文件库条目不存在或不是数据类文件");
+            if (e == null) {
+                return Result.error("文件库条目不存在,请重新从下拉选择");
+            }
+            if (!"data".equals(e.getCategory())) {
+                // 模型交付是 model 类,不是训练数据:它应在下游任务的「选择已有模型」里指定为父模型,
+                // 而不是从训练数据槽位带入。给出明确指引,避免用户把两者混用。
+                if ("model".equals(e.getCategory())) {
+                    return Result.error("选中的是「模型成果」而非训练数据:模型成果用于下游任务的「选择已有模型」(作为父模型),"
+                            + "请到该下拉里选它;本槽位只接收试车/训练/历程等数据文件(.xlsx)。");
+                }
+                return Result.error("文件库条目不是数据类文件,本槽位只接收训练/测试/历程等数据Excel");
             }
             File src = fileBackupService.resolve(e);
             File dir = new File(store.taskWorkDir(pid, tid), "input");

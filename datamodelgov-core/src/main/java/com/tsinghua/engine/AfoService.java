@@ -57,6 +57,8 @@ public class AfoService {
     @org.springframework.beans.factory.annotation.Value("${engine.afo.warm-engine:true}")
     private boolean warmEngineEnabled;
     private volatile MatlabEngine warmEngine;
+    /** 预热槽引擎所属项目:null=未绑定冷引擎(任意项目可取);非null=同项目可复用热引擎(DLL/函数已就位) */
+    private volatile String warmProjectId;
     private final ExecutorService warmExecutor = Executors.newSingleThreadExecutor(
             r -> { Thread t = new Thread(r, "afo-warm-engine"); t.setDaemon(true); return t; });
 
@@ -172,13 +174,22 @@ public class AfoService {
         return n;
     }
 
-    /** 取预热引擎;未就绪时同步冷启兜底(prepare 不因此失败两次)。 */
-    private synchronized MatlabEngine takeWarmEngine() throws Exception {
+    /** 取预热引擎:同项目热引擎直取(DLL/已解析函数常驻,免每会话重付);跨项目关闭换冷启。 */
+    private synchronized MatlabEngine takeWarmEngine(String projectId) throws Exception {
         MatlabEngine e = warmEngine;
-        warmEngine = null;
-        if (e != null) {
-            log.info("AFO prepare 取用预热引擎");
+        if (e != null && (warmProjectId == null || warmProjectId.equals(projectId))) {
+            warmEngine = null;
+            String bound = warmProjectId;
+            warmProjectId = null;
+            log.info(bound == null ? "AFO prepare 取用预热引擎"
+                    : "AFO prepare 复用同项目热引擎(DLL/函数已就位,免冷启动与重解析)");
             return e;
+        }
+        if (e != null) {
+            // 槽内引擎属于其他项目:进程级状态(模型/DLL/路径)不跨项目混用,关闭后冷启
+            log.info("AFO 预热引擎属于其他项目({}),关闭后冷启动", warmProjectId);
+            closeEngineRaw(e);
+            e = null;
         }
         log.warn("AFO 预热引擎不可用,同步冷启动MATLAB(较慢)");
         com.tsinghua.matlab.MatlabNativeLibrary.prepare(null);
@@ -195,7 +206,10 @@ public class AfoService {
      */
     private synchronized File ensureAfoSource(String projectId) throws IOException {
         File user = new File(workProgramsDir(projectId), "AFO_V_2");
-        if (new File(user, "sht_afo_config.m").isFile()) return user;
+        if (new File(user, "sht_afo_config.m").isFile()) {
+            applyAfoProgramPatches(projectId);
+            return user;
+        }
 
         // 配置的磁盘交付树(engine.r06.root)优先于内置资源
         File ext = deliveryProgramsDir();
@@ -248,7 +262,20 @@ public class AfoService {
                     + " 个文件);请确认部署包含 matlab/delivery 交付树");
         }
         log.info("AFO_V_2 解压完成: {} 个文件", extractedCount);
+        applyAfoProgramPatches(projectId);
         return extracted;
+    }
+
+    /** AFO 会话 Simulink 编译缓存跨会话复用:补丁资源把 CacheFolder 指到项目级共享目录
+     *  job/afo/_slCache,模型未变时 Simulink 命中缓存跳过重编译——桌面客户端同目录
+     *  反复运行的"快"正来自这份缓存复用。仅工作目录分支打补丁;ext/classes 直跑分支
+     *  不动源目录。 */
+    private void applyAfoProgramPatches(String projectId) {
+        try {
+            TestbenchService.applyProgramPatches(workProgramsDir(projectId));
+        } catch (Exception e) {
+            log.warn("AFO 程序补丁应用失败(按未补丁程序继续): {}", e.getMessage());
+        }
     }
 
     /** 项目工作目录下的程序源位置:<workdir>/programs;workdir缺失时回退元数据目录。 */
@@ -836,7 +863,7 @@ public class AfoService {
         try {
             File progCopy = ensureAfoSource(s.projectId);
             writeAdapter(s, progCopy);
-            MatlabEngine eng = takeWarmEngine();
+            MatlabEngine eng = takeWarmEngine(s.projectId);
             // 冷启兜底会耗尽预热引擎(启动期预热失败/未就绪时走到这里):
             // 准备期立即回填,保证下次 prepare 免冷启动,而不是等到会话结束
             if (warmEngineEnabled && warmEngine == null) {
@@ -1084,7 +1111,7 @@ public class AfoService {
         }
         s.phase = "CLOSED";
         s.message = "会话已关闭";
-        closeEngine(s);
+        recycleOrCloseEngine(s);
         writeSessionIndex(s);
         synchronized (sessionLock) {
             if (session == s) session = null;
@@ -1386,20 +1413,57 @@ public class AfoService {
         }
     }
 
+    /** 失败路径引擎处置:引擎状态可疑,直接关闭并回填冷启(不复用)。 */
     private void closeEngine(AfoSession s) {
         MatlabEngine eng = s.engine;
         s.engine = null;
-        if (eng != null) {
-            try {
-                eng.close();
-            } catch (Exception e) {
-                log.warn("AFO引擎关闭失败", e);
-            }
+        closeEngineRaw(eng);
+        scheduleWarmRefill();
+    }
+
+    private static void closeEngineRaw(MatlabEngine eng) {
+        if (eng == null) return;
+        try {
+            eng.close();
+        } catch (Exception e) {
+            log.warn("AFO引擎关闭失败", e);
         }
-        // 预热回填:会话结束后自动补 1 台专属引擎,下次 prepare 免冷启动
+    }
+
+    private void scheduleWarmRefill() {
         if (warmEngineEnabled && warmEngine == null) {
             warmExecutor.submit(() -> startWarmEngine("回填"));
         }
+    }
+
+    /**
+     * 会话终态后引擎处置:同项目复用优先。复位序列(关上一场留在内存的模型实例、
+     * 清会话persistent、刷新函数缓存)后转入预热槽,DLL与已解析函数保留,下次
+     * 同项目prepare免重付冷启动/DLL加载/函数解析三重成本。合同支持:prepare 断言
+     * 允许在 state='closed' 的会话上整体重建状态(sht_afo_session L10-17)。
+     * 仅用于干净终态(CLOSED/ENDED);FAILED 等可疑状态仍走 closeEngine 不复用。
+     */
+    private synchronized void recycleOrCloseEngine(AfoSession s) {
+        MatlabEngine eng = s.engine;
+        s.engine = null;
+        scheduleWarmRefill();
+        if (eng == null) return;
+        boolean clean = "CLOSED".equals(s.phase) || "ENDED".equals(s.phase);
+        if (clean) {
+            try {
+                eng.feval(0, "eval", "bdclose('all'); clear sht_afo_session; rehash;");
+                if (warmEngine == null && warmEngineEnabled) {
+                    warmEngine = eng;
+                    warmProjectId = s.projectId;
+                    log.info("AFO引擎复用: 复位后转入预热槽(项目{}),同项目下次prepare直取", s.projectId);
+                    return;
+                }
+                log.info("AFO预热槽已被占用,关闭本场引擎");
+            } catch (Exception e) {
+                log.warn("AFO引擎复位失败,关闭引擎并回填冷启: {}", e.getMessage());
+            }
+        }
+        closeEngineRaw(eng);
     }
 
     private AfoSession requireSession(String projectId, String expectPhase) throws IOException {

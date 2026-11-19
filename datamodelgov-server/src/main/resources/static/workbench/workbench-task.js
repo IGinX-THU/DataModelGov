@@ -853,7 +853,7 @@
                             WB().h('option', { value: '' }, '从文件库选择...'));
                         window.AppConfig.engineGet('projects/'
                             + encodeURIComponent(ctx.project.id || '') + '/files/page',
-                            { pageSize: 200 })
+                            { category: 'data', pageSize: 200 })
                             .then(resp => {
                                 const rows = resp && resp.data && Array.isArray(resp.data.rows) ? resp.data.rows.filter(x => x && x.id != null) : [];
                                 const hit = rows.filter(r0 => /\.(xlsx|xls)$/i.test(String(r0.name || '')));

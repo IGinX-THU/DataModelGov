@@ -1534,9 +1534,14 @@ m.append("    case 'savepackage'\n");
         // 修复版不进交付树,由后端在项目工作副本上覆盖
         PROGRAM_PATCHES.put("m_program_adaptive_tune/sht_fullmode_session.m",
                 "matlab-patches/m_program_adaptive_tune/sht_fullmode_session.m");
+        // AFO 会话:Simulink 编译缓存(CacheFolder)从"每会话独立 runtime/cache"改为
+        // 项目级共享 job/afo/_slCache——桌面客户端同目录反复运行"快"的核心就是这份
+        // 缓存复用;模型未变时 Simulink 命中缓存跳过重编译
+        PROGRAM_PATCHES.put("AFO_V_2/sht_afo_session.m",
+                "matlab-patches/AFO_V_2/sht_afo_session.m");
     }
 
-    private void applyProgramPatches(File programsRoot) {
+    static void applyProgramPatches(File programsRoot) {
         if (programsRoot == null || !programsRoot.isDirectory()) return;
         for (Map.Entry<String, String> e : PROGRAM_PATCHES.entrySet()) {
             File target = new File(programsRoot, e.getKey());
@@ -1575,7 +1580,7 @@ m.append("    case 'savepackage'\n");
      * provision 复制保留旧 mtime 时,长命引擎池进程会一直使用启动时解析的旧版函数
      * (实测:磁盘已是新版、新进程调用正常,引擎池却报旧版才有的错误)。touch 后强制重读。
      */
-    private void touchProgramScripts(File programsRoot) {
+    private static void touchProgramScripts(File programsRoot) {
         try (Stream<Path> walk = Files.walk(programsRoot.toPath())) {
             long now = System.currentTimeMillis();
             int[] n = {0};
@@ -1589,7 +1594,7 @@ m.append("    case 'savepackage'\n");
         }
     }
 
-    private byte[] readClasspathResource(String path) {
+    private static byte[] readClasspathResource(String path) {
         ClassLoader cl = Thread.currentThread().getContextClassLoader();
         if (cl == null) cl = TestbenchService.class.getClassLoader();
         try (java.io.InputStream in = cl.getResourceAsStream(path)) {
