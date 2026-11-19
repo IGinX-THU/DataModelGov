@@ -486,7 +486,14 @@ public class F3FlightService {
             if (adapterDir.exists()) {
                 deleteDirectory(adapterDir);
             }
-            if (!adapterDir.exists() && !adapterDir.mkdirs()) throw new IOException("无法创建F3适配器目录");
+            if (adapterDir.exists()) {
+                // 删除失败(文件只读/被Excel、杀软等占用):报错带路径与残留项,不再静默带残缺目录继续
+                File[] left = adapterDir.listFiles();
+                String remain = left == null ? "未知" : "残留" + left.length + "项,首项:" + (left.length > 0 ? left[0].getName() : "—");
+                throw new IOException("F3适配器旧目录删除失败(" + remain + ",只读或被占用),请手工删除后重试: "
+                        + adapterDir.getAbsolutePath());
+            }
+            if (!adapterDir.mkdirs()) throw new IOException(describeDirCreateFailure("F3适配器目录", adapterDir));
             File outputRoot = new File(workDir, subDir);
             File reportRoot = new File(workDir, subDir + "-report");
             if (!isConfirm && !isCheck) {
@@ -502,7 +509,7 @@ public class F3FlightService {
                     // run 若换了报告根就会报 F3:TF:Stale「数据、父模型、配置、源码或物理包已变化」。
                     // 因此两个根必须与 confirm 那次完全一致——直接取确认落盘的 configuration.json 为准。
                     reportRoot = readConfirmedReportRoot(outputRoot, new File(workDir, subDir + "-report"));
-                    if (!reportRoot.exists() && !reportRoot.mkdirs()) throw new IOException("无法创建F3报告目录");
+                    if (!reportRoot.exists() && !reportRoot.mkdirs()) throw new IOException(describeDirCreateFailure("F3报告目录", reportRoot));
                     // 上次 run 若被强杀/服务重启打断,MATLAB 的软锁 run_control/session.lock 会残留,
                     // 下次 run 直接报「该运行仍持有写入锁；不能并发恢复」。本进程内确认无活跃 runner 时
                     // 把锁与半途产物挪到 _stale_<时间戳>/(只移动不删除),让本次从干净状态重算。
@@ -516,8 +523,8 @@ public class F3FlightService {
                     outputRoot = new File(workDir, subDir + "-run-" + stamp);
                     reportRoot = new File(workDir, subDir + "-report-run-" + stamp);
                 } else {
-                    if (!outputRoot.exists() && !outputRoot.mkdirs()) throw new IOException("无法创建F3输出目录");
-                    if (!reportRoot.exists() && !reportRoot.mkdirs()) throw new IOException("无法创建F3报告目录");
+                    if (!outputRoot.exists() && !outputRoot.mkdirs()) throw new IOException(describeDirCreateFailure("F3输出目录", outputRoot));
+                    if (!reportRoot.exists() && !reportRoot.mkdirs()) throw new IOException(describeDirCreateFailure("F3报告目录", reportRoot));
                 }
             }
             if (isConfirm && !evo) {
@@ -1507,7 +1514,30 @@ public class F3FlightService {
             return msg + "（本机 MATLAB 无法启动 Excel 服务,交付Excel缺少 docProps 元数据时按表名读取会失败;"
                     + "已尝试自动补齐该元数据,若仍报此错请关闭残留的 EXCEL.EXE 进程后重试）";
         }
+        if (msg != null && msg.contains("目录路径过长")) {
+            return msg + "。请把项目「保存位置」改到浅层短路径(如 D:\\dmg),新建项目后重试;"
+                    + "Win7 单路径上限约 248 字符,中文与空格会按多字节折算,任务目录还需追加层级";
+        }
         return msg;
+    }
+
+    /** mkdirs()返回false的诊断:Windows(尤其Win7)单路径上限260/安全248字符是最常见根因,
+     *  次要是父路径只读或被占用。把路径长度与落点写进错误,避免只报一句笼统失败。 */
+    private static String describeDirCreateFailure(String label, File dir) {
+        String path = dir == null ? "null" : dir.getAbsolutePath();
+        int len = path.length();
+        StringBuilder sb = new StringBuilder();
+        sb.append("无法创建").append(label).append(",路径(").append(len).append("字符): ").append(path);
+        if (len >= 240) {
+            sb.append(" —— 目录路径过长(Win7 单路径上限约248字符,中文按多字节折算),")
+                    .append("请新建项目并把「保存位置」设为浅层短路径(如 D:\\dmg)后重试");
+        } else {
+            File parent = dir == null ? null : dir.getParentFile();
+            sb.append(" —— 父路径不可写或被占用(只读/杀软锁定/磁盘权限),")
+                    .append("请检查父目录 ").append(parent == null ? "" : parent.getAbsolutePath())
+                    .append(" 的写权限并关闭占用程序后重试");
+        }
+        return sb.toString();
     }
 
     /** 传给 MATLAB 的 xlsx 一律走 docProps 补齐副本(见 XlsxDocPropsCompat):
@@ -2025,7 +2055,10 @@ public class F3FlightService {
                 if (file.isDirectory()) {
                     deleteDirectory(file);
                 } else {
-                    file.delete();
+                    if (!file.delete() && file.exists()) {
+                        file.setWritable(true); // 只读残留兜底(常见于Excel/杀软写入过的文件)
+                        file.delete();
+                    }
                 }
             }
         }

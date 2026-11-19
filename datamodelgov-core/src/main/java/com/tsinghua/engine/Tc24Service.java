@@ -2391,7 +2391,14 @@ public class Tc24Service {
     private String abs(String path) {
         if (path == null) return "";
         File f = new File(path);
-        return f.getAbsolutePath().replace('\\', '/');
+        if (!f.isFile()) return f.getAbsolutePath().replace('\\', '/');
+        // 生产机 Excel COM 未启动时,MATLAB 按 sheet 名读 xlsx 依赖 docProps/app.xml 部件;
+        // 交付程序(writetable)产出的 xlsx 缺该部件,会报"工作表名称 X 不存在或不受支持,
+        // 请通过工作表索引指定"。统一在这里给所有传给 MATLAB 的 xlsx 补部件(内容零改动、幂等),
+        // 一处覆盖预测/UQ/辨识的全部传入点,避免各调用点重复遗漏。
+        File compat = XlsxDocPropsCompat.ensure(f,
+                new File(f.getAbsoluteFile().getParentFile(), ".dmg-docprops-compat"));
+        return compat.getAbsolutePath().replace('\\', '/');
     }
 
     /** UQ 适配器:task='uq',options 走 sht_tc24_b_config 集中默认再覆盖业务字段;particleCount 允许 512/1024。 */

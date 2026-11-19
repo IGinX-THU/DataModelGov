@@ -10,8 +10,10 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
@@ -43,14 +45,62 @@ public final class XlsxDocPropsCompat {
     private static final String APP_PART = "docProps/app.xml";
     private static final String CORE_PART = "docProps/core.xml";
 
-    private static final String APP_XML =
+    private static final String APP_XML_HEAD =
             "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
                     + "<Properties xmlns=\"http://schemas.openxmlformats.org/officeDocument/2006/extended-properties\""
                     + " xmlns:vt=\"http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes\">"
                     + "<Application>Microsoft Excel</Application><DocSecurity>0</DocSecurity>"
                     + "<ScaleCrop>false</ScaleCrop><LinksUpToDate>false</LinksUpToDate>"
                     + "<SharedDoc>false</SharedDoc><HyperlinksChanged>false</HyperlinksChanged>"
-                    + "<AppVersion>16.0300</AppVersion></Properties>";
+                    + "<AppVersion>16.0300</AppVersion>";
+
+    private static final String APP_XML = APP_XML_HEAD + "</Properties>";
+
+    /**
+     * 生成带 TitlesOfParts(工作表名清单)的 app.xml。
+     * xlsfinfo 的非 COM 回退(xlsfinfoXLSX)靠 app.xml 的 TitlesOfParts 枚举 sheet 名；
+     * 仅补 &lt;Application&gt; 的最小 app.xml 虽能让 fileread 通过，但 sheet 名列表为空，
+     * readtable('Sheet','CorrectionSchedule') 仍报「工作表名称不存在或不受支持，请用工作表索引指定」。
+     * 这里从 workbook.xml 提取真实 sheet 名写进 TitlesOfParts/HeadingPairs，让非 COM 回退
+     * 能按名定位工作表。读不到时退回最小 app.xml，不阻断。
+     */
+    private static String buildAppXml(ZipFile zin) {
+        List<String> sheets = new ArrayList<>();
+        try {
+            ZipEntry wb = zin.getEntry("xl/workbook.xml");
+            if (wb != null) {
+                String xml = new String(readAll(zin, wb), StandardCharsets.UTF_8);
+                java.util.regex.Matcher m = java.util.regex.Pattern
+                        .compile("<sheet\\b[^>]*\\bname=\"([^\"]*)\"").matcher(xml);
+                while (m.find()) sheets.add(xmlUnescape(m.group(1)));
+            }
+        } catch (Exception ignore) {
+            return APP_XML;
+        }
+        if (sheets.isEmpty()) return APP_XML;
+        StringBuilder sb = new StringBuilder(APP_XML_HEAD);
+        sb.append("<HeadingPairs><vt:vector size=\"2\" baseType=\"variant\">")
+                .append("<vt:variant><vt:lpstr>Worksheets</vt:lpstr></vt:variant>")
+                .append("<vt:variant><vt:i4>").append(sheets.size()).append("</vt:i4></vt:variant>")
+                .append("</vt:vector></HeadingPairs>")
+                .append("<TitlesOfParts><vt:vector size=\"").append(sheets.size())
+                .append("\" baseType=\"lpstr\">");
+        for (String s : sheets) sb.append("<vt:lpstr>").append(xmlEscape(s)).append("</vt:lpstr>");
+        sb.append("</vt:vector></TitlesOfParts></Properties>");
+        return sb.toString();
+    }
+
+    private static String xmlEscape(String s) {
+        if (s == null) return "";
+        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                .replace("\"", "&quot;").replace("'", "&apos;");
+    }
+
+    private static String xmlUnescape(String s) {
+        if (s == null) return "";
+        return s.replace("&quot;", "\"").replace("&apos;", "'").replace("&lt;", "<")
+                .replace("&gt;", ">").replace("&amp;", "&");
+    }
 
     private static final String CORE_XML =
             "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
@@ -79,7 +129,9 @@ public final class XlsxDocPropsCompat {
         String name = source.getName();
         if (!name.toLowerCase().endsWith(".xlsx") && !name.toLowerCase().endsWith(".xlsm")) return source;
         try {
-            if (hasPart(source, APP_PART)) return source;
+            // app.xml 存在还不够:生产机上部分 xlsx 带一份缺 TitlesOfParts 的残缺 app.xml,
+            // xlsfinfo 非 COM 回退仍枚举不到 sheet 名。必须含 TitlesOfParts 才视为可用。
+            if (hasCompleteAppPart(source)) return source;
             File dst = new File(dir, name);
             if (isUsableCopy(source, dst)) return dst;
             if (!dir.exists() && !dir.mkdirs()) throw new IOException("无法创建目录: " + dir);
@@ -99,6 +151,15 @@ public final class XlsxDocPropsCompat {
         }
     }
 
+    /** app.xml 存在且含 TitlesOfParts(工作表名清单)才算完整,否则非 COM 回退枚举不到 sheet。 */
+    private static boolean hasCompleteAppPart(File xlsx) throws IOException {
+        try (ZipFile z = new ZipFile(xlsx)) {
+            ZipEntry app = z.getEntry(APP_PART);
+            if (app == null || app.getSize() > 1 << 20) return false;
+            return new String(readAll(z, app), StandardCharsets.UTF_8).contains("TitlesOfParts");
+        }
+    }
+
     /** 副本可用且不旧于源文件（源文件被重写后必须重新生成，否则 MATLAB 读到旧内容）。 */
     private static boolean isUsableCopy(File source, File dst) {
         return dst.isFile() && dst.length() > 0 && dst.lastModified() >= source.lastModified();
@@ -115,7 +176,11 @@ public final class XlsxDocPropsCompat {
                 String n = e.getName();
                 seen.add(n);
                 byte[] data;
-                if ("[Content_Types].xml".equals(n)) {
+                if (APP_PART.equals(n)) {
+                    // 源可能带一份缺 TitlesOfParts 的残缺 app.xml:用带工作表名清单的完整版替换,
+                    // 否则 xlsfinfo 非 COM 回退仍枚举不到 sheet 名。
+                    data = buildAppXml(zin).getBytes(StandardCharsets.UTF_8);
+                } else if ("[Content_Types].xml".equals(n)) {
                     data = patchContentTypes(readAll(zin, e));
                 } else if ("_rels/.rels".equals(n)) {
                     data = patchRootRels(readAll(zin, e));
@@ -124,7 +189,7 @@ public final class XlsxDocPropsCompat {
                 }
                 putEntry(out, n, data);
             }
-            if (!seen.contains(APP_PART)) putEntry(out, APP_PART, APP_XML.getBytes(StandardCharsets.UTF_8));
+            if (!seen.contains(APP_PART)) putEntry(out, APP_PART, buildAppXml(zin).getBytes(StandardCharsets.UTF_8));
             if (!seen.contains(CORE_PART)) putEntry(out, CORE_PART, CORE_XML.getBytes(StandardCharsets.UTF_8));
         }
         try {
