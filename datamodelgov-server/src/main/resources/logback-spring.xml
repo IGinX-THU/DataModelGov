@@ -25,8 +25,11 @@
         </filter>
         <encoder>
             <Pattern>${CONSOLE_LOG_PATTERN}</Pattern>
-            <!-- 设置字符集 -->
-            <charset>UTF-8</charset>
+            <!-- 控制台字符集须与 Windows 控制台代码页一致：中文 Win7/Win10 默认 cp936(GBK)。
+                 Win7 的 conhost 对 chcp 65001(UTF-8) 的中文渲染不完整(点阵字体缺字形)，UTF-8 反而乱码；
+                 故控制台固定 GBK，与 bin/start.bat 不再 chcp 65001 配套。
+                 注意：文件 appender 保持 UTF-8 不要跟改，logs/*.log 用编辑器按 UTF-8 查看。 -->
+            <charset>GBK</charset>
         </encoder>
     </appender>
 

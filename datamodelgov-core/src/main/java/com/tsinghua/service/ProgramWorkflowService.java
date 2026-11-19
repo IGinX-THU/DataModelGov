@@ -557,9 +557,9 @@ public class ProgramWorkflowService {
         }
         log.info("工作区 {} 步骤4完成: 数据合同校验通过", id);
 
-        // 5. 写 program-config.json（MATLAB 运行时需要）
+        // 5. 写 program-config.json（MATLAB 运行时需要；会话为 GBK，见 MatlabCharset）
         String configJson = ProgramConfigMapper.stringify(config);
-        Files.write(child(workspace, "program-config.json"), configJson.getBytes(StandardCharsets.UTF_8));
+        Files.write(child(workspace, "program-config.json"), com.tsinghua.matlab.MatlabCharset.bytes(configJson));
 
         // 6. 更新 IGINX：补充完整字段，状态改为 INITIALIZING
         log.info("工作区 {} 步骤6: 更新状态为 INITIALIZING", id);

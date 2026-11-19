@@ -266,6 +266,13 @@ public class MatlabSimulationRunner implements Closeable {
         }
         // 从引擎池借出（优先复用已加载相同模型+相同步长的引擎）
         engine = enginePool.borrow(modelName, fixedStep, ENGINE_START_TIMEOUT_SEC);
+        // 交付 .m 源码为 GBK 编码；与 MatlabFunctionRunner 一致统一会话 GBK，
+        // 保证 dmg_export.m 与 MATLAB 写出的采集 CSV/列头文件在任意系统 locale 下读写一致
+        try {
+            eval("feature('DefaultCharacterSet', 'GBK');", CALL_TIMEOUT_SEC, "设置会话字符集 GBK");
+        } catch (Exception e) {
+            log.warn("[MATLAB] 设置会话字符集 GBK 失败(继续按系统默认): {}", e.getMessage());
+        }
         long elapsed = System.currentTimeMillis() - t0;
         if (elapsed < 1000) {
             logMatlab("引擎已就绪（复用空闲引擎）");
@@ -1021,7 +1028,7 @@ public class MatlabSimulationRunner implements Closeable {
             String finalCols = "";
             if (finalColsFile.exists()) {
                 try {
-                    finalCols = new String(Files.readAllBytes(finalColsFile.toPath()), StandardCharsets.UTF_8).trim();
+                    finalCols = com.tsinghua.matlab.MatlabCharset.read(finalColsFile.toPath()).trim();
                 } catch (Exception ignored) {}
             }
             processData(finalPoll, finalCols);
@@ -1164,7 +1171,7 @@ public class MatlabSimulationRunner implements Closeable {
     /** 仿真结束后从 base workspace 汇总所有可用信号，写出 signals.csv / signals.mat */
     private void exportResults() throws Exception {
         File script = new File(taskDir, "dmg_export.m");
-        Files.write(script.toPath(), buildExportScript().getBytes(StandardCharsets.UTF_8));
+        Files.write(script.toPath(), com.tsinghua.matlab.MatlabCharset.bytes(buildExportScript()));
         eval("run('" + esc(script.getAbsolutePath()) + "');", INIT_TIMEOUT_SEC, "导出仿真结果");
         log.info("[MATLAB] 结果已导出: {}", new File(taskDir, "signals.csv").getAbsolutePath());
         //logMatlab("结果已生成: " + new File(taskDir, "signals.csv").getAbsolutePath());
@@ -1463,7 +1470,7 @@ public class MatlabSimulationRunner implements Closeable {
     private static double[][] readCsvMatrix(File file) throws Exception {
         List<double[]> rows = new ArrayList<>();
         try (java.io.BufferedReader br = new java.io.BufferedReader(
-                new java.io.InputStreamReader(new java.io.FileInputStream(file), StandardCharsets.UTF_8))) {
+                new java.io.InputStreamReader(new java.io.FileInputStream(file), com.tsinghua.matlab.MatlabCharset.SESSION))) {
             String line;
             while ((line = br.readLine()) != null) {
                 line = line.trim();

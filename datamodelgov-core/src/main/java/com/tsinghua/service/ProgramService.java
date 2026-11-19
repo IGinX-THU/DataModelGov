@@ -902,7 +902,7 @@ public class ProgramService {
         String script = entity.getSetupScript();
         if (script != null && !script.trim().isEmpty()) {
             Files.write(new File(taskDir, "dmg_setup.m").toPath(),
-                    script.getBytes(StandardCharsets.UTF_8));
+                    com.tsinghua.matlab.MatlabCharset.bytes(script));
         }
     }
 

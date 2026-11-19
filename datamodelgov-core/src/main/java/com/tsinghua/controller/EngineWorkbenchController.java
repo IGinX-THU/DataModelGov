@@ -1176,7 +1176,7 @@ public class EngineWorkbenchController {
         } else {
             out.put("binary", true);
             if ("json".equals(ext)) {
-                String content = new String(Files.readAllBytes(f.toPath()), "UTF-8");
+                String content = com.tsinghua.matlab.MatlabCharset.read(f.toPath());
                 out.put("jsonPreview", content.length() > 4096 ? content.substring(0, 4096) + "...(截断)" : content);
             }
         }
@@ -2096,7 +2096,7 @@ public class EngineWorkbenchController {
                     (d, n) -> n.toLowerCase().endsWith(".md") && n.toLowerCase().contains("summary"));
             if (summary != null && summary.isFile()) {
                 byte[] raw = java.nio.file.Files.readAllBytes(summary.toPath());
-                out.put("summaryMd", new String(raw, java.nio.charset.StandardCharsets.UTF_8));
+                out.put("summaryMd", new String(raw, com.tsinghua.matlab.MatlabCharset.SESSION));
                 out.put("summaryFile", summary.getAbsolutePath());
             }
             out.put("confirmIdentity", t.getResult() instanceof Map
@@ -2373,7 +2373,7 @@ public class EngineWorkbenchController {
                     .body(Result.error("结果文件不存在: " + f.getName()));
             if (f.length() > 4L * 1024 * 1024) return org.springframework.http.ResponseEntity.badRequest()
                     .body(Result.error("文件过大(>4MB),请直接在输出目录查看: " + f.getName()));
-            String text = new String(java.nio.file.Files.readAllBytes(f.toPath()), java.nio.charset.StandardCharsets.UTF_8);
+            String text = com.tsinghua.matlab.MatlabCharset.read(f.toPath());
             return org.springframework.http.ResponseEntity.ok()
                     .header("Content-Type", "text/plain; charset=utf-8")
                     .body(text);

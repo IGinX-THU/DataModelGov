@@ -803,7 +803,8 @@ public class TestbenchService {
                 try {
                     File rf = new File(dp.adapterDir == null ? new File(dpWork, "adapter") : new File(dp.adapterDir), "task-result.json");
                     if (rf.isFile()) {
-                        Map<?, ?> res = new com.fasterxml.jackson.databind.ObjectMapper().readValue(rf, Map.class);
+                        Map<?, ?> res = new com.fasterxml.jackson.databind.ObjectMapper()
+                                .readValue(com.tsinghua.matlab.MatlabCharset.read(rf.toPath()), Map.class);
                         Object cd = res == null ? null : res.get("candidateDirectory");
                         if (cd != null && new File(String.valueOf(cd)).isDirectory()) candDir = String.valueOf(cd);
                     }
@@ -926,7 +927,8 @@ public class TestbenchService {
             out.put("modelName", m.getName());
             // 落盘到task-result.json:保存完成后 /tasks/{id}/status 的result字段可直接看到目标路径与成果ID
             Files.write(new File(r.adapterDir, "task-result.json").toPath(),
-                    new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsBytes(out));
+                    com.tsinghua.matlab.MatlabCharset.bytes(
+                            new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(out)));
             r.phase = "ENDED";
             r.message = "模型包已保存: " + dest.getAbsolutePath();
             r.finishedAt = System.currentTimeMillis();
@@ -973,7 +975,8 @@ public class TestbenchService {
         File rf = new File(r.adapterDir, "task-result.json");
         if (rf.exists()) {
             try {
-                out.put("result", new com.fasterxml.jackson.databind.ObjectMapper().readValue(rf, Object.class));
+                out.put("result", new com.fasterxml.jackson.databind.ObjectMapper()
+                        .readValue(com.tsinghua.matlab.MatlabCharset.read(rf.toPath()), Object.class));
             } catch (Exception ignore) { }
         }
         // MATLAB 运行日志尾部(前端校核执行页显示):内存环形缓冲优先,空则兜底读落盘日志
@@ -1255,7 +1258,7 @@ public class TestbenchService {
         m.append("r = 'ok';\n");
         m.append("end\n");
         m.append(jsonableFn());
-        Files.write(new File(ad, "dmg_fullmode_task.m").toPath(), m.toString().getBytes(StandardCharsets.UTF_8));
+        Files.write(new File(ad, "dmg_fullmode_task.m").toPath(), com.tsinghua.matlab.MatlabCharset.bytes(m.toString()));
     }
 
     /** dmg_designpoint_task.m:sht_design_point_task solve/commit/inspect 转发。 */
@@ -1287,7 +1290,7 @@ public class TestbenchService {
         m.append("r = 'ok';\n");
         m.append("end\n");
         m.append(jsonableFn());
-        Files.write(new File(ad, "dmg_designpoint_task.m").toPath(), m.toString().getBytes(StandardCharsets.UTF_8));
+        Files.write(new File(ad, "dmg_designpoint_task.m").toPath(), com.tsinghua.matlab.MatlabCharset.bytes(m.toString()));
     }
 
     /** dmg_startstop_task.m:prepare→runStage链(独立离线入口同款编排)。 */
@@ -1333,7 +1336,7 @@ m.append("    case 'savepackage'\n");
         m.append("r = 'ok';\n");
         m.append("end\n");
         m.append(jsonableFn());
-        Files.write(new File(ad, "dmg_startstop_task.m").toPath(), m.toString().getBytes(StandardCharsets.UTF_8));
+        Files.write(new File(ad, "dmg_startstop_task.m").toPath(), com.tsinghua.matlab.MatlabCharset.bytes(m.toString()));
     }
 
     private static String jsonableFn() {

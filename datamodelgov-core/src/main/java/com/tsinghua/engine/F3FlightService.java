@@ -227,7 +227,7 @@ public class F3FlightService {
         m.append("end\n");
         m.append(autoWindowsFn());
         m.append(matlabJsonableFn());
-        Files.write(new File(adapterDir, "dmg_f3_task.m").toPath(), m.toString().getBytes(StandardCharsets.UTF_8));
+        Files.write(new File(adapterDir, "dmg_f3_task.m").toPath(), com.tsinghua.matlab.MatlabCharset.bytes(m.toString()));
     }
 
     private String matlabJsonableFn() {
@@ -340,7 +340,7 @@ public class F3FlightService {
         m.append("end\n");
         m.append(autoWindowsFn());
         m.append(matlabJsonableFnStatic());
-        Files.write(new File(adapterDir, "dmg_evolution_task.m").toPath(), m.toString().getBytes(StandardCharsets.UTF_8));
+        Files.write(new File(adapterDir, "dmg_evolution_task.m").toPath(), com.tsinghua.matlab.MatlabCharset.bytes(m.toString()));
     }
 
     /** 独立 dmg_jsonable 定义(适配器目录自含;与 Tc24Service.matlabJsonableFn 同源)。 */

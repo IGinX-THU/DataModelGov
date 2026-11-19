@@ -464,14 +464,15 @@ public class Tc24Service {
                 m.append("r = 'ok';\n");
                 m.append("end\n");
                 Files.write(new File(adapterDir, "dmg_tc24_stop.m").toPath(),
-                        m.toString().getBytes(StandardCharsets.UTF_8));
+                        com.tsinghua.matlab.MatlabCharset.bytes(m.toString()));
 
                 Map<String, Object> cfg = new LinkedHashMap<>();
                 cfg.put("directory", outputDir.getAbsolutePath().replace('\\', '/'));
                 File configFile = new File(adapterDir, "stop-config.json");
+                com.fasterxml.jackson.databind.ObjectMapper stopOm = new com.fasterxml.jackson.databind.ObjectMapper();
+                stopOm.configure(com.fasterxml.jackson.core.JsonGenerator.Feature.ESCAPE_NON_ASCII, true);
                 Files.write(configFile.toPath(),
-                        new com.fasterxml.jackson.databind.ObjectMapper()
-                                .writerWithDefaultPrettyPrinter().writeValueAsBytes(cfg));
+                        stopOm.writerWithDefaultPrettyPrinter().writeValueAsBytes(cfg));
 
                 MatlabFunctionRunner stopRunner = new MatlabFunctionRunner(adapterDir, "dmg_tc24_stop",
                         new Object[]{configFile.getAbsolutePath()},
@@ -655,7 +656,7 @@ public class Tc24Service {
             m.append("r = 'ok';\n");
             m.append("end\n");
             Files.write(new File(adapterDir, "dmg_f34_d_read.m").toPath(),
-                    m.toString().getBytes(StandardCharsets.UTF_8));
+                    com.tsinghua.matlab.MatlabCharset.bytes(m.toString()));
 
             Map<String, Object> cfg = new LinkedHashMap<>();
             cfg.put("resultFile", resultFile.replace(File.separatorChar, '/'));
@@ -749,7 +750,7 @@ public class Tc24Service {
             m.append("end\n");
             m.append("end\n");
             Files.write(new File(adapterDir, "dmg_tc24_read.m").toPath(),
-                    m.toString().getBytes(StandardCharsets.UTF_8));
+                    com.tsinghua.matlab.MatlabCharset.bytes(m.toString()));
 
             Map<String, Object> cfg = new LinkedHashMap<>();
             cfg.put("resultFile", resultFile.replace('\\', '/'));
@@ -1259,7 +1260,7 @@ public class Tc24Service {
         m.append("r = 'ok';\n");
         m.append("end\n");
         m.append(matlabJsonableFn());
-        Files.write(new File(adapterDir, "dmg_tc27_uq_task.m").toPath(), m.toString().getBytes(StandardCharsets.UTF_8));
+        Files.write(new File(adapterDir, "dmg_tc27_uq_task.m").toPath(), com.tsinghua.matlab.MatlabCharset.bytes(m.toString()));
     }
 
     /** TC27 UQ交付扫描:交付Excel可能落在report_outputs等较深目录,走6层取最新。 */
@@ -1269,7 +1270,7 @@ public class Tc24Service {
         // schema自检:旧版明细(无posteriorQ025字段)视为无效,按新schema重新生成
         if (detailOut.exists()) {
             try {
-                String prev = new String(Files.readAllBytes(detailOut.toPath()), StandardCharsets.UTF_8);
+                String prev = com.tsinghua.matlab.MatlabCharset.read(detailOut.toPath());
                 if (prev.contains("posteriorQ025")) return true;
             } catch (Exception ignore) { }
         }
@@ -1313,7 +1314,7 @@ public class Tc24Service {
             m.append("fid=fopen(c.detailFile,'w','n','UTF-8'); fwrite(fid,payload,'char'); fclose(fid);\n");
             m.append("r='ok';\n");
             m.append("end\n");
-            Files.write(new File(adapterDir, "dmg_tc27_read.m").toPath(), m.toString().getBytes(StandardCharsets.UTF_8));
+            Files.write(new File(adapterDir, "dmg_tc27_read.m").toPath(), com.tsinghua.matlab.MatlabCharset.bytes(m.toString()));
 
             Map<String, Object> cfg = new LinkedHashMap<>();
             cfg.put("resultFile", resultFile.replace(File.separatorChar, '/'));
@@ -1872,7 +1873,7 @@ public class Tc24Service {
         m.append("r = 'ok';\n");
         m.append("end\n");
         m.append(matlabJsonableFn());
-        Files.write(f.toPath(), m.toString().getBytes(StandardCharsets.UTF_8));
+        Files.write(f.toPath(), com.tsinghua.matlab.MatlabCharset.bytes(m.toString()));
     }
 
     /** dmg_tc27_task.m:JSON request → Start_TC27_SteadyModelUpdate_01 → JSON回写(ASCII安全)。 */
@@ -1900,7 +1901,7 @@ public class Tc24Service {
         m.append("r = 'ok';\n");
         m.append("end\n");
         m.append(matlabJsonableFn());
-        Files.write(f.toPath(), m.toString().getBytes(StandardCharsets.UTF_8));
+        Files.write(f.toPath(), com.tsinghua.matlab.MatlabCharset.bytes(m.toString()));
     }
 
     private String fileName0(String p) { return p == null ? "" : new File(p).getName(); }
@@ -1976,7 +1977,7 @@ public class Tc24Service {
                 m.append("fclose(fid);\n");
                 m.append("end\n");
                 Files.write(new File(adapterDir, "dmg_tc24_task.m").toPath(),
-                        m.toString().getBytes(StandardCharsets.UTF_8));
+                        com.tsinghua.matlab.MatlabCharset.bytes(m.toString()));
 
                 Map<String, Object> cfg = new LinkedHashMap<>();
                 cfg.put("route", task.getRoute() == null ? "steady" : task.getRoute());
@@ -2066,7 +2067,7 @@ public class Tc24Service {
         String raw = runnerResult instanceof String ? (String) runnerResult : null;
         if (raw == null || raw.trim().isEmpty()) {
             if (resultFile.exists()) {
-                raw = new String(Files.readAllBytes(resultFile.toPath()), StandardCharsets.UTF_8);
+                raw = com.tsinghua.matlab.MatlabCharset.read(resultFile.toPath());
             }
         }
         if (raw == null || raw.trim().isEmpty()) return null;
@@ -2246,7 +2247,7 @@ public class Tc24Service {
             m.append("r = payload;\n");
             m.append("end\n");
             m.append(matlabJsonableFn());
-            Files.write(adapterFile.toPath(), m.toString().getBytes(StandardCharsets.UTF_8));
+            Files.write(adapterFile.toPath(), com.tsinghua.matlab.MatlabCharset.bytes(m.toString()));
         }
 
         String condRunId = rec.getRunId() + "_" + cond.getId();
@@ -2368,7 +2369,7 @@ public class Tc24Service {
         m.append("end\n");
         m.append(matlabJsonableFn());
         Files.write(new File(adapterDir, "dmg_tc24_task.m").toPath(),
-                m.toString().getBytes(StandardCharsets.UTF_8));
+                com.tsinghua.matlab.MatlabCharset.bytes(m.toString()));
 
         Map<String, Object> cfg = new LinkedHashMap<>();
         cfg.put("task", "identify");
@@ -2433,7 +2434,7 @@ public class Tc24Service {
         m.append("end\n");
         m.append(matlabJsonableFn());
         Files.write(new File(adapterDir, "dmg_tc24_task.m").toPath(),
-                m.toString().getBytes(StandardCharsets.UTF_8));
+                com.tsinghua.matlab.MatlabCharset.bytes(m.toString()));
 
         Map<String, Object> cfg = new LinkedHashMap<>();
         cfg.put("task", "uq");

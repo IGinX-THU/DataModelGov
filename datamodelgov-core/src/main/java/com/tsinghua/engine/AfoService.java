@@ -1297,7 +1297,7 @@ public class AfoService {
         m.append("fclose(fid);\n");
         m.append("r = 'ok';\n");
         m.append("end\n");
-        Files.write(new File(ad, "dmg_afo_task.m").toPath(), m.toString().getBytes(StandardCharsets.UTF_8));
+        Files.write(new File(ad, "dmg_afo_task.m").toPath(), com.tsinghua.matlab.MatlabCharset.bytes(m.toString()));
     }
 
     /** 读取MATLAB侧错误报告(dmg_afo_task catch ME时写adapterDir/error-report.txt)。
@@ -1311,7 +1311,7 @@ public class AfoService {
         try {
             File f = new File(ad, "error-report.txt");
             if (!f.isFile()) return null;
-            String txt = new String(Files.readAllBytes(f.toPath()), StandardCharsets.UTF_8);
+            String txt = com.tsinghua.matlab.MatlabCharset.read(f.toPath());
             StringBuilder sb = new StringBuilder();
             for (String line : txt.replace("\r", "").split("\n")) {
                 String t = line.trim();

@@ -1,5 +1,6 @@
 @echo off
-chcp 65001 >nul
+REM 控制台代码页保持系统默认(cp936/GBK)：Win7 的 conhost 对 chcp 65001 中文渲染不完整，
+REM logback CONSOLE appender 已配套固定 GBK 输出(logback-spring.xml)；logs/*.log 文件仍为 UTF-8。
 setlocal enabledelayedexpansion
 
 REM Data Model Governance - Windows Startup Script
