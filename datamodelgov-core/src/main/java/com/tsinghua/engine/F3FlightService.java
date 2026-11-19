@@ -487,10 +487,11 @@ public class F3FlightService {
                 deleteDirectory(adapterDir);
             }
             if (adapterDir.exists()) {
-                // 删除失败(文件只读/被Excel、杀软等占用):报错带路径与残留项,不再静默带残缺目录继续
+                // 已带退避重试仍残留:多为文件被 Excel/MATLAB/杀软长期占用。报错带路径、残留项与处理建议。
                 File[] left = adapterDir.listFiles();
                 String remain = left == null ? "未知" : "残留" + left.length + "项,首项:" + (left.length > 0 ? left[0].getName() : "—");
-                throw new IOException("F3适配器旧目录删除失败(" + remain + ",只读或被占用),请手工删除后重试: "
+                throw new IOException("F3适配器旧目录删除失败(" + remain
+                        + ",已重试仍被占用):请确认该文件未被 Excel/MATLAB 打开、杀软未扫描该目录,或稍后重试;路径: "
                         + adapterDir.getAbsolutePath());
             }
             if (!adapterDir.mkdirs()) throw new IOException(describeDirCreateFailure("F3适配器目录", adapterDir));
@@ -2046,7 +2047,14 @@ public class F3FlightService {
         }
     }
 
-    /** 递归删除目录 */
+    /**
+     * 递归删除目录。每个文件/目录都带短时退避重试:
+     * F3 每次执行前清空适配器目录,而刚结束的 confirm/run 会把 10~20MB 的结果 JSON
+     * (f3-*-result.json)写进同一目录,MATLAB 归还引擎后 OS 可能仍短暂持有句柄,
+     * 加上杀软/Windows 索引实时扫描,单次 delete 撞上窗口就失败,导致整批 run 中断。
+     * 这里对「只读」和「短暂占用」分别兜底,重试窗口约 1.3s,覆盖这类瞬时占用;
+     * 真被长期占用(Excel 打开等)仍会残留,由调用方的残留检查给出明确报错。
+     */
     private static void deleteDirectory(File directory) {
         if (directory == null || !directory.exists()) return;
         File[] files = directory.listFiles();
@@ -2054,14 +2062,31 @@ public class F3FlightService {
             for (File file : files) {
                 if (file.isDirectory()) {
                     deleteDirectory(file);
+                    deleteWithRetry(file); // 删空子目录本身(也可能被占用)
                 } else {
-                    if (!file.delete() && file.exists()) {
-                        file.setWritable(true); // 只读残留兜底(常见于Excel/杀软写入过的文件)
-                        file.delete();
-                    }
+                    deleteWithRetry(file);
                 }
             }
         }
-        directory.delete();
+        deleteWithRetry(directory);
+    }
+
+    /** 删除单个文件/空目录:只读解锁 + 最多8次退避重试(累计约1.3s)。 */
+    private static void deleteWithRetry(File file) {
+        if (file == null || !file.exists()) return;
+        // 先解只读(Excel/MATLAB 以只读方式落的文件在 Windows 上 delete 会直接失败)
+        if (!file.canWrite()) file.setWritable(true);
+        for (int attempt = 0; attempt < 8 && file.exists(); attempt++) {
+            if (file.delete()) return;
+            // 删除失败常见两类:只读属性、句柄暂未释放。交替兜底。
+            if (!file.canWrite()) file.setWritable(true);
+            try {
+                Thread.sleep(80L * (attempt + 1)); // 80/160/.../640ms,退避覆盖占用窗口
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+        }
+        // 重试耗尽仍失败:留给调用方的 exists() 残留检查去报错(带路径),这里不吞。
     }
 }
