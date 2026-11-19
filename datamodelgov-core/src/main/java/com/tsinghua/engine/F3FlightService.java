@@ -1697,8 +1697,37 @@ public class F3FlightService {
             }
             return task.getParentWorkbook().replace('\\', '/');
         }
+        // ①b 「选择已有模型」下拉中的项目文件库模型(value=lib:<文件库索引id>):
+        // 模型成果登记时交付Excel会同步入文件库,也可直接选库内手工上传的稳态模型交付
+        String libToken = task.getParentModelId();
+        if (libToken != null && libToken.startsWith("lib:")) {
+            try {
+                long libId = Long.parseLong(libToken.substring(4));
+                com.tsinghua.entity.FileLibraryEntity e = fileLibraryMetaService == null ? null
+                        : fileLibraryMetaService.queryById(libId);
+                if (e == null || e.getPath() == null) {
+                    throw new IllegalStateException("文件库模型条目不存在(id=" + libId + ")");
+                }
+                File f = new File(e.getPath());
+                if (!f.isFile()) throw new IllegalStateException("文件库模型文件不存在: " + e.getPath());
+                if (transientTask && !isModelDeliveryWorkbook(f)) {
+                    throw new IllegalStateException("所选文件库模型缺少Model工作表,不能作瞬态父模型: " + e.getName());
+                }
+                if (transientTask && hasEmbeddedManifestSheet(f)) {
+                    throw new IllegalStateException("所选文件库模型内嵌Manifest表,不能作瞬态父模型: " + e.getName());
+                }
+                if (evo2p4 && !is2p4DeliveryForRoute(f, evoRoute)) {
+                    throw new IllegalStateException("所选文件库模型不是" + evoRoute + "路线的2p4参数化交付: " + e.getName());
+                }
+                log.info("F3父工作簿取自文件库选择: task={} file={} -> {}", task.getId(), e.getName(), f.getAbsolutePath());
+                return f.getAbsolutePath().replace('\\', '/');
+            } catch (NumberFormatException ne) {
+                log.warn("F3文件库模型标识非法: {} -> 回退自动解析", libToken);
+            }
+        }
         // ②发起任务时指定的项目模型:模型成果清单按 projectId+modelId 定位,取其交付Excel
-        if (task.getParentModelId() != null && !task.getParentModelId().trim().isEmpty()) {
+        if (task.getParentModelId() != null && !task.getParentModelId().trim().isEmpty()
+                && !task.getParentModelId().startsWith("lib:")) {
             try {
                 EngineModelAssetEntity m = modelRecordService.queryByKey(task.getProjectId(), task.getParentModelId());
                 if (m != null && m.getDeliveryFile() != null && !m.getDeliveryFile().trim().isEmpty()) {
@@ -1816,14 +1845,25 @@ public class F3FlightService {
         // ⑤ 项目文件库(model类)兜底:新建项目尚无模型成果时,建项初始化的示例模型交付
         //    (示例-瞬态稳态载体模型.xlsx等,含Model工作表)可直接作瞬态父模型;优先"载体/稳态"类
         if (fallback == null && transientTask && fileLibraryMetaService != null) {
-            File libDefault = null;
-            for (com.tsinghua.entity.FileLibraryEntity e : fileLibraryMetaService.queryPage("model", null, null, 1, 50)) {
+            // 模型成果登记时交付Excel已同步入文件库(refId=模型id):优先于建项示例,
+            // 其次按登记时间取最新的兼容模型交付,避免按文件名排序误取旧示例。
+            com.tsinghua.entity.FileLibraryEntity best = null;
+            int bestRank = -1;
+            for (com.tsinghua.entity.FileLibraryEntity e : fileLibraryMetaService.queryPage("model", null, null, 1, 100)) {
+                if (e == null || e.getPath() == null) continue;
                 File f = new File(e.getPath());
                 if (!f.isFile() || !isModelDeliveryWorkbook(f) || hasEmbeddedManifestSheet(f)) continue;
-                if (libDefault == null) libDefault = f;
-                if (e.getKind() != null && e.getKind().contains("载体")) { libDefault = f; break; }
+                int rank = e.getRefId() != null && !e.getRefId().trim().isEmpty() ? 2
+                        : (e.getKind() != null && e.getKind().contains("载体") ? 1 : 0);
+                long stamp = e.getCreateTime() == null ? 0L : e.getCreateTime();
+                if (rank > bestRank || (rank == bestRank && best != null
+                        && stamp > (best.getCreateTime() == null ? 0L : best.getCreateTime()))) {
+                    best = e;
+                    bestRank = rank;
+                }
             }
-            if (libDefault != null) {
+            if (best != null) {
+                File libDefault = new File(best.getPath());
                 log.info("F3父工作簿取自项目文件库: task={} -> {}", task.getId(), libDefault.getAbsolutePath());
                 return libDefault.getAbsolutePath().replace('\\', '/');
             }
@@ -1834,9 +1874,17 @@ public class F3FlightService {
                         + "如TC24稳态辨识输出的2p4_deterministic_steady.xlsx);"
                         + "请先完成TC24稳态系数辨识,或在登记时指定参数化交付文件/改选其它根来源");
             }
+            // 文案按任务类型给出可落地的指引,避免瞬态用户按"先做稳态辨识"操作却仍失败:
+            // 稳态辨识产物是2p4参数化交付(无Model表),按合同不能作瞬态父模型(见本方法开头校验)。
+            String parentHint;
+            if (transientTask) {
+                parentHint = "过渡态建模的父模型必须是含Model工作表的稳态模型交付Excel(如steady_model.xlsx),"
+                        + "2p4参数化交付/稳态辨识产物不能作瞬态父模型;请在发起任务的「选择已有模型」中指定一个稳态模型交付";
+            } else {
+                parentHint = "请先完成上游建模任务(如稳态系数辨识)或在「选择已有模型」中指定模型后重试";
+            }
             throw new IllegalStateException("父工作簿不可用:未指定项目模型(可在发起任务的「选择已有模型」中指定),"
-                    + "也未登记工作簿路径,且项目内没有已交付的模型成果或已完成的稳态辨识/自演化任务;"
-                    + "请先完成上游建模任务(如稳态系数辨识)或指定模型后重试。");
+                    + "也未登记工作簿路径,且项目内没有可匹配的已交付模型成果;" + parentHint + "。");
         }
         log.info("F3父工作簿自动解析: task={} -> {}", task.getId(), fallback.getAbsolutePath());
         return fallback.getAbsolutePath().replace('\\', '/');

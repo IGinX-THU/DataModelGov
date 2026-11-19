@@ -58,13 +58,23 @@ public final class UqDiagnostics {
     private static final String[] ERROR_HINTS = {
             "失败", "错误", "越界", "不收敛", "残差", "超出",
             "error", "Error", "ERROR", "failed", "Failed", "FAILED",
-            "warning", "Warning", "WARNING", "assert", "Assertion"
+            "warning", "Warning", "WARNING", "assert", "Assertion",
+            // GTESS 物理库加载/thunk 桥接生成失败(生产机环境类),版本号无关,按 ASCII 锚定
+            "thunk", "loadlibrary", "LoadLibrary", "loadLibrary", "mex", "MEX",
+            "compiler", "Compiler", "SDK", "未找到编译器", "无法生成"
     };
 
     /** 明确属于「物理回放没通过」的错误标识。 */
     private static final String[] PHYSICAL_HINTS = {
             "ThermalEquilibrium", "气热平衡", "dllEvaluationFailed",
             "TC27:UQ:Point", "稳态点失败", "TC27:Replay:"
+    };
+
+    /** 明确属于「GTESS 物理库加载 / thunk 桥接生成」阶段的环境类失败。 */
+    private static final String[] LOADLIB_HINTS = {
+            "thunk", "loadlibrary", "LoadLibrary", "loadLibrary",
+            "mex", "No supported compiler", "mex -setup", "SDK",
+            "生成GTESS", "物理库", "桥接"
     };
 
     /**
@@ -87,6 +97,7 @@ public final class UqDiagnostics {
         Map<String, Object> candidates = null;
         Map<String, Object> contract = null;
         String stage = "未识别阶段";
+        boolean loadlibFailure = false;
 
         for (int i = 0; i < lines.size(); i++) {
             String raw = lines.get(i);
@@ -149,7 +160,11 @@ public final class UqDiagnostics {
 
             // 4) 阶段判定
             if ("未识别阶段".equals(stage)) {
-                if (line.contains("sht_tc27_uq_covariance") || line.contains("不能用于当前UQ回放")
+                // GTESS 物理库/thunk 桥接失败优先判定：它发生在基准回放之前，属环境类失败
+                if (containsHint(line, LOADLIB_HINTS)) {
+                    stage = "UQ基准回放(GTESS物理库加载/thunk桥接生成)";
+                    loadlibFailure = true;
+                } else if (line.contains("sht_tc27_uq_covariance") || line.contains("不能用于当前UQ回放")
                         || line.contains("基准")) {
                     stage = "UQ基准回放(确定性估计值复算)";
                 } else if (line.contains("Start_TC27_UQ") || line.contains("Start_FlightModelAdapt_15")) {
@@ -157,6 +172,9 @@ public final class UqDiagnostics {
                 } else if (line.contains("sht_tc27_uq_evaluator") || line.contains("候选")) {
                     stage = "UQ候选评估(参数扰动回放)";
                 }
+            } else if (containsHint(line, LOADLIB_HINTS)) {
+                // 阶段已被其它行命中，但同一日志里出现库加载失败也是明确信号
+                loadlibFailure = true;
             }
 
             // 5) 关键错误行
@@ -187,7 +205,7 @@ public final class UqDiagnostics {
         out.put("contract", contract);
         out.put("keyErrors", keyErrors);
         out.put("samples", samples);
-        out.put("failureClass", classify(physical, outOfRange, keyErrors));
+        out.put("failureClass", classify(physical, outOfRange, keyErrors, loadlibFailure));
         out.put("suggestions", suggestions(out, physical, outOfRange, keyErrors));
         return out;
     }
@@ -204,6 +222,8 @@ public final class UqDiagnostics {
                 return "输入合同不满足(缺少/不匹配输入文件)";
             case "cache":
                 return "物理回放缓存与当前执行包不一致";
+            case "loadlib":
+                return "GTESS物理库加载失败(thunk桥接未生成,多为生产机缺mex C编译器/头文件不全/目录只读)";
             default:
                 return "UQ程序返回失败";
         }
@@ -528,8 +548,15 @@ public final class UqDiagnostics {
     // ------------------------------------------------------------------ 归类
 
     private static String classify(Map<String, Object> physical, List<Map<String, Object>> oor,
-                                   List<String> errors) {
+                                   List<String> errors, boolean loadlibFailure) {
         String joined = String.join(" ", errors);
+        // 库加载/thunk 生成失败必须先于 physical 判定：库都没加载成功不可能进入气热平衡回放
+        if (loadlibFailure || joined.contains("thunk") || joined.contains("loadlibrary")
+                || joined.contains("LoadLibrary") || joined.contains("mex")
+                || joined.contains("No supported compiler") || joined.contains("生成GTESS")
+                || joined.contains("物理库")) {
+            return "loadlib";
+        }
         if (joined.contains("CacheExecution") || joined.contains("缓存与实际执行包不一致")) {
             return "cache";
         }
@@ -561,6 +588,10 @@ public final class UqDiagnostics {
         }
         if ("cache".equals(cls)) {
             out.add("清理该任务输出目录下的 uq_replay_* 物理回放缓存后重新发起评估");
+        }
+        if ("loadlib".equals(cls)) {
+            out.add("这是生产机环境问题而非模型问题(本机正常可佐证):在该机 MATLAB 命令行执行 mex -setup C,确认已配置可用的 C 编译器(MinGW-w64 或 Visual Studio),再重跑评估");
+            out.add("核对程序目录 GTESS.dll 与 GTESS.h、blockAndFunctions.h、types_TMATS.H、matlab_loadlibrary_include/stdio.h 齐全且可读,程序目录非只读;本机可正常生成 thunk 说明交付包本身无误");
         }
         if (out.isEmpty()) {
             out.add("查看诊断报告中的完整日志，确认是输入合同、物理求解还是输出扫描问题");
@@ -669,6 +700,17 @@ public final class UqDiagnostics {
         Map<String, Object> d = analyze("steady_update", "D", log);
         SetPrinter.print(d);
         System.out.println("\n---- summary ----\n" + summaryText(d));
+
+        System.out.println("\n===== 用例2: Win7 生产机缺 mex 编译器导致 thunk 生成失败 =====");
+        List<String> log2 = new ArrayList<>();
+        log2.add("正在加载 GTESS.dll 公共接口,生成 thunk 桥接库...");
+        log2.add("错误使用 loadlibrary (line 1234)");
+        log2.add("No supported compiler or SDK was found. You can install the MinGW-w64 compiler");
+        log2.add("生成 GTESS.thunk 失败,失败阶段: UQ基准回放(确定性估计值复算)。");
+        Map<String, Object> d2 = analyze("steady", "D", log2);
+        System.out.println("failureClass = " + d2.get("failureClass"));
+        System.out.println("stage = " + d2.get("stage"));
+        System.out.println("---- summary ----\n" + summaryText(d2));
     }
 
     private static final class SetPrinter {

@@ -25,11 +25,12 @@
         </filter>
         <encoder>
             <Pattern>${CONSOLE_LOG_PATTERN}</Pattern>
-            <!-- 控制台字符集须与 Windows 控制台代码页一致：中文 Win7/Win10 默认 cp936(GBK)。
-                 Win7 的 conhost 对 chcp 65001(UTF-8) 的中文渲染不完整(点阵字体缺字形)，UTF-8 反而乱码；
-                 故控制台固定 GBK，与 bin/start.bat 不再 chcp 65001 配套。
-                 注意：文件 appender 保持 UTF-8 不要跟改，logs/*.log 用编辑器按 UTF-8 查看。 -->
-            <charset>GBK</charset>
+            <!-- 控制台字符集须与"控制台解码方"一致，两个消费场景不同：
+                 1. Windows 部署控制台(cmd，中文系统默认代码页 cp936)：默认 GBK，配套 bin/start.bat 不 chcp 65001
+                    (Win7 的 conhost 对 65001 中文渲染不完整，UTF-8 反而乱码)；
+                 2. IDEA 等 IDE 控制台按 UTF-8 解码子进程输出：运行配置的环境变量加 CONSOLE_CHARSET=UTF-8 覆盖。
+                 未设置环境变量/系统属性时回退 GBK。文件 appender 保持 UTF-8 不要跟改，logs/*.log 按 UTF-8 查看。 -->
+            <charset>${CONSOLE_CHARSET:-GBK}</charset>
         </encoder>
     </appender>
 

@@ -11,12 +11,15 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import com.tsinghua.entity.EngineProjectEntity;
+import com.tsinghua.entity.FileLibraryEntity;
 import com.tsinghua.engine.EngineModels.EngineProject;
 import com.tsinghua.engine.EngineModels.ModelAsset;
 import com.tsinghua.engine.EngineModels.ModelingTask;
@@ -50,6 +53,12 @@ public class EngineProjectStore {
 
     @org.springframework.beans.factory.annotation.Autowired
     private EnginePredictionRecordService predictionRecordService;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private FileLibraryMetaService fileLibraryMetaService;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private FileBackupService fileBackupService;
 
     private final ObjectMapper mapper = new ObjectMapper()
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
@@ -307,7 +316,91 @@ public class EngineProjectStore {
         if (!dir.exists() && !dir.mkdirs()) throw new IOException("无法创建任务目录: " + dir);
         mapper.writerWithDefaultPrettyPrinter().writeValue(new File(dir, "task.json"), t);
         syncTaskRecord(t);
+        registerTaskArtifactsToLibrary(t); // 工作流产出的Excel沉淀进文件库,供下游训练数据下拉选择
         return t;
+    }
+
+    /**
+     * 任务完成(UQ完成)时把输出Excel自动沉淀进项目文件库(data类),
+     * 使下一工作流在「从文件库选择」训练数据时能直接选到本工作流的产物。
+     * 模型交付单独归 model 类(不进训练数据槽位),与 saveModel 的登记共用同一条索引。
+     */
+    private void registerTaskArtifactsToLibrary(ModelingTask t) {
+        if (t == null || t.getId() == null) return;
+        boolean completed = ModelingTask.ST_COMPLETED.equals(t.getStatus());
+        boolean uqDone = "COMPLETED".equalsIgnoreCase(t.getUqStatus())
+                || "UQ_COMPLETED".equalsIgnoreCase(t.getUqStatus());
+        if (!completed && !uqDone) return;
+        String biz = taskBusinessLabel(t.getKind());
+        try {
+            if (completed) collectArtifactFiles(t.getProjectId(), t.getResult(), biz, t.getId(), 0);
+            if (uqDone) collectArtifactFiles(t.getProjectId(), t.getUqResult(), biz + "·UQ", t.getId(), 0);
+        } catch (Exception e) {
+            log.warn("工作流产物入文件库失败(不影响任务): task={}", t.getId(), e);
+        }
+    }
+
+    private static String taskBusinessLabel(String kind) {
+        if (kind == null) return "建模";
+        if ("steady".equals(kind)) return "稳态试车建模";
+        if ("steady_update".equals(kind)) return "稳态数据更新";
+        if ("transient_update".equals(kind)) return "瞬态数据更新";
+        if ("flight_steady".equals(kind)) return "稳态飞参建模";
+        if ("flight_transient".equals(kind)) return "过渡态飞参建模";
+        if ("evolution".equals(kind)) return "模型自演化";
+        return kind;
+    }
+
+    /** 递归一层收集结果摘要里的Excel路径与outputDirectory/outputFiles清单。 */
+    private void collectArtifactFiles(String pid, Map<String, Object> map, String biz, String taskId, int depth) {
+        if (map == null || map.isEmpty() || depth > 1) return;
+        String dirPath = null;
+        Object d = map.get("outputDirectory");
+        if (d == null) d = map.get("outputRoot");
+        if (d instanceof String) dirPath = (String) d;
+        for (Map.Entry<String, Object> en : map.entrySet()) {
+            String key = en.getKey() == null ? "" : String.valueOf(en.getKey());
+            Object v = en.getValue();
+            if (v instanceof String) {
+                String s = (String) v;
+                if (isExcel(s) && new File(s).isFile()) {
+                    // 工作流产出一律进 data 类:下游训练数据槽位只接受 data;
+                    // 模型交付另由 saveModel 以 model 类登记,避免同一文件在模型下拉重复出现。
+                    registerArtifact(pid, taskId, new File(s), "data",
+                            "产物 · " + biz + " · " + fileNameOf(s), taskId, taskId);
+                }
+            } else if (v instanceof List && "outputFiles".equals(key) && dirPath != null) {
+                File dir = new File(dirPath);
+                for (Object o : (List<?>) v) {
+                    if (o == null) continue;
+                    File f = new File(dir, String.valueOf(o));
+                    if (f.isFile() && isExcel(f.getName())) {
+                        registerArtifact(pid, taskId, f, "data",
+                                "产物 · " + biz + " · " + f.getName(), taskId, taskId);
+                    }
+                }
+            } else if (v instanceof Map) {
+                collectArtifactFiles(pid, castMap(v), biz, taskId, depth + 1);
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> castMap(Object v) {
+        try {
+            return (Map<String, Object>) v;
+        } catch (ClassCastException e) {
+            return null;
+        }
+    }
+
+    private static boolean isExcel(String name) {
+        String ext = fileExtension(name);
+        return "xlsx".equals(ext) || "xls".equals(ext);
+    }
+
+    private static String fileNameOf(String path) {
+        return new File(path).getName();
     }
 
     /** 任务档案同步到运行记录表(engine_task_records,SQL分页查询源);失败仅告警,不影响任务保存。 */
@@ -359,7 +452,83 @@ public class EngineProjectStore {
         } catch (Exception e) {
             log.warn("模型成果清单同步失败: model={}", m.getId(), e);
         }
+        registerModelDeliveryToLibrary(m); // 交付Excel同步入项目文件库(model类),供下一工作流下拉选择
         return m;
+    }
+
+    /**
+     * 模型成果登记时把交付Excel同步进项目文件库(files/model)。
+     * 与「登记到模型成果」同一事务入口,幂等按 modelId 命名:重复保存覆盖同一条索引,
+     * refId 回指模型成果,使下一工作流的「选择已有模型」与父工作簿兜底都能命中。
+     * 入库失败只告警,不影响模型成果本身。
+     */
+    private void registerModelDeliveryToLibrary(ModelAsset m) {
+        if (m == null || m.getId() == null || m.getDeliveryWorkbookFile() == null
+                || m.getDeliveryWorkbookFile().trim().isEmpty()) return;
+        registerArtifact(m.getProjectId(), m.getTaskId(), new File(m.getDeliveryWorkbookFile()), "model",
+                "模型成果 · " + (m.getStage() == null ? "建模成果" : m.getStage())
+                        + " · " + (m.getRoute() == null ? "稳态方程" : m.getRoute()),
+                m.getId(), m.getId());
+    }
+
+    /**
+     * 统一的产物入库:复制Excel到 <workdir>/files/{category},按「原名_标识」建索引,
+     * refId 回指模型/任务,已存在同名索引则跳过(saveTask多次 save 幂等)。
+     * 失败只告警,不影响建模任务或模型成果本身。
+     */
+    private void registerArtifact(String pid, String ownerId, File src, String category,
+                                  String kindLabel, String refId, String suffix) {
+        if (pid == null || src == null || !src.isFile() || !isExcel(src.getName())) return;
+        try {
+            EngineProject p = getProject(pid);
+            if (p == null || p.getWorkdir() == null || p.getWorkdir().trim().isEmpty()) return;
+            File dir = new File(new File(p.getWorkdir()), "files/" + category);
+            if (!dir.exists() && !dir.mkdirs()) throw new IOException("无法创建文件库目录: " + dir);
+            String srcName = src.getName();
+            if (srcName.startsWith("~$")) return; // Excel临时锁文件
+            int dot = srcName.lastIndexOf('.');
+            String destName = (dot > 0 ? srcName.substring(0, dot) : srcName) + "_" + suffix
+                    + (dot > 0 ? srcName.substring(dot) : "");
+            for (FileLibraryEntity old : fileLibraryMetaService.queryPage(category, destName, null, null, null)) {
+                if (destName.equalsIgnoreCase(old.getName())) return;
+            }
+            File dest = new File(dir, destName);
+            if (!src.getCanonicalFile().equals(dest.getCanonicalFile())) {
+                Files.copy(src.toPath(), dest.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            }
+            byte[] bytes = Files.readAllBytes(dest.toPath());
+            FileLibraryEntity e = new FileLibraryEntity();
+            e.setProjectId(pid);
+            e.setCategory(category);
+            e.setKind(kindLabel);
+            e.setName(destName);
+            e.setPath(dest.getAbsolutePath());
+            e.setSize((long) bytes.length);
+            e.setExt(fileExtension(destName));
+            e.setSha256(sha8Hex(bytes));
+            e.setRefId(refId);
+            fileLibraryMetaService.register(e);
+            if (fileBackupService != null) fileBackupService.backup(e, dest);
+            log.info("产物入项目文件库: {} task={} -> {}", category, ownerId, dest.getAbsolutePath());
+        } catch (Exception ex) {
+            log.warn("产物入项目文件库失败(不影响工作流): {} task={} file={}", category, ownerId, src, ex);
+        }
+    }
+
+    private static String fileExtension(String name) {
+        int i = name == null ? -1 : name.lastIndexOf('.');
+        return i < 0 ? "" : name.substring(i + 1).toLowerCase();
+    }
+
+    private static String sha8Hex(byte[] bytes) {
+        try {
+            byte[] d = java.security.MessageDigest.getInstance("SHA-256").digest(bytes);
+            StringBuilder sb = new StringBuilder();
+            for (byte b : d) sb.append(String.format("%02x", b));
+            return sb.substring(0, 8);
+        } catch (Exception e) {
+            return "";
+        }
     }
 
     public List<ModelAsset> listModels(String projectId) throws IOException {

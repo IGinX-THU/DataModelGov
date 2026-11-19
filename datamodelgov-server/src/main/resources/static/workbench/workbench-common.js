@@ -8,14 +8,20 @@ window.Workbench = (() => {
     /* ---------- 小工具 ---------- */
     function h(tag, attrs, ...children) {
         const node = document.createElement(tag);
-        if (attrs) {
-            Object.entries(attrs).forEach(([k, v]) => {
-                if (v == null) return; // null/undefined跳过:setAttribute(x,'null')会让selected/disabled等布尔属性意外生效
+        // 兼容性:不依赖 Object.entries——部分国产浏览器(如奇安信可信浏览器)注入的
+        // 兼容垫片会让 entries 返回数组下标键,导致 setAttribute('0') 抛 DOMException 整页不渲染。
+        // for-in + hasOwnProperty 只依赖 ES5,并对数组/数字键防御。
+        if (attrs && typeof attrs === 'object' && !Array.isArray(attrs)) {
+            for (const k in attrs) {
+                if (!Object.prototype.hasOwnProperty.call(attrs, k)) continue;
+                if (typeof k !== 'string') continue;
+                const v = attrs[k];
+                if (v == null) continue; // null/undefined跳过:setAttribute(x,'null')会让selected/disabled等布尔属性意外生效
                 if (k === 'class') node.className = v;
                 else if (k === 'html') node.innerHTML = v;
                 else if (k.startsWith('on')) node.addEventListener(k.slice(2), v);
                 else node.setAttribute(k, v);
-            });
+            }
         }
         children.flat().forEach(c => {
             if (c == null) return;
@@ -4091,6 +4097,7 @@ window.Workbench = (() => {
                 }
             };
             S.phase = 'PREPARING';
+            S.hist = emptyHist(); // 新会话准备即清历史:上一轮曲线不得残留(否则与新一轮混画成两条线)
             renderBody();
             // 发起失败时不再假设"无会话":以服务端真实相位为准恢复,保证轮询不中断
             const recover = () => api('/status').then(r => {
@@ -4106,7 +4113,7 @@ window.Workbench = (() => {
          * 结构: 状态条(相位/时间/物理阶段/油门/负载+暂停/继续/结束/断油) → 最近命令回执条 → 监视六宫格
          *       → 告警行 → 阶段提示 → 左操纵台(油门杆/命令/Np挡位/负载草稿/暂停保存快照) + 右四实时曲线 → 操纵记录表。
          * 轮询就地补丁(patchOps)不重建DOM,曲线用ECharts增量推数据。 */
-        function emptyHist() { return { t: [], npp: [], tt45: [], kw: [], fuel: [] }; }
+        function emptyHist() { return { t: [], npp: [], ng: [], tt45: [], kw: [], fuel: [], torque: [], tt3: [], pt3: [], pt45: [], tt5: [], pt5: [] }; }
         /** 08-03/04/05:运行中阶段事件本地追踪(status.json无events,轮询检测mode变化留痕;与命令回执并列显示)。 */
         function stageLog() { return S.stageLog || (S.stageLog = []); }
         function trackStage(live) {
@@ -4132,7 +4139,12 @@ window.Workbench = (() => {
             if (!live) return;
             const t = typeof live.timeS === 'number' ? live.timeS : null;
             if (t == null) return;
+            // 会话重启防护:仿真时刻回退说明进入新一轮(或会话被重建),清空历史,
+            // 避免新样本追加到上一轮曲线后面(ECharts按数据顺序连线,画成"去程+回程"两条线)
+            if (S.hist.t.length && t < S.hist.t[S.hist.t.length - 1]) S.hist = emptyHist();
             const H = S.hist;
+            // 热升级防护:页面未刷新时旧hist可能缺扩展通道键
+            ['ng', 'torque', 'tt3', 'pt3', 'pt45', 'tt5', 'pt5'].forEach(k => { if (!H[k]) H[k] = []; });
             // 同一仿真时刻不重复入列(暂停/未推进时轮询每2s拿到相同timeS,重复画点会堆在同一x处)
             if (H.t.length && H.t[H.t.length - 1] === t) return;
             const al = live.appliedLoad || {};
@@ -4142,10 +4154,19 @@ window.Workbench = (() => {
             H.t.push(t);
             // 效果图08-03: 主监视Np以%设计点显示
             push(H.npp, np != null && design > 0 ? np / design * 100 : null);
-            push(H.tt45, typeof live.tt45K === 'number' ? live.tt45K : null);
+            push(H.tt45, typeof live.tt45K === 'number' ? live.tt45K : (typeof live.Tt45 === 'number' ? live.Tt45 : null));
             push(H.kw, al.aeroPowerW != null ? Number(al.aeroPowerW) / 1000 : null);
             push(H.fuel, typeof live.fuelKgPerS === 'number' ? live.fuelKgPerS : null);
-            if (H.t.length > 1200) ['t', 'npp', 'tt45', 'kw', 'fuel'].forEach(k => H[k].splice(0, H[k].length - 1200));
+            // 监视扩展:Ng/扭矩取自live已有字段;气路截面Tt3/Pt3/Pt45/Tt5/Pt5由status补齐
+            // (sht_fullmode_session local_status;旧程序副本无这些字段时如实留空,不伪造)
+            push(H.ng, Array.isArray(live.speedRpm) && live.speedRpm.length > 1 ? live.speedRpm[1] : null);
+            push(H.torque, al.mainTorqueNm != null ? Number(al.mainTorqueNm) : null);
+            push(H.tt3, typeof live.Tt3 === 'number' ? live.Tt3 : null);
+            push(H.pt3, typeof live.Pt3 === 'number' ? live.Pt3 : null);
+            push(H.pt45, typeof live.Pt45 === 'number' ? live.Pt45 : null);
+            push(H.tt5, typeof live.Tt5 === 'number' ? live.Tt5 : null);
+            push(H.pt5, typeof live.Pt5 === 'number' ? live.Pt5 : null);
+            if (H.t.length > 1200) ['t', 'npp', 'ng', 'tt45', 'kw', 'fuel', 'torque', 'tt3', 'pt3', 'pt45', 'tt5', 'pt5'].forEach(k => H[k].splice(0, H[k].length - 1200));
         }
         function seriesData(tArr, vArr) {
             const out = [];
@@ -4168,7 +4189,7 @@ window.Workbench = (() => {
             Object.keys(S.charts).forEach(k => { try { S.charts[k].dispose(); } catch (e) { } delete S.charts[k]; });
         }
         function setChartBase() {
-            const colors = { np: ['#0f766e'], tt45: ['#e67e22'], kw: ['#2e86de'], fuel: ['#c0392b'] };
+            const colors = { np: ['#0f766e'], ng: ['#7c3aed'], tt45: ['#e67e22'], kw: ['#2e86de'], fuel: ['#c0392b'], torque: ['#b8860b'], tt3: ['#d97706'], pt3: ['#0ea5e9'], pt45: ['#92400e'], tt5: ['#dc2626'], pt5: ['#059669'] };
             Object.keys(S.charts).forEach(k => {
                 S.charts[k].setOption({
                     animation: false, color: colors[k] || ['#2e86de'],
@@ -4183,10 +4204,11 @@ window.Workbench = (() => {
         }
         // series必须带type:'line':ECharts对无type的series不渲染(无曲线无图例tooltip也无内容)。
         // 基础配置就挂带名字的空series,无数据时也有彩色图例、坐标轴和可悬停的空图。
-        // 四图与效果图08-03一致: Np/%设计点 | Tt45/K | PT负载功率/kW | 计量燃油/kg/s
+        // 监视曲线(08-03扩展): Np%设计点 | Ng | Tt45 | PT负载功率 | 计量燃油 | 扭矩 | Tt3 | Pt3 | Pt45 | Tt5 | Pt5
         function fmSeriesDefs(key) {
             const defs = {
-                np: ['Np %设计点'], tt45: ['Tt45'], kw: ['PT负载功率'], fuel: ['计量燃油']
+                np: ['Np %设计点'], ng: ['Ng / rpm'], tt45: ['Tt45'], kw: ['PT负载功率'], fuel: ['计量燃油'],
+                torque: ['主轴扭矩'], tt3: ['Tt3'], pt3: ['Pt3'], pt45: ['Pt45'], tt5: ['Tt5'], pt5: ['Pt5']
             }[key] || [];
             return defs.map(name => ({ name, type: 'line', showSymbol: false, connectNulls: true, data: [] }));
         }
@@ -4211,9 +4233,16 @@ window.Workbench = (() => {
             };
             const ln = (name, data) => ({ name, type: 'line', showSymbol: false, connectNulls: true, data });
             set('np', [ln('Np %设计点', rows ? seriesData(H.t, H.npp) : [])]);
+            set('ng', [ln('Ng / rpm', rows ? seriesData(H.t, H.ng) : [])]);
             set('tt45', [ln('Tt45', rows ? seriesData(H.t, H.tt45) : [])]);
             set('kw', [ln('PT负载功率', rows ? seriesData(H.t, H.kw) : [])]);
             set('fuel', [ln('计量燃油', rows ? seriesData(H.t, H.fuel) : [])]);
+            set('torque', [ln('主轴扭矩', rows ? seriesData(H.t, H.torque) : [])]);
+            set('tt3', [ln('Tt3', rows ? seriesData(H.t, H.tt3) : [])]);
+            set('pt3', [ln('Pt3', rows ? seriesData(H.t, H.pt3) : [])]);
+            set('pt45', [ln('Pt45', rows ? seriesData(H.t, H.pt45) : [])]);
+            set('tt5', [ln('Tt5', rows ? seriesData(H.t, H.tt5) : [])]);
+            set('pt5', [ln('Pt5', rows ? seriesData(H.t, H.pt5) : [])]);
         }
         function loadText(live) {
             const al = live.appliedLoad || {};
@@ -4503,9 +4532,16 @@ window.Workbench = (() => {
                     S.charts[key] = window.echarts.init(holder);
                 };
                 mk('np', 'Np / 设计点 %');
+                mk('ng', 'Ng / rpm');
                 mk('tt45', 'Tt45 / K');
                 mk('kw', 'PT负载功率 / kW');
                 mk('fuel', '计量燃油 / kg/s');
+                mk('torque', '主轴扭矩 / N·m');
+                mk('tt3', 'Tt3 / K');
+                mk('pt3', 'Pt3 / Pa');
+                mk('pt45', 'Pt45 / Pa');
+                mk('tt5', 'Tt5 / K');
+                mk('pt5', 'Pt5 / Pa');
                 setChartBase();
                 updateCharts();
             }), 0);
@@ -4890,6 +4926,14 @@ window.Workbench = (() => {
             const ttCol = pick(col(truth ? 'Tt45TrueK' : 'Tt45MeasuredK'));
             const kwCol = pick(col('actualPTLoadPowerW')).map(p => [p[0], Math.round(p[1] / 10) / 100]);
             const fuelCol = pick(col(truth ? 'effectiveFuelKgPerS' : 'actuatorFuelKgPerS'));
+            // 监视扩展的对应结果通道:Ng/扭矩/气路截面(trace 真值+模拟测量双列,随来源切换)
+            const ngCol = pick(col(truth ? 'NgTrueRpm' : 'NgMeasuredRpm'));
+            const trqCol = pick(col('mainAeroTorqueNm'));
+            const tt3Col = pick(col(truth ? 'Tt3TrueK' : 'Tt3MeasuredK'));
+            const pt3Col = pick(col(truth ? 'Pt3TruePa' : 'Pt3MeasuredPa'));
+            const pt45Col = pick(col(truth ? 'Pt45TruePa' : 'Pt45MeasuredPa'));
+            const tt5Col = pick(col(truth ? 'Tt5TrueK' : 'Tt5MeasuredK'));
+            const pt5Col = pick(col(truth ? 'Pt5TruePa' : 'Pt5MeasuredPa'));
             const host = h('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:14px' });
             box.appendChild(host);
             setTimeout(() => ensureEcharts(() => {
@@ -4917,6 +4961,13 @@ window.Workbench = (() => {
                 mk('Tt45 / K', ['#e67e22'], [ln(truth ? 'Tt45真值' : 'Tt45测量', ttCol)]);
                 mk('PT负载功率 / kW', ['#2e86de'], [ln('PT负载功率', kwCol)]);
                 mk('计量燃油 / kg/s', ['#c0392b'], [ln(truth ? '有效燃油' : '计量燃油', fuelCol)]);
+                mk('Ng / rpm', ['#7c3aed'], [ln(truth ? 'Ng真值' : 'Ng测量', ngCol)]);
+                mk('主轴扭矩 / N·m', ['#b8860b'], [ln('主轴扭矩', trqCol)]);
+                mk('Tt3 / K', ['#d97706'], [ln(truth ? 'Tt3真值' : 'Tt3测量', tt3Col)]);
+                mk('Pt3 / Pa', ['#0ea5e9'], [ln(truth ? 'Pt3真值' : 'Pt3测量', pt3Col)]);
+                mk('Pt45 / Pa', ['#92400e'], [ln(truth ? 'Pt45真值' : 'Pt45测量', pt45Col)]);
+                mk('Tt5 / K', ['#dc2626'], [ln(truth ? 'Tt5真值' : 'Tt5测量', tt5Col)]);
+                mk('Pt5 / Pa', ['#059669'], [ln(truth ? 'Pt5真值' : 'Pt5测量', pt5Col)]);
             }), 0);
             box.appendChild(h('div', { class: 'wb-hint', style: 'margin-top:8px' },
                 'Tt45未求值区间不连线;轴速与热状态按各自有效性保留,不把保持值当新样本。'));
@@ -7625,9 +7676,58 @@ window.Workbench = (() => {
      * 全模式仿真/多系统联合仿真);"查看(只读)"跳转对应功能页并定位到该次任务的页签结果。 */
     pages['testbench.records'] = (ctx) => afoRecordsPage(ctx);
 
+    /**
+     * 「选择已有模型」下拉数据源:模型成果清单 + 项目文件库(model类)。
+     * 模型成果项value=modelId;文件库项value=lib:<索引id>,后端按库内文件解析父模型。
+     * 模型成果登记时交付Excel已同步入库(refId回指模型id),此处按refId去重,
+     * 既保留原有模型成果路径,也让库内手工上传/示例模型可直接作为下一工作流父模型。
+     */
+    function loadParentModelOptions(pid, sel, opts) {
+        opts = opts || {};
+        const base = 'projects/' + encodeURIComponent(pid || '') + '/';
+        const placeholder = opts.placeholder || '由程序按来源路线解析(可不指定)';
+        const toModels = resp => resp && Array.isArray(resp.data) ? resp.data : [];
+        const toLibs = resp => {
+            const d = resp && resp.data ? resp.data : {};
+            return Array.isArray(d.rows) ? d.rows : [];
+        };
+        const modelsP = window.AppConfig.engineGet(base + 'models').then(toModels).catch(() => []);
+        const libsP = window.AppConfig.engineGet(base + 'files/page?category=model&pageNum=1&pageSize=100')
+            .then(toLibs).catch(() => []);
+        Promise.all([modelsP, libsP]).then(pair => {
+            if (!sel || !document.body.contains(sel)) return;
+            const models = pair[0] || [];
+            const libs = pair[1] || [];
+            const keep = typeof opts.filter === 'function' ? opts.filter : () => true;
+            const shown = models.filter(m => keep(m) && m.deliveryWorkbookFile);
+            const seenRef = {};
+            shown.forEach(m => { if (m.id) seenRef[m.id] = true; });
+            sel.innerHTML = '';
+            if (opts.noPlaceholder !== true) sel.appendChild(h('option', { value: '' }, placeholder));
+            const routeOf = txt => txt && txt.indexOf('瞬态') >= 0 ? 'transient_instant'
+                : (txt && txt.indexOf('稳态') >= 0 ? 'steady' : '');
+            shown.forEach(m => sel.appendChild(h('option', {
+                value: m.id, 'data-route': m.route === '瞬态时刻方程' ? 'transient_instant' : 'steady'
+            }, (m.name || m.id) + ' · ' + (m.stage || '') + ' · ' + (m.route || ''))));
+            libs.forEach(e => {
+                if (!e || !e.path) return;
+                if (e.refId && seenRef[e.refId]) return; // 已由模型成果项展示,避免同一交付重复两行
+                sel.appendChild(h('option', {
+                    value: 'lib:' + e.id, 'data-route': routeOf(e.kind)
+                }, '文件库 · ' + (e.name || e.id) + ' · ' + (e.kind || '')));
+            });
+            if (sel.options.length <= (opts.noPlaceholder === true ? 0 : 1)) {
+                sel.appendChild(h('option', { value: '' },
+                    opts.emptyText || '尚无可用模型——先完成建模并登记模型成果或上传模型文件'));
+            }
+            if (typeof opts.onLoaded === 'function') opts.onLoaded(models, libs);
+        });
+    }
+
     /* ---------- API ---------- */
     return {
         ICONS, DEMO, WORKBENCHES, pages, h, toast, confirmDialog, showFilePreview,
+        loadParentModelOptions,
         lineChart, timelineChart, timelinePreviewBlock, chartLegend, dataTable, groupSeriesColumns, numericColumns, toNum,
         openUqResultDetail, renderUqDesignSection, renderUqInterval0415,
         /** 渲染页面:workbenchKey + navKey → DOM */

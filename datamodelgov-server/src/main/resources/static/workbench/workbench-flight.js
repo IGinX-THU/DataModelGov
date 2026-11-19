@@ -280,12 +280,10 @@
                     WB().h('option', { value: 'flight' }, '既有飞参模型'),
                     WB().h('option', { value: 'combined' }, 'TC27组合模型'));
                 const modelSel = WB().h('select', null, WB().h('option', { value: '' }, '由程序按来源路线解析(可不指定)'));
-                window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id || '') + '/models')
-                    .then(resp => {
-                        const models = resp && Array.isArray(resp.data) ? resp.data.filter(m => m.deliveryWorkbookFile) : [];
-                        models.forEach(m => modelSel.appendChild(WB().h('option', { value: m.id },
-                            (m.name || m.id) + ' · ' + (m.stage || '') + ' · ' + (m.route || ''))));
-                    }).catch(() => { });
+                WB().loadParentModelOptions(ctx.project.id, modelSel, {
+                    placeholder: '由程序按来源路线解析(可不指定)',
+                    emptyText: '尚无可用模型——先登记模型成果或将稳态模型文件入库'
+                });
 
                 const createBtn = WB().h('button', {
                     class: 'wb-btn wb-btn-outline',
@@ -365,7 +363,19 @@
             const SRC_CN = { '2p4': '2.4 三部件模型', '2p7': '2.7 数据更新模型', flight: '既有飞参模型', combined: 'TC27组合模型' };
             const parentBox = WB().h('input', { readonly: '', value: (SRC_CN[t.parentSource] || t.parentSource || '2.4 三部件模型')
                 + (t.parentModelId ? ' · 指定模型加载中' : ' · 按来源解析') });
-            if (t.parentModelId) {
+            if (t.parentModelId && String(t.parentModelId).indexOf('lib:') === 0) {
+                // 文件库模型回显(模型成果登记时交付Excel已同步入库)
+                window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id || '')
+                    + '/files/page?category=model&pageNum=1&pageSize=100')
+                    .then(resp => {
+                        const rows = resp && resp.data && Array.isArray(resp.data.rows) ? resp.data.rows : [];
+                        const e = rows.find(x => ('lib:' + x.id) === t.parentModelId);
+                        if (e && document.body.contains(parentBox)) {
+                            parentBox.value = (SRC_CN[t.parentSource] || t.parentSource || '2.4 三部件模型')
+                                + ' · 文件库 · ' + (e.name || e.id);
+                        }
+                    }).catch(() => { });
+            } else if (t.parentModelId) {
                 // 回显草稿期指定的项目模型名(轻量GET,失败保持占位)
                 window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id || '') + '/models')
                     .then(resp => {
@@ -1720,12 +1730,10 @@
                     WB().h('option', { value: 'flight' }, '既有飞参模型'),
                     WB().h('option', { value: 'combined' }, 'TC27组合模型'));
                 const modelSel = WB().h('select', null, WB().h('option', { value: '' }, '由程序按来源路线解析(可不指定)'));
-                window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id || '') + '/models')
-                    .then(resp => {
-                        const models = resp && Array.isArray(resp.data) ? resp.data.filter(m => m.deliveryWorkbookFile) : [];
-                        models.forEach(m => modelSel.appendChild(WB().h('option', { value: m.id },
-                            (m.name || m.id) + ' · ' + (m.stage || '') + ' · ' + (m.route || ''))));
-                    }).catch(() => { });
+                WB().loadParentModelOptions(ctx.project.id, modelSel, {
+                    placeholder: '由程序按来源路线解析(可不指定)',
+                    emptyText: '尚无可用模型——先登记模型成果或将稳态模型文件入库'
+                });
                 const createBtn = WB().h('button', {
                     class: 'wb-btn wb-btn-primary',
                     onclick: async () => {

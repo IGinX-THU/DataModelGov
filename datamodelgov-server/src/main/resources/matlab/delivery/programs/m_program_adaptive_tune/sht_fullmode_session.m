@@ -587,6 +587,20 @@ out=struct('lifecycle',S.lifecycle,'mode',r.mode,'throttle',S.throttle,'timeS',r
     'appliedLoad',r.appliedLoad,'requestedLoad',S.cfg.fullmode.load, ...
     'alarms',struct('hotStart',logical(r.output(21)),'hungStart',logical(r.output(22)), ...
     'flameout',logical(r.output(23))));
+% ====== [DMG-ADD status-monitor-fields] BEGIN ======
+% Added by DataModelGov (2026-11-19). Change list: see R065 delivery change-list
+% document (*.md, this folder). Old consumers ignore the new fields.
+% Plant keeps NaN for inactive gas path; absent values stay absent (no fabrication).
+out.npDesignRpm=S.cfg.startStop.designNpRpm;
+out.fuelKgPerS=r.fuel;
+out.Tt45=r.plant.Tt45;
+gasNames={'Pt2','Tt1','Pt3','Tt3','Pt45','Pt5','Tt5','T4'};
+for kGas=1:numel(gasNames)
+    gn=gasNames{kGas};
+    if isfield(r.plant,gn), out.(gn)=r.plant.(gn); end
+end
+% ====== [DMG-ADD status-monitor-fields] END ======
+end
 end
 
 function r=local_receipt()

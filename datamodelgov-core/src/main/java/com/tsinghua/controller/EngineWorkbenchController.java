@@ -625,6 +625,36 @@ public class EngineWorkbenchController {
 
     /* ---------- 建模任务 ---------- */
 
+    /** 解析「选择已有模型」的取值:模型成果id,或 lib:&lt;文件库索引id&gt;。
+     *  模型成果登记时交付Excel已同步进项目文件库;库内文件在下拉中带 lib: 前缀,
+     *  这里统一还原为父模型视图,供TC27更新任务创建时做路线校验与数据预填。 */
+    private EngineModels.ModelAsset resolveParentModelAsset(String pid, String modelId) throws java.io.IOException {
+        if (modelId == null || modelId.trim().isEmpty()) return null;
+        if (modelId.startsWith("lib:")) {
+            try {
+                long libId = Long.parseLong(modelId.substring(4));
+                FileLibraryEntity e = fileLibraryMetaService.queryById(libId);
+                if (e == null || e.getPath() == null || !"model".equals(e.getCategory())) return null;
+                File f = new File(e.getPath());
+                if (!f.isFile()) return null;
+                EngineModels.ModelAsset m = new EngineModels.ModelAsset();
+                m.setId(modelId);
+                m.setProjectId(pid);
+                m.setName(e.getName());
+                m.setDeliveryWorkbookFile(f.getAbsolutePath());
+                m.setRoute(e.getKind() != null && e.getKind().contains("瞬态")
+                        ? "瞬态时刻方程" : "稳态方程");
+                return m;
+            } catch (NumberFormatException ex) {
+                return null;
+            }
+        }
+        for (EngineModels.ModelAsset a : store.listModels(pid)) {
+            if (modelId.equals(a.getId())) return a;
+        }
+        return null;
+    }
+
     @ApiOperation("创建稳态试车建模任务")
     @PostMapping("/projects/{pid}/tasks")
     @RequirePermission(Permission.CREATE)
@@ -676,10 +706,7 @@ public class EngineWorkbenchController {
                 if (upId == null || String.valueOf(upId).isEmpty()) {
                     return Result.error("请选择上游TC27组合稳态模型");
                 }
-                EngineModels.ModelAsset parent = null;
-                for (EngineModels.ModelAsset a : store.listModels(pid)) {
-                    if (String.valueOf(upId).equals(a.getId())) { parent = a; break; }
-                }
+                EngineModels.ModelAsset parent = resolveParentModelAsset(pid, String.valueOf(upId));
                 if (parent == null || parent.getDeliveryWorkbookFile() == null
                         || !new File(parent.getDeliveryWorkbookFile()).isFile()) {
                     return Result.error("上游模型缺少交付Excel,不能作为TC27瞬态更新基础");
@@ -712,10 +739,7 @@ public class EngineWorkbenchController {
                 if (upstreamModelId == null || upstreamModelId.isEmpty()) {
                     return Result.error("请选择上游TC24父模型");
                 }
-                EngineModels.ModelAsset parent = null;
-                for (EngineModels.ModelAsset a : store.listModels(pid)) {
-                    if (upstreamModelId.equals(a.getId())) { parent = a; break; }
-                }
+                EngineModels.ModelAsset parent = resolveParentModelAsset(pid, upstreamModelId);
                 if (parent == null || parent.getDeliveryWorkbookFile() == null
                         || !new File(parent.getDeliveryWorkbookFile()).isFile()) {
                     return Result.error("上游父模型缺少交付Excel,不能作为TC27更新基础");

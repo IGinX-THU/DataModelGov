@@ -257,6 +257,12 @@ public class TestbenchService {
                     throw new IllegalStateException("已有全模式会话在" + cur.phase + "(runId=" + cur.runId
                             + ",由用户[" + cur.initiatorUser + "]在项目[" + cur.projectId + "]发起),请先等待其结束并关闭");
                 }
+            } else if (cur != null && cur.engine != null) {
+                // 终态会话(已结束/失败)重新准备:释放上一会话引擎进程,避免 MATLAB 实例泄漏累积
+                // (实例堆积到临界后新 MATLAB 起不来,startMatlab 无超时,prepare 表现为永久卡在"准备初态")
+                log.info("全模式重新准备: 释放终态会话残留引擎 runId={}", cur.runId);
+                closeEngine(cur.engine);
+                cur.engine = null;
             }
             String runId = "FM-" + new java.text.SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
             File workDir = store.testbenchWorkDir(projectId, runId);

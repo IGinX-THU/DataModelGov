@@ -202,20 +202,39 @@ window.AfoKernel = (() => {
         });
         const unitMap = {};
         lineSeries.forEach(s => { unitMap[s.name] = s._unit || ''; });
-        // 近常量序列(如稳态Np):ECharts默认把y轴缩到1e-6量级,刻度变成超长小数并被标签区裁掉;
-        // 跨度不足量级0.5%时主动撑开,保证刻度可读
-        const leftVals = [];
-        lineSeries.forEach(s => { if (s.yAxisIndex === 0) s.data.forEach(p => { if (p[1] != null && isFinite(p[1])) leftVals.push(p[1]); }); });
-        let yMin = null, yMax = null;
-        if (leftVals.length) {
-            let mn = leftVals[0], mx = leftVals[0];
-            for (const v of leftVals) { if (v < mn) mn = v; if (v > mx) mx = v; }
-            const mag = Math.max(Math.abs(mn), Math.abs(mx));
-            if (mx - mn < mag * 0.005) {
-                const pad = Math.max(mag * 0.0025, 1e-9);
-                yMin = mn - pad; yMax = mx + pad;
+        // Y轴按实际数据范围设定:ECharts默认(scale:true)遇到起始尖峰/初始化零值等离群样本,
+        // 轴仍会被撑得远超稳态区间——典型如流量通道初始化瞬间出现 1.0,把 0.0x 的稳态数据
+        // 撑成 0~1 的轴(空气八路流量最明显),曲线被压平。scale:true 对真实样本点无效,
+        // 必须按数据计算范围。分位裁剪分两档(小样本窗口里尖峰占比天然更高,裁剪需更狠):
+        //   30≤样本<100 → P5~P95;样本≥100 → P2~P98(占比≥2%的真实信号水平如开关量仍保留);
+        // 再按近常量/常规两档留余量:近常量序列(跨度<量级0.5%,如稳态Np)按量级撑开保证
+        // 刻度可读;常规序列上下各留 8%。空数据保持 ECharts 默认(scale:true)。
+        const axisRange = vals => {
+            if (!vals.length) return { min: null, max: null };
+            let mn = vals[0], mx = vals[0];
+            for (const v of vals) { if (v < mn) mn = v; if (v > mx) mx = v; }
+            let lo = mn, hi = mx;
+            if (vals.length >= 30) {
+                const vs = vals.slice().sort((a, b) => a - b);
+                const q = p => vs[Math.min(vs.length - 1, Math.max(0, Math.round((vs.length - 1) * p)))];
+                const pq = vals.length >= 100 ? 0.02 : 0.05;
+                lo = q(pq); hi = q(1 - pq);
             }
-        }
+            const mag = Math.max(Math.abs(lo), Math.abs(hi));
+            if (mag === 0) return { min: -1, max: 1 }; // 全零通道:固定±1轴,避免pad=1e-12的病态刻度
+            if (hi - lo < mag * 0.005) {
+                const pad = Math.max(mag * 0.0025, 1e-9);
+                return { min: lo - pad, max: hi + pad };
+            }
+            const pad = Math.max((hi - lo) * 0.08, mag * 1e-6, 1e-12);
+            return { min: lo - pad, max: hi + pad };
+        };
+        const leftVals = [], rightVals = [];
+        lineSeries.forEach(s => {
+            const bucket = s.yAxisIndex === 0 ? leftVals : rightVals;
+            s.data.forEach(p => { if (p[1] != null && isFinite(p[1])) bucket.push(p[1]); });
+        });
+        const leftRange = axisRange(leftVals), rightRange = axisRange(rightVals);
         const yName = s => s && s.length ? (s[0].unit || '') : '';
         return {
             animation: false,
@@ -248,12 +267,13 @@ window.AfoKernel = (() => {
             },
             yAxis: [{
                 type: 'value', scale: true, name: yName(leftSeries),
-                min: yMin == null ? null : yMin, max: yMax == null ? null : yMax,
+                min: leftRange.min, max: leftRange.max,
                 nameTextStyle: { fontSize: 11, align: 'left' },
                 axisLabel: { fontSize: 10, formatter: axisNum },
                 splitLine: { lineStyle: { color: '#f1f5f9' } }
             }].concat(hasY2 ? [{
                 type: 'value', scale: true, name: cfg.y2Title || yName((cfg.series || []).filter(s => s.axis === 'right')),
+                min: rightRange.min, max: rightRange.max,
                 nameTextStyle: { fontSize: 11, align: 'right' },
                 axisLabel: { fontSize: 10, formatter: axisNum },
                 splitLine: { show: false }

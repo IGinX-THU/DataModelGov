@@ -262,29 +262,24 @@
                 WB().h('option', { value: 'steady' }, '稳态方程'),
                 WB().h('option', { value: 'transient_instant', selected: '' }, '瞬态时刻方程'));
             const smallChk = WB().h('input', { type: 'checkbox' });
-            window.AppConfig.engineGet('projects/' + encodeURIComponent(ctx.project.id || '') + '/models')
-                .then(resp => {
-                    const models = resp && Array.isArray(resp.data)
-                        ? resp.data.filter(m => m.deliveryWorkbookFile) : [];
-                    modelSel.innerHTML = '';
-                    if (!models.length) {
-                        modelSel.appendChild(WB().h('option', { value: '' }, '尚无可用模型——先完成基础建模并登记(需交付Excel)'));
-                        return;
-                    }
-                    const ROUTE_CODE = { '稳态方程': 'steady', '瞬态时刻方程': 'transient_instant' };
-                    models.forEach(m => modelSel.appendChild(WB().h('option', { value: m.id, 'data-route': ROUTE_CODE[m.route] || '' },
-                        (m.name || m.id) + ' · ' + (m.stage || '') + ' · ' + (m.route || ''))));
-                    if (prefill && prefill.upstreamModelId && models.some(m => m.id === prefill.upstreamModelId)) {
-                        modelSel.value = prefill.upstreamModelId;
-                        methodSel.value = prefill.updateMethod || methodSel.value;
-                        routeSel.value = prefill.route || routeSel.value;
+            WB().loadParentModelOptions(ctx.project.id, modelSel, {
+                placeholder: '请选择上游父模型(模型成果或文件库模型)',
+                emptyText: '尚无可用模型——先完成基础建模并登记,或将模型文件入库',
+                onLoaded: () => {
+                    if (prefill && prefill.upstreamModelId) {
+                        let has = false;
+                        for (let i = 0; i < modelSel.options.length; i++) {
+                            if (modelSel.options[i].value === prefill.upstreamModelId) { has = true; break; }
+                        }
+                        if (has) {
+                            modelSel.value = prefill.upstreamModelId;
+                            methodSel.value = prefill.updateMethod || methodSel.value;
+                            routeSel.value = prefill.route || routeSel.value;
+                        }
                     }
                     syncRoute();
-                })
-                .catch(() => {
-                    modelSel.innerHTML = '';
-                    modelSel.appendChild(WB().h('option', { value: '' }, '模型成果加载失败'));
-                });
+                }
+            });
             // 路径由上游父模型决定(需一致):选中后自动带出并锁定
             const syncRoute = () => {
                 const opt = modelSel.selectedOptions && modelSel.selectedOptions[0];

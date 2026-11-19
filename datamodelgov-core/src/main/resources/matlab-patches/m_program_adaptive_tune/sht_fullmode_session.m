@@ -590,6 +590,15 @@ out=struct('lifecycle',S.lifecycle,'mode',r.mode,'throttle',S.throttle,'timeS',r
     'npDesignRpm',S.cfg.startStop.designNpRpm,'npRatioTarget',S.cfg.fullmode.npRatio, ...
     'alarms',struct('hotStart',logical(r.output(21)),'hungStart',logical(r.output(22)), ...
     'flameout',logical(r.output(23))));
+% ====== [DMG-ADD status-monitor-fields] BEGIN ======
+% Added by DataModelGov (2026-11-19). Change list: see R065 delivery change-list document (*.md, delivery root).
+% Gas-path stations for the workbench live charts; NaN stays NaN (no fabrication).
+stationNames={'Pt2','Tt1','Pt3','Tt3','Pt45','Pt5','Tt5','T4'};
+for kGas=1:numel(stationNames)
+    gn=stationNames{kGas};
+    if isfield(p,gn), out.(gn)=p.(gn); end
+end
+% ====== [DMG-ADD status-monitor-fields] END ======
 end
 
 function r=local_receipt()
