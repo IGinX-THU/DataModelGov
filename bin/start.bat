@@ -74,10 +74,12 @@ if defined CONFIG_PATH echo Config file: !CONFIG_PATH!
 echo.
 
 REM Start application
+REM --logging.charset.console=GBK: 生产控制台(cmd,cp936)固定 GBK,优先级高于 application.yml 的
+REM logging.charset.console(开发机 yml 可设 UTF-8 配合 IDEA),脚本参数优先级高于 yml,互不影响
 if defined CONFIG_PATH (
-    "!JAVA_CMD!" -Dfile.encoding=UTF-8 -Xmx2g -Xms1g -XX:+UseG1GC -XX:+UseStringDeduplication -jar "!APP_JAR!" --spring.config.location=!CONFIG_PATH! --spring.profiles.active=standalone
+    "!JAVA_CMD!" -Dfile.encoding=UTF-8 -Xmx2g -Xms1g -XX:+UseG1GC -XX:+UseStringDeduplication -jar "!APP_JAR!" --logging.charset.console=GBK --spring.config.location=!CONFIG_PATH! --spring.profiles.active=standalone
 ) else (
-    "!JAVA_CMD!" -Dfile.encoding=UTF-8 -Xmx2g -Xms1g -XX:+UseG1GC -XX:+UseStringDeduplication -jar "!APP_JAR!" --spring.profiles.active=standalone
+    "!JAVA_CMD!" -Dfile.encoding=UTF-8 -Xmx2g -Xms1g -XX:+UseG1GC -XX:+UseStringDeduplication -jar "!APP_JAR!" --logging.charset.console=GBK --spring.profiles.active=standalone
 )
 
 if errorlevel 1 (

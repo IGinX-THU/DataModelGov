@@ -102,4 +102,4 @@ engine:
 
 logging:
   charset:
-    console: GBK   # 生产控制台(中文cmd,cp936);IDEA运行配置加 -Dlogging.charset.console=UTF-8 覆盖(勿随包部署)
+    console: UTF-8   # 生产控制台(中文cmd,cp936);IDEA运行配置加 -Dlogging.charset.console=UTF-8 覆盖(勿随包部署)
