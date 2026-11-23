@@ -1441,7 +1441,7 @@ window.Workbench = (() => {
                             h('td', { class: 'wb-link' }, r.name || r.taskId),
                             h('td', { class: 'wb-hint' }, recordKindText(r)),
                             h('td', { class: 'wb-hint', style: 'word-break:break-all;max-width:300px' },
-                                String(r.errorKind === 'SAVE_FAILED' ? '[保存失败] ' : r.errorKind === 'NUMERIC_FAILED' ? '[数值失败] ' : '')
+                                String(r.errorKind === 'SAVE_FAILED' ? '[保存失败] ' : r.errorKind === 'ENV_FAILED' ? '[环境失败] ' : r.errorKind === 'NUMERIC_FAILED' ? '[数值失败] ' : '')
                                     + (r.message || '执行失败;详情见任务页日志'))))));
                 }
                     });
@@ -3620,8 +3620,9 @@ window.Workbench = (() => {
                 h('tr', null, ['任务名称', '任务类型', '最近运行', '状态', '开始时间', '结束时间', '操作'].map(t => h('th', null, t))),
                 rows.map(tk => {
                     const raw = tk.status === 'FAILED' && tk.errorKind === 'SAVE_FAILED' ? '保存失败'
+                        : tk.status === 'FAILED' && tk.errorKind === 'ENV_FAILED' ? '环境失败'
                         : tk.status === 'FAILED' && tk.errorKind === 'NUMERIC_FAILED' ? '数值失败' : tk.status;
-                    const kindTag = tk.status === 'FAILED' ? (tk.errorKind === 'SAVE_FAILED' ? ['保存失败', 'amber'] : tk.errorKind === 'NUMERIC_FAILED' ? ['数值失败', 'red'] : null) : null;
+                    const kindTag = tk.status === 'FAILED' ? (tk.errorKind === 'SAVE_FAILED' ? ['保存失败', 'amber'] : tk.errorKind === 'ENV_FAILED' ? ['环境失败', 'amber'] : tk.errorKind === 'NUMERIC_FAILED' ? ['数值失败', 'red'] : null) : null;
                     const st = RUN_STATUS[raw] || [raw || '—', 'gray'];
                     const note = tk.message || '';
                     const isUqStage = (tk.taskId || '').indexOf('uq-') === 0; // UQ阶段行:类型列=父工作流,最近运行列标注

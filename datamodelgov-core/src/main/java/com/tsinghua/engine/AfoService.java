@@ -34,8 +34,10 @@ import java.util.stream.Stream;
  * 状态通道是 outputDir/status.json(每个记录步原子重写)——这两条不走引擎,
  * 因此Java侧运行中只读写文件;prepare/run/save/result/close 才需要引擎feval。
  *
- * AFO会话独占引擎(模型加载+GTESS库是进程级断言),因此每会话 startMatlab 专用引擎,
- * 会话close后关闭,不占用TC24的共享引擎池。
+ * 引擎生命周期(守护模式,engine.afo.daemon=true 默认):MATLAB 脱离服务常驻
+ * (shareEngine 命名共享+PID 文件),服务重启/升级后 connectMatlab 收养,
+ * DLL/函数/编译缓存不重付;会话终态断连保留守护,FAILED 废弃重建。
+ * daemon=false 回到旧行为(每会话专用引擎,close 即杀,不占用TC24的共享引擎池)。
  *
  * 目录体系与个性化建模一致:会话大文件(status/inbox/runtime/result/Excel)落
  * 项目工作目录 <workdir>/job/afo-sessions/<runId>,元数据落 projects/{pid}/afo/{runId}.json。
@@ -59,6 +61,14 @@ public class AfoService {
     private volatile MatlabEngine warmEngine;
     /** 预热槽引擎所属项目:null=未绑定冷引擎(任意项目可取);非null=同项目可复用热引擎(DLL/函数已就位) */
     private volatile String warmProjectId;
+    /** 常驻守护开关:默认 false——connectMatlab 按名收养在 R2019b 引擎拉起的共享会话上实测不可靠
+     *  (会话存活时仍连接失败,2026-11-23 两次复现),且冷启实测仅 10~15s,收益不抵脆弱性。
+     *  机制代码保留,升级 MATLAB 版本后可再评估启用。 */
+    @org.springframework.beans.factory.annotation.Value("${engine.afo.daemon:false}")
+    private boolean daemonEnabled;
+    /** 服务停止时守护处置:quit=随服务关闭(默认);keep=断连保留,下次启动收养热引擎 */
+    @org.springframework.beans.factory.annotation.Value("${engine.afo.stop-mode:quit}")
+    private String daemonStopMode;
     private final ExecutorService warmExecutor = Executors.newSingleThreadExecutor(
             r -> { Thread t = new Thread(r, "afo-warm-engine"); t.setDaemon(true); return t; });
 
@@ -137,12 +147,53 @@ public class AfoService {
         // 引擎预热(program-run 引擎池同款思路):AFO 会话独占引擎,启动期预启 1 台专属引擎,
         // prepare 直接取用(省 ~100s 冷启动);会话关闭后自动回填
         if (warmEngineEnabled) {
-            warmExecutor.submit(() -> startWarmEngine("预热"));
+            if (daemonEnabled) {
+                // 启动即收养/拉起常驻守护(后台执行,用户无感):首次 prepare 免冷启动
+                warmExecutor.submit(() -> {
+                    try {
+                        takeWarmEngine(null);
+                    } catch (Exception e) {
+                        log.warn("AFO 常驻守护预热失败(首次prepare将同步冷启): {}", e.getMessage());
+                    }
+                });
+            } else {
+                warmExecutor.submit(() -> startWarmEngine("预热"));
+            }
         }
         // 增量数据 SSE 泵(有订阅者才扫文件)
         livePump.scheduleWithFixedDelay(this::pumpLiveSafely, 200, 200, java.util.concurrent.TimeUnit.MILLISECONDS);
         // 状态通知 SSE 泵(1s指纹比对;准备期阶段迁移由此推送,前端不再依赖5s状态轮询)
         livePump.scheduleWithFixedDelay(this::pumpStatusSafely, 1000, 1000, java.util.concurrent.TimeUnit.MILLISECONDS);
+    }
+
+    /** 服务停止:按 engine.afo.stop-mode 处置常驻守护(quit=随服务关闭,默认;keep=断连保留跨重启)。 */
+    @javax.annotation.PreDestroy
+    public void shutdownAfoDaemon() {
+        MatlabEngine eng = warmEngine;
+        warmEngine = null;
+        warmProjectId = null;
+        if (eng == null) {
+            if (!daemonEnabled) return;
+            String adoptName = readDaemonAdoptName();
+            if (adoptName == null) return;
+            try {
+                eng = MatlabEngine.connectMatlab(adoptName);
+            } catch (Exception e) {
+                return; // 守护不在(正常/已清理)
+            }
+        }
+        try {
+            if ("keep".equalsIgnoreCase(daemonStopMode)) {
+                eng.disconnect();
+                log.info("AFO 常驻守护保留(跨服务重启存活),下次启动自动收养");
+            } else {
+                eng.quit();
+                deleteDaemonPidFile();
+                log.info("AFO 常驻守护已随服务停止而关闭");
+            }
+        } catch (Exception e) {
+            log.warn("AFO 守护处置失败: {}", e.getMessage());
+        }
     }
 
     private void startWarmEngine() {
@@ -176,6 +227,9 @@ public class AfoService {
 
     /** 取预热引擎:同项目热引擎直取(DLL/已解析函数常驻,免每会话重付);跨项目关闭换冷启。 */
     private synchronized MatlabEngine takeWarmEngine(String projectId) throws Exception {
+        // 原生库路径注入必须先于任何 MatlabEngine 类引用:类初始化会触发 nativemvm 加载,
+        // 路径未注入时 <clinit> 抛 UnsatisfiedLinkError 并永久污染该类(全通道 NoClassDefFoundError)
+        com.tsinghua.matlab.MatlabNativeLibrary.prepare(null);
         MatlabEngine e = warmEngine;
         if (e != null && (warmProjectId == null || warmProjectId.equals(projectId))) {
             warmEngine = null;
@@ -191,9 +245,162 @@ public class AfoService {
             closeEngineRaw(e);
             e = null;
         }
-        log.warn("AFO 预热引擎不可用,同步冷启动MATLAB(较慢)");
+        // 常驻守护收养:按 PID 文件中的共享名连接存活守护(跨服务重启/升级存活,DLL/函数/编译缓存保留);15s超时防挂起
+        if (daemonEnabled) {
+            String adoptName = readDaemonAdoptName();
+            if (adoptName != null) {
+                try {
+                    long t = System.currentTimeMillis();
+                    MatlabEngine eng = awaitFuture(MatlabEngine.connectMatlabAsync(adoptName), 15000,
+                            "收养常驻守护 " + adoptName);
+                    log.info("AFO prepare 收养常驻共享MATLAB守护 {}(耗时 {} ms,DLL/函数/编译缓存保留)", adoptName, System.currentTimeMillis() - t);
+                    bootstrapEngine(eng, true);
+                    return eng;
+                } catch (Exception ex) {
+                    log.warn("常驻守护收养失败({}),清理遗留守护后冷启动", ex.getMessage());
+                    killStaleDaemon();
+                }
+            } else {
+                log.info("无存活守护可收养(服务重启后首次属正常),清理遗留后冷启动注册新守护");
+                killStaleDaemon();
+            }
+        }
+        log.info("预热槽为空,冷启动守护MATLAB并注册共享会话");
         com.tsinghua.matlab.MatlabNativeLibrary.prepare(null);
-        return MatlabEngine.startMatlab();
+        // 冷启带看门狗(180s)与一次重试:MATLAB 进程秒退时 startMatlab 会无限等待,
+        // 必须超时失败并给出可行动提示,否则 prepare 线程永久挂起、日志与 SSE 全部静默
+        MatlabEngine eng = null;
+        Exception last = null;
+        for (int attempt = 1; attempt <= 2; attempt++) {
+            try {
+                long t = System.currentTimeMillis();
+                eng = awaitFuture(MatlabEngine.startMatlabAsync(), 180000, "冷启动MATLAB(第" + attempt + "次)");
+                log.info("MATLAB 冷启完成,耗时 {} ms(第{}次尝试)", System.currentTimeMillis() - t, attempt);
+                break;
+            } catch (Exception ex) {
+                last = ex;
+                eng = null;
+                log.warn("MATLAB 冷启失败(第{}次): {}", attempt, ex.getMessage());
+            }
+        }
+        if (eng == null) {
+            throw new java.io.IOException("MATLAB 引擎启动失败(已重试2次): "
+                    + (last == null ? "未知" : last.getMessage())
+                    + "。请手动打开 MATLAB 桌面客户端验证能否正常启动——秒退/无响应多为偏好损坏"
+                    + "(%APPDATA%\\MathWorks\\MATLAB\\R2019b 改名重建)或 license 问题;修复后重试。");
+        }
+        bootstrapEngine(eng, false);
+        return eng;
+    }
+
+    /** Future 看门狗:限时等待,超时取消并抛出(防 startMatlab/connectMatlab 无限挂起)。 */
+    private static <T> T awaitFuture(java.util.concurrent.Future<T> f, long timeoutMs, String what) throws Exception {
+        try {
+            return f.get(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS);
+        } catch (java.util.concurrent.TimeoutException te) {
+            f.cancel(true);
+            throw new java.util.concurrent.TimeoutException(what + " 超时(" + timeoutMs + " ms)");
+        }
+    }
+
+    /** 引擎bootstrap:GBK字符集 + 无名共享(自动唯一名,杜绝孤儿守护占用固定名的冲突) + PID/名字文件 + 会话复位。 */
+    private void bootstrapEngine(MatlabEngine eng, boolean resetSession) throws Exception {
+        eng.eval("feature('DefaultCharacterSet', 'GBK')");
+        if (daemonEnabled) {
+            eng.eval("matlab.engine.shareEngine");
+            eng.eval("nm = matlab.engine.engineName; pid = double(feature('getpid'));");
+            writeDaemonPidFile(eng);
+        }
+        if (resetSession) eng.eval("bdclose('all'); clear sht_afo_session; rehash;");
+    }
+
+    /** 守护PID文件(run/matlab-daemon-AFO.pid):两行 pid/name,供跨重启收养与 stop 脚本按PID精确清理。 */
+    private void writeDaemonPidFile(MatlabEngine eng) {
+        try {
+            Object nm = eng.getVariable("nm");
+            Object pid = eng.getVariable("pid");
+            File dir = new File("run");
+            if (!dir.exists() && !dir.mkdirs()) return;
+            String content = "pid=" + ((Number) pid).intValue() + "\nname=" + String.valueOf(nm);
+            java.nio.file.Files.write(daemonPidFile().toPath(),
+                    content.getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+        } catch (Exception e) {
+            log.warn("守护PID文件写入失败(不影响功能): {}", e.getMessage());
+        }
+    }
+
+    private File daemonPidFile() {
+        return new File("run", "matlab-daemon-AFO.pid");
+    }
+
+    private void deleteDaemonPidFile() {
+        try {
+            daemonPidFile().delete();
+        } catch (Exception ignore) { }
+    }
+
+    /** 从PID文件读取上次守护的共享会话名;不存在/损坏返回 null。 */
+    private String readDaemonAdoptName() {
+        File f = daemonPidFile();
+        if (!f.isFile()) return null;
+        try {
+            for (String l : new String(java.nio.file.Files.readAllBytes(f.toPath()),
+                    java.nio.charset.StandardCharsets.US_ASCII).trim().split("\\r?\\n")) {
+                if (l.startsWith("name=")) {
+                    String v = l.substring(5).trim();
+                    return v.isEmpty() ? null : v;
+                }
+            }
+        } catch (Exception ignore) { }
+        return null;
+    }
+
+    /** 清理遗留守护孤儿:按PID文件,进程名必须是MATLAB(防PID复用误杀其他进程)。 */
+    private void killStaleDaemon() {
+        File f = daemonPidFile();
+        if (!f.isFile()) return;
+        try {
+            String pid = null;
+            for (String l : new String(java.nio.file.Files.readAllBytes(f.toPath()),
+                    java.nio.charset.StandardCharsets.US_ASCII).trim().split("\\r?\\n")) {
+                if (l.startsWith("pid=")) { pid = l.substring(4).trim(); break; }
+            }
+            if (pid != null && !pid.isEmpty() && isMatlabProcess(pid)) {
+                log.warn("清理遗留守护孤儿进程 pid={}", pid);
+                killPid(pid);
+            }
+            f.delete();
+        } catch (Exception e) {
+            log.warn("遗留守护清理失败(忽略): {}", e.getMessage());
+        }
+    }
+
+    private static boolean isMatlabProcess(String pid) {
+        try {
+            boolean win = System.getProperty("os.name", "").toLowerCase().contains("win");
+            Process p = win
+                    ? new ProcessBuilder("tasklist", "/fi", "pid eq " + pid, "/fo", "csv").start()
+                    : new ProcessBuilder("/bin/sh", "-c", "ps -p " + pid + " -o comm=").start();
+            java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+            byte[] buf = new byte[4096];
+            int n;
+            try (java.io.InputStream in = p.getInputStream()) {
+                while ((n = in.read(buf)) > 0) bos.write(buf, 0, n);
+            }
+            p.waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
+            String out = bos.toString(java.nio.charset.StandardCharsets.UTF_8.name()).toLowerCase();
+            return out.contains("matlab");
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private static void killPid(String pid) throws Exception {
+        boolean win = System.getProperty("os.name", "").toLowerCase().contains("win");
+        Process p = win
+                ? new ProcessBuilder("taskkill", "/F", "/PID", pid).start()
+                : new ProcessBuilder("/bin/sh", "-c", "kill -9 " + pid).start();
+        p.waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
     }
 
     /* ---------- 程序源解析 ---------- */
@@ -369,10 +576,22 @@ public class AfoService {
         }
         for (File f : candidates) {
             if (f.isFile()) {
-                return new com.fasterxml.jackson.databind.ObjectMapper().readValue(f, Map.class);
+                try {
+                    Map<String, Object> m = new com.fasterxml.jackson.databind.ObjectMapper().readValue(f, Map.class);
+                    m.put("ready", true);
+                    return m;
+                } catch (Exception ignore) {
+                    // 单个损坏文件跳过,继续尝试下一个候选
+                }
             }
         }
-        throw new IOException("通道字典尚未生成(会话准备完成后可用;历史运行从结果Channels读取)");
+        // 未就绪是预期状态(准备期 channels.json 尚未写出):返回软载荷而非抛错,
+        // 避免前端轮询与浏览器控制台出现 500 错误噪声;前端按 channels 缺失自行提示"重试中"
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("ready", false);
+        out.put("channels", java.util.Collections.emptyList());
+        out.put("message", "通道字典尚未生成(会话准备完成后可用;历史运行从结果Channels读取)");
+        return out;
     }
 
     /**
@@ -866,7 +1085,7 @@ public class AfoService {
             MatlabEngine eng = takeWarmEngine(s.projectId);
             // 冷启兜底会耗尽预热引擎(启动期预热失败/未就绪时走到这里):
             // 准备期立即回填,保证下次 prepare 免冷启动,而不是等到会话结束
-            if (warmEngineEnabled && warmEngine == null) {
+            if (warmEngineEnabled && !daemonEnabled && warmEngine == null) {
                 warmExecutor.submit(() -> startWarmEngine("回填"));
             }
             s.engine = eng;
@@ -877,10 +1096,21 @@ public class AfoService {
                 log.warn("AFO引擎字符集设置失败(沿用默认)", ce);
             }
             s.programDir = progCopy.getAbsolutePath();
-            s.message = "MATLAB已启动;准备运行副本(复制资产/校验身份/初始化模型)"; logLine("MATLAB引擎已启动,开始准备运行副本");
+            final long prepareT0 = System.currentTimeMillis();
+            s.message = "MATLAB已就绪;校验文件身份/初始化模型(气路与初态)中";
+            logLine("MATLAB引擎已就绪,开始准备运行副本(校验身份/气路/初态)");
+            // 厂商 prepare 无阶段回调:每5s刷新已进行时长到页面(SSE),替代"无反馈假死"
+            final java.util.concurrent.ScheduledFuture<?>[] tick = new java.util.concurrent.ScheduledFuture[1];
+            tick[0] = livePump.scheduleWithFixedDelay(() -> {
+                try {
+                    s.message = "初始化模型中(已进行 " + (System.currentTimeMillis() - prepareT0) / 1000 + " s)";
+                } catch (Exception ignore) { }
+            }, 5, 5, java.util.concurrent.TimeUnit.SECONDS);
             // 引擎内调 session('prepare', cfg);适配器读JSON构造cfg
             feval(s, "prepare", progCopy.getAbsolutePath());
-            logLine("准备完成,等待开始运行"); s.phase = "READY";
+            tick[0].cancel(false);
+            logLine("模型初始化完成,耗时 " + (System.currentTimeMillis() - prepareT0) + " ms;准备完成,等待开始运行");
+            s.phase = "READY";
             s.message = "准备完成;可开始运行";
             writeSessionIndex(s);
         } catch (Exception e) {
@@ -1417,7 +1647,19 @@ public class AfoService {
     private void closeEngine(AfoSession s) {
         MatlabEngine eng = s.engine;
         s.engine = null;
-        closeEngineRaw(eng);
+        if (daemonEnabled) {
+            // FAILED 废弃重建:终结守护进程并清除PID文件,下次 prepare 冷启全新引擎
+            if (eng != null) {
+                try {
+                    eng.quitAsync();
+                } catch (Exception e) {
+                    log.warn("守护终结失败(可能已自行退出)", e);
+                }
+            }
+            deleteDaemonPidFile();
+        } else {
+            closeEngineRaw(eng);
+        }
         scheduleWarmRefill();
     }
 
@@ -1431,7 +1673,7 @@ public class AfoService {
     }
 
     private void scheduleWarmRefill() {
-        if (warmEngineEnabled && warmEngine == null) {
+        if (warmEngineEnabled && !daemonEnabled && warmEngine == null) {
             warmExecutor.submit(() -> startWarmEngine("回填"));
         }
     }

@@ -94,5 +94,12 @@ engine:
   #    磁盘路径仅作为最高优先级来源,工作目录/内置资源/jar 兜底链保持不变。
   r06:
     root:
+  # AFO 常驻守护引擎:默认 false——connectMatlab 按名收养在 R2019b 引擎拉起的共享会话上
+  # 实测不可靠(2026-11-23 两次复现:会话存活仍连接失败),且 MATLAB 冷启实测仅 10~15s,
+  # 收养收益不抵脆弱性;机制代码保留,升级 MATLAB 版本后可评估改回 true。
+  afo:
+    daemon: false
 
-
+logging:
+  charset:
+    console: GBK   # 生产控制台(中文cmd,cp936);IDEA运行配置加 -Dlogging.charset.console=UTF-8 覆盖(勿随包部署)

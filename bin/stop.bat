@@ -33,6 +33,20 @@ echo Please wait a few seconds for application to shut down
 REM Wait and verify
 timeout /t 3 /nobreak >nul
 
+REM ===== Stop MATLAB daemon engines (follow application lifecycle) =====
+set "RUN_DIR=%~dp0..\run"
+if exist "%RUN_DIR%\matlab-daemon-*.pid" (
+    for %%f in ("%RUN_DIR%\matlab-daemon-*.pid") do (
+        for /f "usebackq" %%p in ("%%~ff") do (
+            for /f "tokens=1" %%n in ('tasklist /fi "pid eq %%p" /fo csv ^| findstr /i "MATLAB"') do (
+                echo Stopping MATLAB daemon engine pid %%p
+                taskkill /pid %%p /f
+            )
+        )
+        del /q "%%~ff"
+    )
+)
+
 netstat -ano | find ":8080" >nul
 if !errorlevel! equ 0 (
     echo WARNING: Application may still be running

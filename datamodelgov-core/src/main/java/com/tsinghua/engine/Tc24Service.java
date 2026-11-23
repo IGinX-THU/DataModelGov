@@ -331,8 +331,9 @@ public class Tc24Service {
                         EngineModels.ModelingTask t = store.getTask(task.getProjectId(), task.getId());
                         t.setStatus(ModelingTask.ST_FAILED);
                         t.setFinishedAt(System.currentTimeMillis());
-                        t.setMessage(e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
-                        t.setErrorKind(classifyError(e.getMessage()));
+                        String rawMsg = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+                        t.setMessage(MatlabErrorDiagnostics.decorate(rawMsg));
+                        t.setErrorKind(classifyError(rawMsg));
                         store.saveTask(t);
                     } catch (IOException io) {
                         log.error("任务状态写回失败", io);
@@ -778,8 +779,9 @@ public class Tc24Service {
         }
     }
 
-    /** 错误分类(图01-16):交付文件/写盘问题与数值问题分开呈现。 */
+    /** 错误分类(图01-16):环境/原生库、交付写盘与数值问题分开呈现。 */
     private String classifyError(String message) {
+        if (MatlabErrorDiagnostics.isEnvironmentFailure(message)) return ModelingTask.ERR_ENV;
         String lower = message == null ? "" : message.toLowerCase();
         if (lower.contains("excel") || lower.contains("save") || lower.contains("write")
                 || lower.contains("export") || lower.contains("deliver") || lower.contains("disk")
@@ -1541,15 +1543,16 @@ public class Tc24Service {
                 EngineModels.ModelingTask t = store.getTask(task.getProjectId(), task.getId());
                 if (t != null) {
                     t.setStatus(isPrepare ? EngineModels.ModelingTask.ST_READY : EngineModels.ModelingTask.ST_FAILED);
-                    if (!isPrepare) {
-                        t.setFinishedAt(System.currentTimeMillis());
-                        t.setErrorKind(EngineModels.ModelingTask.ERR_NUMERIC);
-                    }
+                    String rawMsg = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
                     String msgTail = matlabErrorTail(new File(store.taskWorkDir(task.getProjectId(), task.getId()),
                             "tc27-" + action + ".log"));
-                    t.setMessage((isPrepare ? "TC27数据准备失败: " : "TC27模型更新失败: ")
-                            + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage())
-                            + (msgTail.isEmpty() ? "" : "\nMATLAB错误定位:\n" + msgTail));
+                    String fullMsg = (isPrepare ? "TC27数据准备失败: " : "TC27模型更新失败: ") + rawMsg
+                            + (msgTail.isEmpty() ? "" : "\nMATLAB错误定位:\n" + msgTail);
+                    if (!isPrepare) {
+                        t.setFinishedAt(System.currentTimeMillis());
+                        t.setErrorKind(MatlabErrorDiagnostics.classify(fullMsg, EngineModels.ModelingTask.ERR_NUMERIC));
+                    }
+                    t.setMessage(MatlabErrorDiagnostics.decorate(fullMsg));
                     store.saveTask(t);
                 }
             } catch (IOException io) {
@@ -1563,24 +1566,12 @@ public class Tc24Service {
 
     /** 05准备摘要(展示"数据处理结果"行);程序result缺字段时回退通用描述。 */
     /** 05准备摘要(图01-17): 准备完成：N个训练点，G组，S段小幅历程。+ 身份行 + 预计用时行。 */
-    /** 从MATLAB运行日志中提取错误堆栈尾部(stderr段),供失败视图直接展示根因定位。 */
+    /** 从MATLAB运行日志中提取错误堆栈尾部(stderr段);过滤 readtable 警告,只留真实原因。 */
     private String matlabErrorTail(File logFile) {
         try {
             if (!logFile.isFile()) return "";
-            List<String> lines = Files.readAllLines(logFile.toPath());
-            int start = 0;
-            for (int i = lines.size() - 1; i >= 0; i--) {
-                if (lines.get(i).contains("[stderr]")) { start = i; break; }
-            }
-            if (start == 0) return "";
-            StringBuilder sb = new StringBuilder();
-            int from = Math.max(start - 1, 0);
-            for (int i = from; i < lines.size() && i < from + 16; i++) {
-                String line = lines.get(i);
-                sb.append(line.replace("[stderr] ", "").replace("[stdout] ", "")).append('\n');
-            }
-            String out = sb.toString().trim();
-            return out.length() > 1500 ? out.substring(0, 1500) : out;
+            return MatlabErrorDiagnostics.cleanLogTail(
+                    Files.readAllLines(logFile.toPath()), 16, 1500);
         } catch (Exception e) {
             return "";
         }
@@ -1833,12 +1824,13 @@ public class Tc24Service {
                 EngineModels.ModelingTask tk = store.getTask(task.getProjectId(), task.getId());
                 if (tk != null) {
                     tk.setStatus(isPrepare ? EngineModels.ModelingTask.ST_READY : EngineModels.ModelingTask.ST_FAILED);
+                    String rawMsg = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+                    String fullMsg = (isPrepare ? "TC27瞬态数据准备失败: " : "TC27瞬态辨识失败: ") + rawMsg;
                     if (!isPrepare) {
                         tk.setFinishedAt(System.currentTimeMillis());
-                        tk.setErrorKind(EngineModels.ModelingTask.ERR_NUMERIC);
+                        tk.setErrorKind(MatlabErrorDiagnostics.classify(fullMsg, EngineModels.ModelingTask.ERR_NUMERIC));
                     }
-                    tk.setMessage((isPrepare ? "TC27瞬态数据准备失败: " : "TC27瞬态辨识失败: ")
-                            + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
+                    tk.setMessage(MatlabErrorDiagnostics.decorate(fullMsg));
                     store.saveTask(tk);
                 }
             } catch (IOException io) {
@@ -2062,16 +2054,45 @@ public class Tc24Service {
         return h.toString();
     }
 
-    /** 引擎返回值(适配器输出的 JSON 字符串)优先;为空时回退读取 resultFile。 */
+    /**
+     * 引擎返回值优先;解析失败时回退读适配器直接写盘的 resultFile。
+     *
+     * <p>根因:适配器把同一 payload 既写进 resultFile,又作为函数返回值经 MATLAB Engine 字符串传回。
+     * 单次 feval 返回字符串在约 128KB(2^17=131072)处被截断,大结果的 JSON 数组未闭合,
+     * 报 "unexpected end-of-input; expected close marker for Array ... column 131073"。
+     * resultFile 不经引擎字符串通道,是完整的。引擎返回 'ok' 等非 JSON 标量同样走回退。</p>
+     */
     private Object prepPayload(Object runnerResult, File resultFile) throws IOException {
+        com.fasterxml.jackson.databind.ObjectMapper om =
+                new com.fasterxml.jackson.databind.ObjectMapper();
         String raw = runnerResult instanceof String ? (String) runnerResult : null;
-        if (raw == null || raw.trim().isEmpty()) {
-            if (resultFile.exists()) {
-                raw = com.tsinghua.matlab.MatlabCharset.read(resultFile.toPath());
+        IOException engineFail = null;
+        if (raw != null && !raw.trim().isEmpty()) {
+            try {
+                return om.readValue(raw.trim(), Map.class);
+            } catch (IOException e) {
+                engineFail = e;
+                log.debug("引擎返回值非完整JSON,回退结果文件: {} ({})", resultFile, e.getMessage());
             }
         }
-        if (raw == null || raw.trim().isEmpty()) return null;
-        return new com.fasterxml.jackson.databind.ObjectMapper().readValue(raw, Map.class);
+        if (resultFile != null && resultFile.isFile() && resultFile.length() > 0) {
+            String fileRaw = com.tsinghua.matlab.MatlabCharset.read(resultFile.toPath());
+            if (fileRaw != null && !fileRaw.trim().isEmpty()) {
+                try {
+                    return om.readValue(fileRaw.trim(), Map.class);
+                } catch (IOException e) {
+                    throw new IOException("结果解析失败(结果文件不可读) "
+                            + resultFile.getAbsolutePath() + ": " + e.getMessage(), e);
+                }
+            }
+        }
+        if (engineFail != null) {
+            boolean maybeTruncated = raw.length() >= 120000; // 贴近 128KB 上限的截断特征
+            throw new IOException("结果解析失败(引擎返回值不可解析"
+                    + (maybeTruncated ? ",疑似在约128KB处被截断且适配器未写出结果文件" : "")
+                    + "): " + engineFail.getMessage(), engineFail);
+        }
+        return null;
     }
 
     /** 从 preview 返回结构中提取工况行(id/np/ng/wf/samples/group);结构未知时保留原始键值。 */

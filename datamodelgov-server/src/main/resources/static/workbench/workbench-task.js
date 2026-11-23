@@ -915,7 +915,16 @@
                 SAVE_FAILED: ['保存失败', 'wb-tag-amber',
                     '辨识结果有效但写盘失败;检查磁盘空间与输出目录权限,排除后可重新发起(或仅重试保存)。'],
                 NUMERIC_FAILED: ['数值失败', 'wb-tag-red',
-                    '求解未收敛或数值发散;检查训练数据质量与工况覆盖,或调整正则化强度/迭代设置后重新发起。']
+                    '求解未收敛或数值发散;检查训练数据质量与工况覆盖,或调整正则化强度/迭代设置后重新发起。'],
+                ENV_FAILED: ['环境失败', 'wb-tag-amber',
+                    '本机 MATLAB 或文件系统环境问题,重跑模型无效。按错误正文对应处理:'
+                    + '① Bundle#N / DLL 加载失败 → 在 MATLAB 命令行执行 simulink 复现,修复/重装同版本同区域语言的 R2019b,'
+                    + '从杀毒隔离区恢复 bin\\win64\\builtins 下被删的 DLL,清理 %APPDATA%\\MathWorks 后重新激活许可,'
+                    + '并安装 VC++ 2015-2022 x64 与 Win7 UCRT(KB2999226);'
+                    + '② 无法创建目录/父路径不可写或被占用 → 把项目「保存位置」改到浅层短路径(如 D:\\dmg),'
+                    + '检查父目录写权限,关闭占用程序并把项目目录加入杀软白名单;'
+                    + '③ 无法写入/读取 Excel、密码保护 → 关闭残留 EXCEL.EXE,确认文件未被 Excel 打开、未设置密码、'
+                    + '扩展名为 .xlsx 且文件未损坏,必要时重新上传原始 Excel。']
             };
             const km = kindMap[t.errorKind] || [null, 'wb-tag-red',
                 '执行过程出错;结合运行日志定位原因后重新发起。'];
@@ -930,7 +939,7 @@
             },
                 WB().h('span', { class: 'wb-tag wb-tag-red' }, '运行失败'),
                 WB().h('span', { class: 'wb-tag ' + km[1] }, '失败类型: ' + km[0]),
-                WB().h('span', { style: 'color:#7f1d1d;word-break:break-all' }, String(t.message || '执行出错,详见运行日志'))));
+                WB().h('span', { style: 'color:#7f1d1d;word-break:break-all;white-space:pre-wrap' }, String(t.message || '执行出错,详见运行日志'))));
             const kv = WB().h('div', { class: 'wb-kv', style: 'max-width:1180px;margin-bottom:12px' });
             [
                 ['运行标识', t.runId || '—'],

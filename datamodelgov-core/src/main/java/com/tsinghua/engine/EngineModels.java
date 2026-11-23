@@ -55,9 +55,11 @@ public final class EngineModels {
         public static final String ST_STOP_REQUESTED = "STOP_REQUESTED";
         public static final String ST_STOPPED = "STOPPED";
 
-        /** 错误分类(图01-15/01-16):保存失败与数值失败分开呈现 */
+        /** 错误分类(图01-15/01-16):保存失败、环境失败与数值失败分开呈现 */
         public static final String ERR_SAVE = "SAVE_FAILED";
         public static final String ERR_NUMERIC = "NUMERIC_FAILED";
+        /** MATLAB/文件系统环境问题(原生库、目录权限、Excel占用/密码),重跑无效 */
+        public static final String ERR_ENV = "ENV_FAILED";
 
         private String id;
         private String projectId;
@@ -69,7 +71,7 @@ public final class EngineModels {
         private String runId;
         private String status;
         private String message;
-        /** 失败分类:SAVE_FAILED(交付文件写盘失败) | NUMERIC_FAILED(数值/收敛失败);空=未失败 */
+        /** 失败分类:SAVE_FAILED(写盘) | ENV_FAILED(MATLAB/文件系统环境) | NUMERIC_FAILED(数值/收敛);空=未失败 */
         private String errorKind;
         private String trainingFile;
         private String testFile;

@@ -97,6 +97,35 @@ window.AfoKernel = (() => {
         return v.toExponential(1);
     }
 
+    /* ---------- MATLAB 风格轴量级:公共 10ⁿ 提到轴名,刻度只留尾数 ----------
+     * 与 MATLAB NumericRuler.Exponent 一致:仅当该轴量级极小(<1e-3)或极大(>=1e4)时
+     * 才提指数;常规量级直接显示原值,避免给 rpm/kW 这类读数平白加个 ×10³。 */
+    const SUP_DIGITS = { '-': '⁻', '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴', '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹' };
+    function supExp(n) { return n ? String(n).split('').map(c => SUP_DIGITS[c] || c).join('') : ''; }
+    function axisExponent(vals, limMin, limMax) {
+        let hi = 0;
+        for (const v of vals) if (v != null && isFinite(v)) hi = Math.max(hi, Math.abs(v));
+        if (limMin != null && isFinite(limMin)) hi = Math.max(hi, Math.abs(limMin));
+        if (limMax != null && isFinite(limMax)) hi = Math.max(hi, Math.abs(limMax));
+        if (hi === 0 || (hi >= 1e-3 && hi < 1e4)) return 0;
+        return Math.floor(Math.log10(hi));
+    }
+    function mantissaFormatter(exp) {
+        if (!exp) return axisNum;
+        const div = Math.pow(10, exp);
+        return v => {
+            if (!isFinite(v)) return '';
+            const m = v / div, a = Math.abs(m);
+            if (a === 0) return '0';
+            if (a >= 100) return String(Math.round(m));
+            if (a >= 10) return String(Math.round(m * 10) / 10);
+            if (a >= 1) return String(Math.round(m * 100) / 100);
+            if (a >= 0.01) return String(Math.round(m * 1000) / 1000);
+            return m.toExponential(1);
+        };
+    }
+    function axisNameWithExp(name, exp) { return (name || '') + (exp ? ' ×10' + supExp(exp) : ''); }
+
     /* ---------- LiveBuffer:运行时增量缓存(R138 7.3) ----------
      * 服务端 /afo/live 返回 sampleSeqList/sampleTimeList/values[n×W]/quality[n×W],
      * values 列与请求时的 columns(目录0基下标)一一对应。按游标追加;缺口不拼接,
@@ -235,7 +264,14 @@ window.AfoKernel = (() => {
             s.data.forEach(p => { if (p[1] != null && isFinite(p[1])) bucket.push(p[1]); });
         });
         const leftRange = axisRange(leftVals), rightRange = axisRange(rightVals);
+        // 左/右轴各自取量级,避免双轴量级不同时其中一侧刻度被压成 e 形式
+        const leftExp = axisExponent(leftVals, leftRange.min, leftRange.max);
+        const fmtLeft = mantissaFormatter(leftExp);
+        const rightExp = hasY2 ? axisExponent(rightVals, rightRange.min, rightRange.max) : 0;
+        const fmtRight = mantissaFormatter(rightExp);
         const yName = s => s && s.length ? (s[0].unit || '') : '';
+        const leftName = axisNameWithExp(yName(leftSeries), leftExp);
+        const rightName = axisNameWithExp(cfg.y2Title || yName((cfg.series || []).filter(s => s.axis === 'right')), rightExp);
         return {
             animation: false,
             // 效果图版式:图区扁平、横轴 t/s、图例在图下方(legend bottom);缩放用 inside(滚轮),
@@ -266,16 +302,16 @@ window.AfoKernel = (() => {
                 splitLine: { lineStyle: { color: '#f1f5f9' } }
             },
             yAxis: [{
-                type: 'value', scale: true, name: yName(leftSeries),
+                type: 'value', scale: true, name: leftName,
                 min: leftRange.min, max: leftRange.max,
                 nameTextStyle: { fontSize: 11, align: 'left' },
-                axisLabel: { fontSize: 10, formatter: axisNum },
+                axisLabel: { fontSize: 10, formatter: fmtLeft },
                 splitLine: { lineStyle: { color: '#f1f5f9' } }
             }].concat(hasY2 ? [{
-                type: 'value', scale: true, name: cfg.y2Title || yName((cfg.series || []).filter(s => s.axis === 'right')),
+                type: 'value', scale: true, name: rightName,
                 min: rightRange.min, max: rightRange.max,
                 nameTextStyle: { fontSize: 11, align: 'right' },
-                axisLabel: { fontSize: 10, formatter: axisNum },
+                axisLabel: { fontSize: 10, formatter: fmtRight },
                 splitLine: { show: false }
             }] : []),
             dataZoom: cfg.zoom === false ? [] : [{ type: 'inside', filterMode: 'none' }],

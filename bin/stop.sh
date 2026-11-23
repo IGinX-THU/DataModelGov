@@ -72,3 +72,17 @@ else
 fi
 
 echo "=========================================="
+
+# ===== Stop MATLAB daemon engines (follow application lifecycle) =====
+RUN_DIR="$(cd "$(dirname "$0")/.." && pwd)/run"
+for f in "$RUN_DIR"/matlab-daemon-*.pid; do
+  [ -f "$f" ] || continue
+  while read -r pid; do
+    [ -n "$pid" ] || continue
+    if ps -p "$pid" -o comm= 2>/dev/null | grep -qi "MATLAB"; then
+      echo "Stopping MATLAB daemon engine pid $pid"
+      kill -9 "$pid"
+    fi
+  done < "$f"
+  rm -f "$f"
+done

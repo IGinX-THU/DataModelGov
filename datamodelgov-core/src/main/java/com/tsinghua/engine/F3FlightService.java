@@ -720,12 +720,14 @@ public class F3FlightService {
                 EngineModels.ModelingTask tk = store.getTask(task.getProjectId(), task.getId());
                 if (tk != null) {
                     tk.setStatus(isConfirm ? EngineModels.ModelingTask.ST_READY : EngineModels.ModelingTask.ST_FAILED);
+                    String rawMsg = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+                    String fullMsg = "F3" + (isConfirm ? "数据意图确认失败: " : "建模执行失败: ")
+                            + friendlyF3Error(rawMsg);
                     if (!isConfirm) {
                         tk.setFinishedAt(System.currentTimeMillis());
-                        tk.setErrorKind(EngineModels.ModelingTask.ERR_NUMERIC);
+                        tk.setErrorKind(MatlabErrorDiagnostics.classify(fullMsg, EngineModels.ModelingTask.ERR_NUMERIC));
                     }
-                    tk.setMessage("F3" + (isConfirm ? "数据意图确认失败: " : "建模执行失败: ")
-                            + friendlyF3Error(e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
+                    tk.setMessage(MatlabErrorDiagnostics.decorate(fullMsg));
                     store.saveTask(tk);
                 }
             } catch (IOException io) {

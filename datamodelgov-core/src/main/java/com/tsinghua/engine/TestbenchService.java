@@ -1543,6 +1543,7 @@ m.append("    case 'savepackage'\n");
 
     static void applyProgramPatches(File programsRoot) {
         if (programsRoot == null || !programsRoot.isDirectory()) return;
+        java.util.LinkedHashSet<File> changedDirs = new java.util.LinkedHashSet<>();
         for (Map.Entry<String, String> e : PROGRAM_PATCHES.entrySet()) {
             File target = new File(programsRoot, e.getKey());
             byte[] patch = readClasspathResource(e.getValue());
@@ -1562,16 +1563,16 @@ m.append("    case 'savepackage'\n");
             try {
                 Files.createDirectories(target.getParentFile().toPath());
                 Files.write(target.toPath(), patch);
+                changedDirs.add(target.getParentFile());
                 log.info("已应用交付程序补丁(交付树不动,后端修复工作副本): {} -> {}", e.getValue(), target);
             } catch (IOException ex) {
                 log.warn("交付程序补丁写入失败({}): {}", target, ex.getMessage());
             }
         }
-        // 只 touch 被补丁涉及的程序子树:整树 touch 会把其他页签常驻引擎(如AFO专属引擎)
-        // 的全部函数标记过期,下一次 prepare 全量重解析,实测准备耗时 67s→570s
-        for (Map.Entry<String, String> e : PROGRAM_PATCHES.entrySet()) {
-            File patchedDir = new File(programsRoot, e.getKey()).getParentFile();
-            if (patchedDir != null && patchedDir.isDirectory()) touchProgramScripts(patchedDir);
+        // 只 touch 补丁实际变化的子树:无条件 touch 会把常驻引擎的全部函数标记过期,
+        // 每次 prepare 都触发全量重解析(实测准备耗时 67s→570s);内容未变时引擎缓存保持有效
+        for (File dir : changedDirs) {
+            if (dir.isDirectory()) touchProgramScripts(dir);
         }
     }
 

@@ -6,6 +6,11 @@
 <configuration  scan="true" scanPeriod="10 seconds">
     <contextName>logback-spring</contextName>
 
+    <!-- 控制台字符集可配置:默认 GBK(中文 Windows 控制台 cp936,Win7 的 conhost 对 UTF-8 渲染不完整);
+         IDEA 等按 UTF-8 解码的环境,运行配置加 -Dlogging.charset.console=UTF-8(或 yml/环境变量同名)覆盖。
+         文件 appender 保持 UTF-8 不要跟改,logs/*.log 按 UTF-8 查看。 -->
+    <springProperty scope="context" name="CONSOLE_CHARSET" source="logging.charset.console" defaultValue="GBK"/>
+
     <!-- name的值是变量的名称，value的值是变量定义的值。通过定义的值会被插入到logger上下文中。定义后，可以使“${}”来使用变量。 -->
     <property name="logging.path" value="./logs" />
 
