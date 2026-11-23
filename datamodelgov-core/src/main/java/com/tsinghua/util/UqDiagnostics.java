@@ -74,7 +74,21 @@ public final class UqDiagnostics {
     private static final String[] LOADLIB_HINTS = {
             "thunk", "loadlibrary", "LoadLibrary", "loadLibrary",
             "mex", "No supported compiler", "mex -setup", "SDK",
-            "生成GTESS", "物理库", "桥接"
+            "生成GTESS", "物理库", "桥接", "找不到指定的模块", "加载库"
+    };
+
+    /** loadlib 子类A:DLL 或其依赖运行库缺失(装了 VS 也无用)——Windows ERROR_MOD_NOT_FOUND。 */
+    private static final String[] DLL_DEPENDENCY_HINTS = {
+            "找不到指定的模块", "找不到指定的文件", "加载库", "找不到依赖项",
+            "126", "specified module could not be found", "VCRUNTIME140",
+            "api-ms-win-crt", "MSVCP", "dependent dll"
+    };
+
+    /** loadlib 子类B:thunk 桥接生成本身失败(需要 mex C 编译器/头文件/可写目录)。
+     *  仅用强锚点,不用裸 "compiler"/"SDK" 这类会在无关日志里误命中的宽泛词。 */
+    private static final String[] COMPILER_HINTS = {
+            "No supported compiler", "mex -setup", "未找到编译器", "无法生成thunk",
+            "生成thunk失败", "fatal error", "未找到支持的编译器"
     };
 
     /**
@@ -98,6 +112,8 @@ public final class UqDiagnostics {
         Map<String, Object> contract = null;
         String stage = "未识别阶段";
         boolean loadlibFailure = false;
+        boolean dllDependencyMissing = false;
+        boolean compilerMissing = false;
 
         for (int i = 0; i < lines.size(); i++) {
             String raw = lines.get(i);
@@ -176,6 +192,12 @@ public final class UqDiagnostics {
                 // 阶段已被其它行命中，但同一日志里出现库加载失败也是明确信号
                 loadlibFailure = true;
             }
+            // loadlib 子类:区分「DLL依赖缺失」与「mex编译器/头文件缺失」——修复方向完全不同。
+            // 仅在这行本身已是 loadlib 信号时归类,避免普通日志里的偶然词误判子类。
+            if (loadlibFailure || containsHint(line, LOADLIB_HINTS)) {
+                if (containsHint(line, DLL_DEPENDENCY_HINTS)) dllDependencyMissing = true;
+                if (containsHint(line, COMPILER_HINTS)) compilerMissing = true;
+            }
 
             // 5) 关键错误行
             if (!consumed && containsHint(line, ERROR_HINTS) && keyErrors.size() < 10) {
@@ -191,6 +213,10 @@ public final class UqDiagnostics {
             }
         }
 
+        if (loadlibFailure && "UQ基准回放(GTESS物理库加载/thunk桥接生成)".equals(stage)) {
+            stage = dllDependencyMissing ? "UQ基准回放(GTESS.dll加载失败:DLL/运行库依赖缺失)"
+                    : "UQ基准回放(GTESS thunk桥接生成失败:编译器/头文件/目录)";
+        }
         if (physical != null && "未识别阶段".equals(stage)) {
             stage = "UQ基准回放(确定性估计值复算)";
         }
@@ -205,6 +231,11 @@ public final class UqDiagnostics {
         out.put("contract", contract);
         out.put("keyErrors", keyErrors);
         out.put("samples", samples);
+        // loadlib 子类:DLL/运行库缺失是最具体根因,优先于编译器缺失(用户装了VS还失败多属此类)
+        if (loadlibFailure) {
+            out.put("loadlibSubclass", dllDependencyMissing ? "dll_missing"
+                    : (compilerMissing ? "compiler" : "unknown"));
+        }
         out.put("failureClass", classify(physical, outOfRange, keyErrors, loadlibFailure));
         out.put("suggestions", suggestions(out, physical, outOfRange, keyErrors));
         return out;
@@ -223,7 +254,11 @@ public final class UqDiagnostics {
             case "cache":
                 return "物理回放缓存与当前执行包不一致";
             case "loadlib":
-                return "GTESS物理库加载失败(thunk桥接未生成,多为生产机缺mex C编译器/头文件不全/目录只读)";
+                if ("dll_missing".equals(diag.get("loadlibSubclass"))) {
+                    return "GTESS.dll 加载失败(找不到指定的模块=DLL或其依赖运行库缺失,并非缺编译器;"
+                            + "装了VS仍会失败,需补 VC++ Redistributable x64 与 Win7 的 UCRT/KB2999226)";
+                }
+                return "GTESS物理库/thunk桥接生成失败(需 mex C 编译器/头文件齐全/目录可写)";
             default:
                 return "UQ程序返回失败";
         }
@@ -590,8 +625,23 @@ public final class UqDiagnostics {
             out.add("清理该任务输出目录下的 uq_replay_* 物理回放缓存后重新发起评估");
         }
         if ("loadlib".equals(cls)) {
-            out.add("这是生产机环境问题而非模型问题(本机正常可佐证):在该机 MATLAB 命令行执行 mex -setup C,确认已配置可用的 C 编译器(MinGW-w64 或 Visual Studio),再重跑评估");
-            out.add("核对程序目录 GTESS.dll 与 GTESS.h、blockAndFunctions.h、types_TMATS.H、matlab_loadlibrary_include/stdio.h 齐全且可读,程序目录非只读;本机可正常生成 thunk 说明交付包本身无误");
+            if ("dll_missing".equals(diag.get("loadlibSubclass"))) {
+                // 根因是 GTESS.dll 的运行时依赖,不是编译器——用户装了 VS 仍失败正属此类。
+                out.add("【装了VS仍报此错的原因】GTESS.dll(x64)依赖 VCRUNTIME140.dll 与 api-ms-win-crt-*.dll(UCRT),"
+                        + "这些是运行时库(Redistributable),和 Visual Studio 的编译工具链是两回事;装VS不代表装了它们");
+                out.add("修复1:安装 Visual C++ 2015-2022 Redistributable 的 x64 版(vc_redist.x64.exe),"
+                        + "注意必须 x64——装成 x86 版仍会报『找不到指定的模块』");
+                out.add("修复2:Win7 原生没有 UCRT,须安装 KB2999226(Windows Update)补齐 api-ms-win-crt-*.dll;"
+                        + "Win7 SP1 且未打此补丁是最常见根因");
+                out.add("验证:在生产机 MATLAB 执行 "
+                        + "[~,o]=loadlibrary('GTESS.dll','GTESS.h'); 若仍报『找不到指定的模块』,用 Dependencies/depends.exe "
+                        + "打开 GTESS.dll 看哪个依赖标红,补装对应运行库即可;本机正常说明交付DLL本身无误");
+            } else {
+                out.add("这是生产机环境问题而非模型问题(本机正常可佐证):在该机 MATLAB 命令行执行 mex -setup C,"
+                        + "确认已配置可用的 C 编译器(MinGW-w64 或受支持的 Visual Studio),再重跑评估");
+                out.add("核对程序目录 GTESS.dll 与 GTESS.h、blockAndFunctions.h、types_TMATS.H、"
+                        + "matlab_loadlibrary_include/stdio.h 齐全且可读,程序目录非只读;本机可正常生成 thunk 说明交付包本身无误");
+            }
         }
         if (out.isEmpty()) {
             out.add("查看诊断报告中的完整日志，确认是输入合同、物理求解还是输出扫描问题");
@@ -709,8 +759,22 @@ public final class UqDiagnostics {
         log2.add("生成 GTESS.thunk 失败,失败阶段: UQ基准回放(确定性估计值复算)。");
         Map<String, Object> d2 = analyze("steady", "D", log2);
         System.out.println("failureClass = " + d2.get("failureClass"));
+        System.out.println("subclass = " + d2.get("loadlibSubclass"));
         System.out.println("stage = " + d2.get("stage"));
         System.out.println("---- summary ----\n" + summaryText(d2));
+
+        System.out.println("\n===== 用例3: 装了VS仍失败=GTESS.dll依赖运行库缺失(ERROR_MOD_NOT_FOUND) =====");
+        List<String> log3 = new ArrayList<>();
+        log3.add("错误使用 loadlibrary");
+        log3.add("加载库 \"C:\\proj\\...\\GTESS.dll\" 时出错");
+        log3.add("找不到指定的模块。");
+        log3.add("出错 sht_load_engine_library (line 26)");
+        log3.add("生成 GTESS.thunk 失败,失败阶段: UQ基准回放(确定性估计值复算)。");
+        Map<String, Object> d3 = analyze("steady", "D", log3);
+        System.out.println("failureClass = " + d3.get("failureClass"));
+        System.out.println("subclass = " + d3.get("loadlibSubclass"));
+        System.out.println("stage = " + d3.get("stage"));
+        System.out.println("---- summary ----\n" + summaryText(d3));
     }
 
     private static final class SetPrinter {
