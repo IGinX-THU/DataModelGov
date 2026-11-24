@@ -67,14 +67,21 @@ end
 assert(~changed||cfg.initialTransitionConfirmed,'sht:afo:initialTransition', ...
     '当前只能准备配套正转速初态。初始目标不同，请先确认从该初态过渡，或运行后再施加。');
 stgLoad = tic;
-model='Dll_Control_AFO_V8_5_R2019b';load_system(fullfile(runtime,[model '.slx']));
+model='Dll_Control_AFO_V8_5_R2019b';
+alreadyReady = bdIsLoaded(model) && ~isempty(find_system(model,'SearchDepth',1,'Name','AFO Business Recorder'));
+stgLoad = tic;
+if ~alreadyReady
+    load_system(fullfile(runtime,[model '.slx']));
+end
 stgLoadSecs = toc(stgLoad); fprintf('AFO_PREPARE stage3 load_system: %.2f s\n',stgLoadSecs); stg = tic;
+stgMW = tic;
 mw=get_param(model,'ModelWorkspace'); fields=fieldnames(v);
 for k=1:numel(fields),assignin(mw,fields{k},v.(fields{k}));end
 assignin(mw,'ExternalSecondaryAirEnabled',double(cfg.externalAir));
 assignin(mw,'Wfb',v.Wf0);
 % 去掉旧InitFcn对基础工作区及相邻项目的隐式依赖，数值边界不变。
 set_param(model,'InitFcn','');
+stgMWsec = toc(stgMW); fprintf('AFO_PREPARE stage4 workspace+pulses: %.2f s\n',stgMWsec); stgSurg = tic;
 if strcmp(cfg.loadMode,'power'),mode='legacyPower';
 elseif strcmp(cfg.loadMode,'torque'),mode='directTorque';
 else,mode='collectivePitch';end
@@ -86,6 +93,7 @@ if ~cfg.legacyPulses
     for k=1:numel(pulses),set_param(pulses{k},'Amplitude','0');end
 end
 % 新源只替代四个指令常值，原物理接线和原脉冲验证分支均保留。
+if ~alreadyReady
 commandNames={'NpDem','Constant2','Mkp Direct Command','Collective Pitch Command'};
 reference=isfield(cfg,'verificationOriginalSources')&&cfg.verificationOriginalSources;
 if reference,assert(cfg.legacyPulses,'原指令源只用于显式旧脉冲回归。');end
@@ -97,7 +105,7 @@ for k=1:4
     add_block('simulink/User-Defined Functions/Level-2 MATLAB S-Function',b, ...
         'FunctionName','SFunc_AFO_Command','Parameters',num2str(k),'Position',pos);
     ph=get_param(b,'PortHandles');
-    for j=1:numel(dest),add_line(model,ph.Outport,dest(j),'autorouting','on');end
+    for j=1:numel(dest),add_line(model,ph.Outport,dest(j),'autorouting','off');end
 end
 % 全部业务输出接同一个只读记录器，不增加物理反馈。
 spec=sht_afo_channels; sink=[model '/AFO Business Recorder'];
@@ -110,9 +118,11 @@ for k=1:numel(spec)
     connections(k,:)={spec(k).id,getfullname(src),spec(k).port};
     port=sht_afo_observation_port(model,src,spec(k).port,k);
     dest=get_param(sink,'PortHandles');
-    add_line(model,port,dest.Inport(k),'autorouting','on');
+    add_line(model,port,dest.Inport(k),'autorouting','off');
 end
 save_system(model);close_system(model,0);
+end
+fprintf('AFO_PREPARE stage5 surgery+save: %.2f s\n',toc(stgSurg));
 p=struct('config',cfg,'runtime',runtime,'model',model,'identity',identity, ...
     'initialState',v.InitStat,'initialOutput',v.InitOut, ...
     'initialTransition',changed, ...

@@ -1694,16 +1694,19 @@ public class AfoService {
         if (clean) {
             try {
                 eng.feval(0, "eval", "bdclose('all'); clear sht_afo_session; rehash;");
-                if (warmEngine == null && warmEngineEnabled) {
-                    warmEngine = eng;
-                    warmProjectId = s.projectId;
-                    log.info("AFO引擎复用: 复位后转入预热槽(项目{}),同项目下次prepare直取", s.projectId);
-                    return;
-                }
-                log.info("AFO预热槽已被占用,关闭本场引擎");
             } catch (Exception e) {
-                log.warn("AFO引擎复位失败,关闭引擎并回填冷启: {}", e.getMessage());
+                log.warn("AFO引擎复位失败(继续复用): {}", e.getMessage());
             }
+            // 引擎交换:保留本场热引擎(模型已加载/DLL已载/函数已解析),关闭槽内冷引擎。
+            // 修复:此前"槽占用则关热引擎"导致每场都在冷引擎上重付 DLL/解析/模型加载(时快时慢)
+            if (warmEngine != null && warmEngine != eng) {
+                log.info("AFO 引擎交换: 关闭槽内冷引擎,本场热引擎转入预热槽");
+                closeEngineRaw(warmEngine);
+            }
+            warmEngine = eng;
+            warmProjectId = s.projectId;
+            log.info("AFO引擎复用: 本场热引擎转入预热槽(项目{}),同项目下次prepare直取", s.projectId);
+            return;
         }
         closeEngineRaw(eng);
     }
