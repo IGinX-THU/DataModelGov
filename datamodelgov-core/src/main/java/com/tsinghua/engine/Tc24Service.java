@@ -861,7 +861,8 @@ public class Tc24Service {
                     runner.requestCancel();
                     throw new java.util.concurrent.CancellationException("已在启动阶段取消");
                 }
-                Object result = prepPayload(runner.run(), new File(adapterDir, "uq-result.json"));
+                Object result = invokeUqWithDllDetour(runner, adapterDir, configFile, workDir,
+                        programCopy, key, "uq");
 
                 t = store.getTask(task.getProjectId(), task.getId());
                 t.setUqFinishedAt(System.currentTimeMillis());
@@ -1166,6 +1167,72 @@ public class Tc24Service {
             }
         });
         return record;
+    }
+
+    /**
+     * 出错绕路:执行 UQ runner,若报 GTESS.dll/thunk 加载失败(异常或结果/日志三类信号),
+     * 则用 Java 绝对路径预加载依赖 DLL 后重试一次。正常路径优先,只在真报错后绕;
+     * 不改 MATLAB 源码、不要求生产机装 VC++/UCRT。
+     */
+    private Object invokeUqWithDllDetour(MatlabFunctionRunner runner, File adapterDir, File configFile,
+                                         File workDir, File programCopy, String key, String tag) throws Exception {
+        File resultFile = new File(adapterDir, "uq-result.json");
+        Object result;
+        try {
+            result = prepPayload(runner.run(), resultFile);
+        } catch (Exception first) {
+            if (!NativeDllDetour.isDllThunkFailure(first.getMessage())
+                    && !NativeDllDetour.isDllThunkFailure(uqLogTailText(key))) {
+                throw first;
+            }
+            log.warn("TC24 UQ {} 检测到GTESS/thunk失败(异常),尝试Java预加载DLL绕路: task={}", tag, key, first);
+            result = retryUqAfterDllPreload(adapterDir, configFile, workDir, programCopy, key, tag);
+        }
+        if (isThunkFailure(result, key)) {
+            log.warn("TC24 UQ {} 检测到GTESS/thunk失败(结果/日志),尝试Java预加载DLL绕路: task={}", tag, key);
+            Object retried = retryUqAfterDllPreload(adapterDir, configFile, workDir, programCopy, key, tag);
+            if (retried != null) result = retried;
+        }
+        return result;
+    }
+
+    /** Java 侧预加载 DLL 后用新 runner 重跑一次;预加载失败返回 null,沿用原失败。 */
+    private Object retryUqAfterDllPreload(File adapterDir, File configFile, File workDir,
+                                          File programCopy, String key, String tag) throws Exception {
+        if (!NativeDllDetour.preload(adapterDir, workDir, programCopy)) {
+            emitLog(key, "环境绕路失败:未在交付目录找到可加载的 GTESS.dll,保留原始错误");
+            return null;
+        }
+        emitLog(key, "环境绕路:GTESS.dll/thunk加载失败,已用Java预加载依赖DLL后重试一次");
+        logBuffers.put(key, new ArrayList<>());
+        MatlabFunctionRunner r2 = new MatlabFunctionRunner(adapterDir, "dmg_tc24_task",
+                new Object[]{configFile.getAbsolutePath()},
+                new File(workDir, "uq-run.log"), enginePool,
+                new MatlabFunctionRunner.ProgressCancellationSink() {
+                    @Override public void onProgress(String message) { emitLog(key, message); }
+                    @Override public boolean isCancellationRequested() { return false; }
+                });
+        running.put(key + ":uq", r2);
+        return prepPayload(r2.run(), new File(adapterDir, "uq-result.json"));
+    }
+
+    /** 结果 JSON 或最近日志里是否出现 GTESS/thunk 加载失败信号。 */
+    private boolean isThunkFailure(Object result, String key) {
+        if (result != null) {
+            String text = String.valueOf(result);
+            if (NativeDllDetour.isDllThunkFailure(text)) return true;
+        }
+        return NativeDllDetour.isDllThunkFailure(uqLogTailText(key));
+    }
+
+    /** 取最近若干行 UQ 日志拼接(判定 DLL 失败用,控制长度)。 */
+    private String uqLogTailText(String key) {
+        List<String> lines = logBuffers.get(key);
+        if (lines == null || lines.isEmpty()) return "";
+        int from = Math.max(0, lines.size() - 60);
+        StringBuilder sb = new StringBuilder();
+        for (int i = from; i < lines.size(); i++) sb.append(lines.get(i)).append('\n');
+        return sb.toString();
     }
 
     /**

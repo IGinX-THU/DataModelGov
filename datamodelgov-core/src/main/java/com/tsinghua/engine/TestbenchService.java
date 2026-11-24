@@ -1539,6 +1539,12 @@ m.append("    case 'savepackage'\n");
         // 缓存复用;模型未变时 Simulink 命中缓存跳过重编译
         PROGRAM_PATCHES.put("AFO_V_2/sht_afo_session.m",
                 "matlab-patches/AFO_V_2/sht_afo_session.m");
+        // AFO prepare:共享 Simulink 编译缓存(_slCache 跨会话)+ 阶段计时(定位准备耗时大头)
+        PROGRAM_PATCHES.put("AFO_V_2/sht_afo_prepare.m",
+                "matlab-patches/AFO_V_2/sht_afo_prepare.m");
+        // AFO 初始化:eval 长字符串改脚本文件执行(JIT),修复数学初始化循环逐行解释过慢
+        PROGRAM_PATCHES.put("AFO_V_2/sht_afo_initialize.m",
+                "matlab-patches/AFO_V_2/sht_afo_initialize.m");
     }
 
     static void applyProgramPatches(File programsRoot) {

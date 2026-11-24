@@ -468,6 +468,11 @@ public class F3FlightService {
     }
 
     private void f3Exec(EngineModels.ModelingTask task, String action) {
+        f3Exec(task, action, false);
+    }
+
+    /** detourAttempted=true 表示已用过一次出错绕路(短路径),避免无限重试。 */
+    private void f3Exec(EngineModels.ModelingTask task, String action, boolean detourAttempted) {
         final String key = task.getId();
         String[] kd = kindDirs(task.getKind());
         String subDir = kd[0], taskFn = kd[1];
@@ -716,13 +721,38 @@ public class F3FlightService {
             store.saveTask(tk);
         } catch (Exception e) {
             log.error("F3 {} 执行失败: {}", action, key, e);
+            String rawMsg = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+            String fullMsg = "F3" + (isConfirm ? "数据意图确认失败: " : "建模执行失败: ")
+                    + friendlyF3Error(rawMsg);
+            // 出错绕路:文件系统权限/占用或Excel写入类失败,首次发生时切短临时路径重试一次。
+            // 正常路径优先,只有真报错才绕;workDirOverride 让所有产物定位(本方法/前端/断言)一致。
+            boolean fsOrExcel = "FS_PERMISSION".equals(MatlabErrorDiagnostics.category(fullMsg))
+                    || "EXCEL_FILE".equals(MatlabErrorDiagnostics.category(fullMsg));
+            if (!detourAttempted && fsOrExcel) {
+                File alt = store.detourTaskWorkDir(task.getProjectId(), task.getId());
+                if (alt != null) {
+                    emitLog(key, "环境绕路:正常路径写入失败(" + msFirstLine(rawMsg)
+                            + "),已切换短临时工作目录重试一次: " + alt.getAbsolutePath());
+                    log.warn("F3 {} 环境绕路重试: task={} -> {}", action, key, alt);
+                    try {
+                        EngineModels.ModelingTask rt = store.getTask(task.getProjectId(), task.getId());
+                        if (rt != null) {
+                            rt.setStatus(isConfirm ? EngineModels.ModelingTask.ST_PREPARING
+                                    : EngineModels.ModelingTask.ST_RUNNING);
+                            rt.setMessage("环境绕路:改用短临时目录重试中");
+                            store.saveTask(rt);
+                        }
+                    } catch (IOException io) {
+                        log.warn("绕路状态写回失败(不影响重试)", io);
+                    }
+                    f3Exec(task, action, true);
+                    return;
+                }
+            }
             try {
                 EngineModels.ModelingTask tk = store.getTask(task.getProjectId(), task.getId());
                 if (tk != null) {
                     tk.setStatus(isConfirm ? EngineModels.ModelingTask.ST_READY : EngineModels.ModelingTask.ST_FAILED);
-                    String rawMsg = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
-                    String fullMsg = "F3" + (isConfirm ? "数据意图确认失败: " : "建模执行失败: ")
-                            + friendlyF3Error(rawMsg);
                     if (!isConfirm) {
                         tk.setFinishedAt(System.currentTimeMillis());
                         tk.setErrorKind(MatlabErrorDiagnostics.classify(fullMsg, EngineModels.ModelingTask.ERR_NUMERIC));
@@ -737,6 +767,13 @@ public class F3FlightService {
         } finally {
             running.remove(key + ":f3");
         }
+    }
+
+    /** 日志/提示只取第一行,避免整段堆栈刷屏。 */
+    private static String msFirstLine(String s) {
+        if (s == null) return "";
+        String one = s.replace('\r', ' ').replace('\n', ' ').trim();
+        return one.length() > 160 ? one.substring(0, 160) : one;
     }
 
     /** F-06自演化不确定性评估:走Start_Stage4_02_EvolutionTask的uq动作链

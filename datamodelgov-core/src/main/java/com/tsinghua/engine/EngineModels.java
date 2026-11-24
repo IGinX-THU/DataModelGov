@@ -130,6 +130,9 @@ public final class EngineModels {
         private Double regularizationStrength;
         /** A阶段确认凭据(B阶段必需) */
         private String confirmationFile;
+        /** 出错绕路后的实际工作目录(短路径);为空=用 taskWorkDir 默认路径。
+         *  仅当正常路径创建/写入失败(FS_PERMISSION/EXCEL_FILE)时由失败处理写入,后续执行沿用。 */
+        private String workDirOverride;
         /** F3结果目录(readResult用) */
         private String f3ResultDir;
         /** 程序返回的原始结果(键值),仅保存可序列化摘要 */

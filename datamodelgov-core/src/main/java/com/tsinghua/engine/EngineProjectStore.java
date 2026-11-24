@@ -252,11 +252,101 @@ public class EngineProjectStore {
      * `<项目工作目录>/job/program-tasks/<taskId>`;无项目时回退元数据目录。
      */
     public File taskWorkDir(String projectId, String taskId) throws IOException {
+        // 出错绕路:任务被记录过替代工作目录时,所有产物定位统一走替代路径,
+        // 否则任务写在新目录、前端/断言仍按默认目录找,会出现"执行成功但找不到交付"。
+        try {
+            ModelingTask t = getTask(projectId, taskId);
+            if (t != null && t.getWorkDirOverride() != null && !t.getWorkDirOverride().trim().isEmpty()) {
+                File alt = new File(t.getWorkDirOverride().replace('\\', '/'));
+                return alt;
+            }
+        } catch (Exception ignore) {
+            // 任务元数据尚不可用(如预测用伪 taskId)时回退默认路径
+        }
         EngineProject p = getProject(projectId);
         if (p == null || p.getWorkdir() == null || p.getWorkdir().isEmpty()) {
             throw new IOException("项目不存在或工作目录未配置: " + projectId);
         }
         return new File(new File(new File(p.getWorkdir()), "job"), "program-tasks/" + taskId);
+    }
+
+    /**
+     * 出错绕路:把任务工作目录切换到短临时路径,并写入任务元数据,使后续所有 taskWorkDir 调用一致。
+     * 仅在正常路径创建/写入失败(FS_PERMISSION/EXCEL_FILE)时由失败处理调用。
+     *
+     * @return 绕路后的工作目录(已建成);失败返回 null,调用方按原错误报错
+     */
+    public File detourTaskWorkDir(String projectId, String taskId) {
+        try {
+            // 固定短路径,便于原目录恢复可写后仍能定位历史产物
+            String slug = (projectId + "_" + taskId).replaceAll("[^A-Za-z0-9_-]", "_");
+            if (slug.length() > 64) slug = slug.substring(0, 64);
+            File base = new File(new File(System.getProperty("java.io.tmpdir"), "dmg-work"), slug);
+            if (!base.isDirectory() && !base.mkdirs()) {
+                log.warn("绕路工作目录创建失败: {}", base);
+                return null;
+            }
+            // 把原工作目录内容(输入副本/确认凭据/适配器)尽量搬到短路径,
+            // 否则 transient run 的 confirmationFile 与 compat 副本仍在旧目录,绕路后找不到。
+            EngineProject p = getProject(projectId);
+            if (p != null && p.getWorkdir() != null && !p.getWorkdir().isEmpty()) {
+                File original = new File(new File(new File(p.getWorkdir()), "job"), "program-tasks/" + taskId);
+                if (original.isDirectory() && !original.equals(base.getCanonicalFile())) {
+                    copyTreeBestEffort(original, base);
+                }
+            }
+            ModelingTask t = getTask(projectId, taskId);
+            if (t == null) {
+                log.warn("绕路工作目录失败:任务元数据不存在 {}/{}", projectId, taskId);
+                return null;
+            }
+            t.setWorkDirOverride(base.getAbsolutePath().replace('\\', '/'));
+            saveTask(t);
+            log.warn("任务工作目录已绕路到临时短路径: task={} -> {}", taskId, base);
+            return base;
+        } catch (Exception e) {
+            log.warn("绕路工作目录异常: task={} ({})", taskId, e.toString());
+            return null;
+        }
+    }
+
+    /** 绕路时把原工作目录内容搬到短路径;单个文件失败(占用)不中断整体绕路。 */
+    private void copyTreeBestEffort(File src, File dst) {
+        try {
+            java.nio.file.Files.walkFileTree(src.toPath(), new java.nio.file.SimpleFileVisitor<Path>() {
+                @Override public java.nio.file.FileVisitResult preVisitDirectory(Path dir, java.nio.file.attribute.BasicFileAttributes attrs) {
+                    try {
+                        Path rel = src.toPath().relativize(dir);
+                        Path target = dst.toPath().resolve(rel.toString());
+                        if (!java.nio.file.Files.isDirectory(target)) java.nio.file.Files.createDirectories(target);
+                        return java.nio.file.FileVisitResult.CONTINUE;
+                    } catch (Exception e) {
+                        log.warn("绕路复制目录跳过: {} ({})", dir, e.toString());
+                        return java.nio.file.FileVisitResult.SKIP_SUBTREE;
+                    }
+                }
+                @Override public java.nio.file.FileVisitResult visitFile(Path file, java.nio.file.attribute.BasicFileAttributes attrs) {
+                    try {
+                        Path rel = src.toPath().relativize(file);
+                        Path target = dst.toPath().resolve(rel.toString());
+                        if (!java.nio.file.Files.isRegularFile(target)
+                                || java.nio.file.Files.size(target) != attrs.size()
+                                || target.toFile().lastModified() < file.toFile().lastModified()) {
+                            java.nio.file.Files.copy(file, target, StandardCopyOption.REPLACE_EXISTING);
+                        }
+                    } catch (Exception e) {
+                        log.warn("绕路复制文件跳过(占用): {} ({})", file, e.toString());
+                    }
+                    return java.nio.file.FileVisitResult.CONTINUE;
+                }
+                @Override public java.nio.file.FileVisitResult visitFileFailed(Path file, IOException exc) {
+                    log.warn("绕路复制不可读跳过: {} ({})", file, exc == null ? "" : exc.toString());
+                    return java.nio.file.FileVisitResult.CONTINUE;
+                }
+            });
+        } catch (Exception e) {
+            log.warn("绕路复制工作目录异常: {} -> {} ({})", src, dst, e.toString());
+        }
     }
 
     /* ---------- 多系统联合仿真(AFO_V_2 会话) ---------- */

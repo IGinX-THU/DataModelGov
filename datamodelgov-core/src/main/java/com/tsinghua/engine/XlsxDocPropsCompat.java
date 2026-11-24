@@ -167,7 +167,8 @@ public final class XlsxDocPropsCompat {
 
     private static void writePatched(File source, File dst) throws IOException {
         Set<String> seen = new LinkedHashSet<>();
-        File tmp = new File(dst.getParentFile(), dst.getName() + ".tmp");
+        // 唯一临时名:并发/残留 .tmp 不会互相踩踏
+        File tmp = new File(dst.getParentFile(), dst.getName() + ".tmp-" + System.nanoTime());
         try (ZipFile zin = new ZipFile(source);
              ZipOutputStream out = new ZipOutputStream(Files.newOutputStream(tmp.toPath()))) {
             Enumeration<? extends ZipEntry> en = zin.entries();
@@ -192,13 +193,25 @@ public final class XlsxDocPropsCompat {
             if (!seen.contains(APP_PART)) putEntry(out, APP_PART, buildAppXml(zin).getBytes(StandardCharsets.UTF_8));
             if (!seen.contains(CORE_PART)) putEntry(out, CORE_PART, CORE_XML.getBytes(StandardCharsets.UTF_8));
         }
-        try {
-            Files.move(tmp.toPath(), dst.toPath(), StandardCopyOption.REPLACE_EXISTING);
-        } catch (IOException e) {
-            Files.deleteIfExists(tmp.toPath());
-            throw e;
+        // 出错绕路:目标被 Excel/杀软瞬时占用时,退避重试原子替换(最多 8 次,累计约 1.5s)
+        IOException last = null;
+        for (int attempt = 0; attempt < 8; attempt++) {
+            try {
+                Files.move(tmp.toPath(), dst.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                dst.setLastModified(System.currentTimeMillis());
+                return;
+            } catch (IOException e) {
+                last = e;
+                try {
+                    Thread.sleep(30L * (attempt + 1));
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
         }
-        dst.setLastModified(System.currentTimeMillis());
+        Files.deleteIfExists(tmp.toPath());
+        throw last == null ? new IOException("Excel副本原子替换失败: " + dst) : last;
     }
 
     private static void putEntry(ZipOutputStream out, String name, byte[] data) throws IOException {
