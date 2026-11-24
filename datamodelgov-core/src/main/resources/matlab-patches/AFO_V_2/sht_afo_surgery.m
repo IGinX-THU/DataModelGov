@@ -1,21 +1,36 @@
-function sht_afo_surgery(model, spec)
-%SHT_AFO_SURGERY Ó„'9Å:ÆŸäÅAFO}ä/°UhS-Functionê¨¿İX
-% Mnàs,Î8{öÅ–:gL;í prepare 1(¹(ˆkóÇ
-commandNames={'NpDem','Constant2','Mkp Direct Command','Collective Pitch Command'};
+function [connections,modified] = sht_afo_surgery(model, cfg)
+%SHT_AFO_SURGERY ½á¹¹ĞÔÊÖÊõ(ÃİµÈ):4¸öÖ¸Áî³£Öµ»» Level-2 MATLAB S-Function Ô´,
+% È«²¿ÒµÎñÊä³ö½ÓÍ¬Ò»Ö»¶Á¼ÇÂ¼Æ÷(SFunc_AFO_Recorder)£¬²»Ôö¼ÓÎïÀí·´À¡¡£
+% prepareÓëÆô¶¯Ô¤×°Åä¹²ÓÃ:Ä£ĞÍÒÑ´øÍ¬°æ±¾ÊÖÊõ´Á(¼ÇÂ¼Æ÷¿éTag)Ê±Áã³É±¾·µ»ØÏÖÓĞÁ¬½Ó,
+% ²»ÖØ×öÊÖÊõ¡ª¡ªÍ¬ÒıÇæÁ¬Ğø×¼±¸ÃâÖØ¸´ÊÖÊõ(Êµ²â8~19s)µÄºËĞÄ¡£ÊÖÊõÂß¼­»òÍ¨µÀ×Öµä
+% ±ä»¯Ê±µİÔöÏÂ·½°æ±¾´®(Óë sht_afo_prepare.m/sht_afo_presurgery.m µÄ expectedTag
+% Í¬²½),¾É¸Ä×°(ÄÚ´æ/»º´æ)×Ô¶¯Ê§Ğ§ÖØ×ö¡£
+spec=sht_afo_channels;
 reference=isfield(cfg,'verificationOriginalSources')&&cfg.verificationOriginalSources;
-if reference,assert(cfg.legacyPulses,'Ô­Ö¸ÁîÔ´Ö»ÓÃÓÚÏÔÊ½¾ÉÂö³å»Ø¹é¡£');end
-for k=1:4
-    if reference,continue;end % »Ø¹é±£ÁôÔ­³£Öµ¿é£¬ÔËĞĞÉí·İÔÚÏÂ·½°´Êµ¼ÊSLX¼ÆËã¡£
-    b=[model '/' commandNames{k}]; ph=get_param(b,'PortHandles');
-    ln=get_param(ph.Outport,'Line'); dest=get_param(ln,'DstPortHandle'); pos=get_param(b,'Position');
-    delete_line(ln);delete_block(b);
-    add_block('simulink/User-Defined Functions/Level-2 MATLAB S-Function',b, ...
-        'FunctionName','SFunc_AFO_Command','Parameters',num2str(k),'Position',pos);
-    ph=get_param(b,'PortHandles');
-    for j=1:numel(dest),add_line(model,ph.Outport,dest(j),'autorouting','on');end
+tag=sprintf('dmg-afo-surgery-v1|n=%d|ref=%d',numel(spec),double(reference));
+sink=[model '/AFO Business Recorder'];
+if ~isempty(find_system(model,'SearchDepth',1,'Name','AFO Business Recorder')) && ...
+        strcmp(get_param(sink,'Tag'),tag)
+    connections=local_connections(model,spec);modified=false;return;
+end
+modified=true;
+if reference
+    assert(cfg.legacyPulses,'Ô­Ö¸ÁîÔ´Ö»ÓÃÓÚÏÔÊ½¾ÉÂö³å»Ø¹é¡£');
+else
+    % ĞÂÔ´Ö»Ìæ´úËÄ¸öÖ¸Áî³£Öµ£¬Ô­ÎïÀí½ÓÏßºÍÔ­Âö³åÑéÖ¤·ÖÖ§¾ù±£Áô¡£
+    commandNames={'NpDem','Constant2','Mkp Direct Command','Collective Pitch Command'};
+    for k=1:4
+        b=[model '/' commandNames{k}]; ph=get_param(b,'PortHandles');
+        ln=get_param(ph.Outport,'Line'); dest=get_param(ln,'DstPortHandle'); pos=get_param(b,'Position');
+        delete_line(ln);delete_block(b);
+        add_block('simulink/User-Defined Functions/Level-2 MATLAB S-Function',b, ...
+            'FunctionName','SFunc_AFO_Command','Parameters',num2str(k),'Position',pos);
+        ph=get_param(b,'PortHandles');
+        for j=1:numel(dest),add_line(model,ph.Outport,dest(j),'autorouting','off');end
+    end
 end
 % È«²¿ÒµÎñÊä³ö½ÓÍ¬Ò»¸öÖ»¶Á¼ÇÂ¼Æ÷£¬²»Ôö¼ÓÎïÀí·´À¡¡£
-spec=sht_afo_channels; sink=[model '/AFO Business Recorder'];
+local_drop_recorder(model,sink);  % ¾É°æ±¾ÊÖÊõ²ĞÁô(ÒìTag)ÏÈ²ğ³ı(Ô­Ê¼Ä£ĞÍÎŞ¼ÇÂ¼Æ÷Ê±ÄÚ²¿×ÔÊØÎÀ)
 add_block('simulink/User-Defined Functions/Level-2 MATLAB S-Function',sink, ...
     'FunctionName','SFunc_AFO_Recorder','Parameters',num2str(numel(spec)), ...
     'Position',[2200 100 2360 400]);
@@ -25,8 +40,27 @@ for k=1:numel(spec)
     connections(k,:)={spec(k).id,getfullname(src),spec(k).port};
     port=sht_afo_observation_port(model,src,spec(k).port,k);
     dest=get_param(sink,'PortHandles');
-    add_line(model,port,dest.Inport(k),'autorouting','on');
+    add_line(model,port,dest.Inport(k),'autorouting','off');
 end
+% ÊÖÊõ´Á×îºóÂä:°ëÍ¾Ê§°Ü²»Áô´Á,¸´ÓÃÊØÎÀ²»»á°Ñ°ë³ÉÆ·µ±¸Ä×°Ä£ĞÍ¡£
+set_param(sink,'Tag',tag);
 save_system(model);
-
+end
+function connections=local_connections(model,spec)
+% ¸´ÓÃÂ·¾¶²»ÖØÁ¬ĞÅºÅÏß,¹Û²âÁ¬½ÓÃèÊöÖ±½Ó°´µ±Ç°Ä£ĞÍÓëÍ¨µÀ×ÖµäÖØËã(ÓëÊÖÊõÂ·¾¶Ò»ÖÂ)¡£
+connections=cell(numel(spec),3);
+for k=1:numel(spec)
+    src=Simulink.ID.getHandle([model ':' num2str(spec(k).sid)]);
+    connections(k,:)={spec(k).id,getfullname(src),spec(k).port};
+end
+end
+function local_drop_recorder(model,sink)
+% Ö»ÔÚ¼ÇÂ¼Æ÷ÒÑ´æÔÚÊ±²ğ³ı(Ô­Ê¼Ä£ĞÍÃ»ÓĞ¸Ã¿é,get_param»áÅ×"ÎŞĞ§Simulink¶ÔÏóÃû")
+if isempty(find_system(model,'SearchDepth',1,'Name','AFO Business Recorder')),return;end
+ph=get_param(sink,'PortHandles');
+for j=1:numel(ph.Inport)
+    ln=get_param(ph.Inport(j),'Line');
+    if ln>0,delete_line(ln);end
+end
+delete_block(sink);
 end

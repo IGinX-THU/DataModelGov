@@ -35,7 +35,10 @@ public class EngineAfoSessionService extends IginxListService<EngineAfoSessionEn
                 ts = ca instanceof Number ? ((Number) ca).longValue() : System.currentTimeMillis();
                 while (tsTaken(ts)) ts++;
                 row = new EngineAfoSessionEntity();
-                row.setOwner(AuthUtil.getCurrentUsername());
+                // owner优先取idx(AfoService已改为异步同步,异步线程无安全上下文,HTTP线程已捕获)
+                Object ow = idx.get("owner");
+                row.setOwner(ow != null && !String.valueOf(ow).isEmpty()
+                        ? String.valueOf(ow) : AuthUtil.getCurrentUsername());
             } else {
                 ts = row.getCreateTime();
             }

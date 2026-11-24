@@ -11,9 +11,16 @@ switch lower(action)
         assert(isempty(S)||strcmp(S.state,'closed')|| ...
             (ismember(S.state,{'ended','failed'})&&strcmp(S.saveState,'saved')), ...
             'sht:afo:busy','已有未保存会话，先保存或明确放弃，不能覆盖内存结果。');
+        stgSess = tic;
         p=sht_afo_prepare(varargin{1});
         % 准备期间不得发布只有一半字段的ready会话。先完成字典，再一次赋值。
-        [catalog,catalogHash]=sht_afo_catalog;
+        % 进程级memoize:sht_afo_catalog内部readtable解析显示CSV每次1~4s,
+        % 字典与CSV在进程生命周期内不变,首场解析后直取(实测会话尾部4s的主因)
+        persistent CAT_C CATALOG_HASH_C
+        if isempty(CAT_C)
+            [CAT_C,CATALOG_HASH_C]=sht_afo_catalog;
+        end
+        [catalog,catalogHash]=deal(CAT_C,CATALOG_HASH_C);
         S=struct('prepared',p,'initialConfig',p.config,'state','ready','time',0,'commandTime',-Inf, ...
             'applied',local_commands(p.config),'pending',[], ...
             'events',struct('id',{},'kind',{},'value',{},'status',{}, ...
@@ -38,6 +45,7 @@ switch lower(action)
             'schema','SHT_AFO_CATALOG_V2','runId',p.config.runId, ...
             'sessionId',S.sessionId,'channelCatalogHash',S.catalogHash,'channels',S.catalog));
         local_publish(true);varargout{1}=local_status(S);
+        fprintf('AFO_SESSION prepare tail(catalog+struct+publish): %.2f s\n',toc(stgSess)-p.prepareSeconds);
     case 'status'
         assert(~isempty(S),'无会话。');varargout{1}=local_status(S);
     case 'command'
@@ -140,8 +148,19 @@ switch lower(action)
         end
     case 'run'
         assert(~isempty(S)&&strcmp(S.state,'ready'),'须先准备；结束结果不能作为恢复状态。');
-        assert(~bdIsLoaded(S.prepared.model)&&~libisloaded('GTESS'),'sht:afo:busy', ...
-            '当前进程已有模型或GTESS，不能覆盖其他会话。');
+        assert(~libisloaded('GTESS'),'sht:afo:busy', ...
+            '当前进程GTESS已加载，不能覆盖其他会话。');
+        % 改装模型常驻内存(上一场prepare特意保留):带手术戳且已停止即直取复用,免load_system
+        modelLoaded=bdIsLoaded(S.prepared.model);
+        if modelLoaded
+            rec=~isempty(find_system(S.prepared.model,'SearchDepth',1,'Name','AFO Business Recorder'));
+            tag='';
+            if rec,tag=get_param([S.prepared.model '/AFO Business Recorder'],'Tag');end
+            assert(rec&&startsWith(tag,'dmg-afo-surgery'),'sht:afo:busy', ...
+                '当前进程已有未改装的同名模型，不能覆盖其他会话。');
+            assert(strcmp(get_param(S.prepared.model,'SimulationStatus'),'stopped'),...
+                'sht:afo:busy','上一场仿真尚未停止，不能开始新一场。');
+        end
         local_verify_prepared(S.prepared);
         if ~isempty(varargin),S.observer=varargin{1};end
         S.state='running';S.started=tic;S.startedAtLocal=datestr(now,'yyyy-mm-ddTHH:MM:SS');local_publish(true);
@@ -152,7 +171,9 @@ switch lower(action)
             'CodeGenFolder',fullfile(S.prepared.runtime,'code'),'createDir',true);
         addpath(S.prepared.config.sourceDir,'-begin');addpath(S.prepared.runtime,'-begin');
         try
-            load_system(fullfile(S.prepared.runtime,[S.prepared.model '.slx']));
+            if ~modelLoaded
+                load_system(fullfile(S.prepared.runtime,[S.prepared.model '.slx']));
+            end
             rehash path;
             required={'SFunc_AFO_Command','SFunc_AFO_Recorder','sht_afo_channels'};
             for k=1:numel(required)
@@ -393,7 +414,8 @@ for k=1:numel(p.identity)
 end
 end
 function local_cleanup(folder,oldPath,oldGen)
-if bdIsLoaded('Dll_Control_AFO_V8_5_R2019b'),close_system('Dll_Control_AFO_V8_5_R2019b',0);end
+% 改装模型保留在内存(下一场prepare带同版本手术戳直取复用,免load免手术);
+% GTESS必须卸载(prepare入口断言+下一场运行重新加载),环境(缓存/目录/路径)还原。
 if libisloaded('GTESS'),calllib('GTESS','DLL_SHT_Free');unloadlibrary('GTESS');end
 Simulink.fileGenControl('setConfig','config',oldGen);cd(folder);path(oldPath);
 end

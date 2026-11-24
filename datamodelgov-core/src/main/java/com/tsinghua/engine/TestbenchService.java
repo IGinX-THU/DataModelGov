@@ -1545,9 +1545,12 @@ m.append("    case 'savepackage'\n");
         // AFO 初始化:eval 长字符串改脚本文件执行(JIT),修复数学初始化循环逐行解释过慢
         PROGRAM_PATCHES.put("AFO_V_2/sht_afo_initialize.m",
                 "matlab-patches/AFO_V_2/sht_afo_initialize.m");
-        // AFO 结构性手术独立函数(命令替换+记录器+布线+保存),启动预装配与 prepare 共用
+        // AFO 结构性手术独立函数(命令替换+记录器+布线+保存,幂等),启动预装配与 prepare 共用
         PROGRAM_PATCHES.put("AFO_V_2/sht_afo_surgery.m",
                 "matlab-patches/AFO_V_2/sht_afo_surgery.m");
+        // AFO 启动预装配:服务启动期在专属引擎里装好改装模型并常驻内存,首场prepare免load免手术
+        PROGRAM_PATCHES.put("AFO_V_2/sht_afo_presurgery.m",
+                "matlab-patches/AFO_V_2/sht_afo_presurgery.m");
     }
 
     static void applyProgramPatches(File programsRoot) {

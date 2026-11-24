@@ -71,6 +71,10 @@ public class AfoService {
     private String daemonStopMode;
     private final ExecutorService warmExecutor = Executors.newSingleThreadExecutor(
             r -> { Thread t = new Thread(r, "afo-warm-engine"); t.setDaemon(true); return t; });
+    /** 会话清单IGinX同步专用线程:upsert原在HTTP请求线程同步执行,IGinX会话掉线重连
+     *  (实测单次~10s)会直接拖住前端/afo/prepare请求;清单行允许弱实时,改异步。 */
+    private final ExecutorService indexExecutor = Executors.newSingleThreadExecutor(
+            r -> { Thread t = new Thread(r, "afo-index"); t.setDaemon(true); return t; });
 
     /** 增量数据 SSE 泵:200ms 扫描 stream 块,向订阅者推送增量(program-run SSE 同构)。 */
     private final List<LiveSub> liveSubs = new java.util.concurrent.CopyOnWriteArrayList<>();
@@ -209,12 +213,67 @@ public class AfoService {
             com.tsinghua.matlab.MatlabNativeLibrary.prepare(null);
             long t0 = System.currentTimeMillis();
             MatlabEngine e = MatlabEngine.startMatlab();
+            bootstrapEngine(e, false);      // GBK字符集先就位:预装配经feval传中文路径依赖它
+            prewarmInstrumentedModel(e);    // 启动预装配:改装模型常驻内存,首场prepare免load免手术
             warmEngine = e;
             log.info("AFO专属MATLAB引擎{}完成(耗时 {} ms),prepare 将直接取用", label, System.currentTimeMillis() - t0);
         } catch (Throwable e) {
             warmEngine = null;
             log.warn("AFO专属MATLAB引擎{}失败(prepare 时将同步重试): {}", label, e.getMessage());
         }
+    }
+
+    /** 启动预装配:专属引擎里把上次项目的改装模型装好并常驻内存,首场prepare即享复用
+     *  (免load_system+免手术,实测这两项占稳态准备的~7-12s)。程序目录取上次会话落盘
+     *  的 run/afo-warm.properties;失败仅日志跳过(首场prepare走完整流程),不影响功能。 */
+    private void prewarmInstrumentedModel(MatlabEngine eng) {
+        try {
+            File pd = readWarmProgramDir();
+            if (pd == null || !new File(pd, "sht_afo_presurgery.m").isFile()) return;
+            // 启动时必须先应用补丁再预装配:补丁原在首次prepare才落盘,预热引擎会
+            // 读到工作目录里的旧版函数(实测:预装配连跑两轮旧版直至首场prepare)
+            TestbenchService.applyProgramPatches(pd.getParentFile());
+            long t0 = System.currentTimeMillis();
+            eng.feval(0, "addpath", pd.getAbsolutePath(), "-begin");
+            eng.feval(0, "eval", "rehash;");
+            eng.feval(0, "sht_afo_presurgery", pd.getAbsolutePath());
+            log.info("AFO 启动预装配完成(改装模型常驻内存,耗时 {} ms),首场prepare免load免手术",
+                    System.currentTimeMillis() - t0);
+        } catch (Throwable t) {
+            log.warn("AFO 启动预装配跳过(首场prepare走完整流程): {}", t.getMessage());
+        }
+    }
+
+    /** 记录最近一次AFO准备的程序目录(run/afo-warm.properties):服务重启后启动预装配按此定位。 */
+    private void persistWarmProgramDir(File progCopy) {
+        try {
+            File dir = new File("run");
+            if (!dir.exists() && !dir.mkdirs()) return;
+            java.nio.file.Files.write(new File(dir, "afo-warm.properties").toPath(),
+                    ("programDir=" + progCopy.getAbsolutePath() + "\n")
+                            .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        } catch (Exception e) {
+            log.warn("AFO预装配目录记录失败(不影响功能): {}", e.getMessage());
+        }
+    }
+
+    private File readWarmProgramDir() {
+        File f = new File("run", "afo-warm.properties");
+        if (!f.isFile()) return null;
+        try {
+            String txt = new String(java.nio.file.Files.readAllBytes(f.toPath()),
+                    java.nio.charset.StandardCharsets.UTF_8);
+            for (String line : txt.split("\n")) {
+                line = line.trim();
+                if (line.startsWith("programDir=")) {
+                    File pd = new File(line.substring("programDir=".length()).trim());
+                    if (pd.isDirectory()) return pd;
+                }
+            }
+        } catch (Exception ignore) {
+            // 读失败按无记录处理:预热引擎不带模型,首场prepare走完整流程
+        }
+        return null;
     }
 
     /** AFO 专属引擎数(预热待命 + 会话独占),这两类都不进共享池,供工作台状态聚合读取。 */
@@ -1083,11 +1142,9 @@ public class AfoService {
             File progCopy = ensureAfoSource(s.projectId);
             writeAdapter(s, progCopy);
             MatlabEngine eng = takeWarmEngine(s.projectId);
-            // 冷启兜底会耗尽预热引擎(启动期预热失败/未就绪时走到这里):
-            // 准备期立即回填,保证下次 prepare 免冷启动,而不是等到会话结束
-            if (warmEngineEnabled && !daemonEnabled && warmEngine == null) {
-                warmExecutor.submit(() -> startWarmEngine("回填"));
-            }
+            // 不在准备期回填:回填引擎与prepare抢CPU(实测stage2/3被拖慢2~5倍),且
+            // 会话结束引擎交换时本场热引擎转入预热槽、回填引擎会被直接杀掉(纯浪费)。
+            // 槽位兜底:失败路径closeEngine与非干净终态recycle各自回填。
             s.engine = eng;
             s.engineOwned = true;
             try {
@@ -1112,6 +1169,7 @@ public class AfoService {
             logLine("模型初始化完成,耗时 " + (System.currentTimeMillis() - prepareT0) + " ms;准备完成,等待开始运行");
             s.phase = "READY";
             s.message = "准备完成;可开始运行";
+            persistWarmProgramDir(progCopy); // 记录程序目录:下次服务启动预装配按此定位
             writeSessionIndex(s);
         } catch (Exception e) {
             log.error("AFO准备失败: {}", s.runId, e);
@@ -1679,21 +1737,24 @@ public class AfoService {
     }
 
     /**
-     * 会话终态后引擎处置:同项目复用优先。复位序列(关上一场留在内存的模型实例、
-     * 清会话persistent、刷新函数缓存)后转入预热槽,DLL与已解析函数保留,下次
-     * 同项目prepare免重付冷启动/DLL加载/函数解析三重成本。合同支持:prepare 断言
+     * 会话终态后引擎处置:同项目复用优先。复位序列(兜底停上一场仿真、清会话persistent、
+     * 刷新函数缓存;改装模型特意保留在内存)后转入预热槽,DLL与已解析函数保留,下次
+     * 同项目prepare免重付冷启动/DLL加载/函数解析/load/手术四重成本。合同支持:prepare 断言
      * 允许在 state='closed' 的会话上整体重建状态(sht_afo_session L10-17)。
      * 仅用于干净终态(CLOSED/ENDED);FAILED 等可疑状态仍走 closeEngine 不复用。
      */
     private synchronized void recycleOrCloseEngine(AfoSession s) {
         MatlabEngine eng = s.engine;
         s.engine = null;
-        scheduleWarmRefill();
         if (eng == null) return;
         boolean clean = "CLOSED".equals(s.phase) || "ENDED".equals(s.phase);
         if (clean) {
             try {
-                eng.feval(0, "eval", "bdclose('all'); clear sht_afo_session; rehash;");
+                // 复位只清会话persistent并兜底停仿真,不再bdclose——改装模型特意保留在内存,
+                // 下次同项目prepare带同版本手术戳直取复用(免load_system+免手术,准备耗时大头)
+                eng.feval(0, "eval", "try, set_param('Dll_Control_AFO_V8_5_R2019b',"
+                        + "'SimulationCommand','stop'); catch, end; "
+                        + "clear sht_afo_session; rehash;");
             } catch (Exception e) {
                 log.warn("AFO引擎复位失败(继续复用): {}", e.getMessage());
             }
@@ -1709,6 +1770,7 @@ public class AfoService {
             return;
         }
         closeEngineRaw(eng);
+        scheduleWarmRefill(); // 非干净终态:槽位已空,回填兜底(clean路径槽位由热引擎补满,无需回填)
     }
 
     private AfoSession requireSession(String projectId, String expectPhase) throws IOException {
@@ -1756,8 +1818,11 @@ public class AfoService {
         } catch (Exception e) {
             log.warn("AFO会话元数据写入失败", e);
         }
-        // 仿真记录清单(IginX)同步,失败仅告警
-        afoSessionService.upsertFromIndex(s.projectId, idx);
+        // 仿真记录清单(IginX)同步:改异步——同步点原在HTTP请求线程,IGinX会话掉线重连
+        // (实测单次~10s)会直接拖住前端/afo/prepare;文件元数据仍同步(会话检查依赖它)。
+        // owner在HTTP线程先捕获(idx),异步线程无安全上下文。
+        idx.put("owner", AuthUtil.getCurrentUsername());
+        indexExecutor.submit(() -> afoSessionService.upsertFromIndex(s.projectId, idx));
     }
 
     /* ---------- 工具 ---------- */

@@ -1,8 +1,21 @@
 function p = sht_afo_prepare(cfg)
 %SHT_AFO_PREPARE 创建独立运行副本；原SLX、DLL、MDL和控制律不写入。
-assert(~bdIsLoaded('Dll_Control_AFO_V8_5_R2019b'),'sht:afo:modelBusy', ...
-    '本进程已打开同名SLX。请先自行关闭，或使用独立MATLAB进程；本接口不覆盖已打开模型。');
+% 复用阶梯(数字试车台专属引擎场景):改装模型常驻引擎内存→免load+免手术;
+% 项目级改装缓存(_dmg_cache)→免手术;初态结果按依赖SHA缓存→免GTESS重算。
+% 首场全新引擎仍走完整流程:复制资产+SHA、初始化、手术、保存。
+MODEL='Dll_Control_AFO_V8_5_R2019b';
+reference=isfield(cfg,'verificationOriginalSources')&&cfg.verificationOriginalSources;
+% 手术版本戳:与 sht_afo_surgery.m/sht_afo_presurgery.m 的 tag 格式一致;
+% 手术逻辑或通道字典变化时同步递增 v1,旧改装(内存/缓存)自动失效重做。
+expectedTag=sprintf('dmg-afo-surgery-v1|n=%d|ref=%d',numel(sht_afo_channels),double(reference));
 assert(~libisloaded('GTESS'),'sht:afo:dllBusy','本进程GTESS已加载，请使用独立MATLAB进程。');
+if bdIsLoaded(MODEL)
+    sink=[MODEL '/AFO Business Recorder'];
+    ours=~isempty(find_system(MODEL,'SearchDepth',1,'Name','AFO Business Recorder'))&&...
+        ~isempty(get_param(sink,'Tag'))&&startsWith(get_param(sink,'Tag'),'dmg-afo-surgery');
+    assert(ours,'sht:afo:modelBusy', ...
+        '本进程已打开同名SLX。请先自行关闭，或使用独立MATLAB进程；本接口不覆盖已打开模型。');
+end
 validateattributes(cfg.duration,{'double'},{'scalar','positive','finite'});
 validateattributes(cfg.recordStep,{'double'},{'scalar','positive','finite'});
 validateattributes(cfg.logEverySeconds,{'double'},{'scalar','positive','finite'});
@@ -41,6 +54,7 @@ for k=1:numel(names)
     if endsWith(names{k},'.m'),local_runtime_encoding(fullfile(runtime,names{k}));end
 end
 stgCopySecs = toc(stg); fprintf('AFO_PREPARE stage1 copy+sha256: %.2f s\n',stgCopySecs); stg = tic;
+stgEnv = tic;
 old=pwd; oldPath=path; oldGen=Simulink.fileGenControl('getConfig');
 cleaner=onCleanup(@() local_restore(old,oldPath,oldGen));
 cd(runtime);
@@ -48,9 +62,27 @@ Simulink.fileGenControl('set','CacheFolder',fullfile(fileparts(fileparts(runtime
     'CodeGenFolder',fullfile(runtime,'code'),'createDir',true);
 % R2019b切换缓存配置可能恢复旧搜索路径，必须在该操作后加入业务依赖。
 addpath(cfg.sourceDir,'-begin');addpath(runtime,'-begin');
+fprintf('AFO_PREPARE stage1b env(cd+cache+path): %.2f s\n',toc(stgEnv));
+% ---- stage2: 初始化(依赖SHA缓存:GTESS.dll与初始化脚本任一未变即直取上次结果) ----
 stgInit = tic;
-v=sht_afo_initialize(runtime);
-stgInitSecs = toc(stgInit); fprintf('AFO_PREPARE stage2 initialize: %.2f s\n',stgInitSecs); stg = tic;
+scriptSha='';
+for k=1:numel(names)
+    if strcmp(names{k},'RunCtrlSysModelSHT.m'),scriptSha=identity(k).sha256;end
+end
+cacheKey=sprintf('%s|%s|%s',identity(2).sha256,scriptSha,version('-release'));
+cached=[];
+try,cached=evalin('base','dmg_afo_init_cache');catch,end
+if isstruct(cached)&&isfield(cached,'key')&&strcmp(cached.key,cacheKey)&&...
+        isfield(cached,'v')&&isfield(cached.v,'Ts')&&isfield(cached.v,'Np0')&&...
+        isfield(cached.v,'power0')&&isfield(cached.v,'Wf0')&&isfield(cached.v,'InitStat')
+    v=cached.v;
+    fprintf('AFO_PREPARE stage2 initialize (cached): 0.00 s\n');
+else
+    v=sht_afo_initialize(runtime);
+    assignin('base','dmg_afo_init_cache',struct('key',cacheKey,'v',v));
+    fprintf('AFO_PREPARE stage2 initialize: %.2f s\n',toc(stgInit));
+end
+stg = tic;
 assert(abs(cfg.recordStep/v.Ts-round(cfg.recordStep/v.Ts))<1e-9, ...
     '记录周期须为模型积分步长的整数倍，不能修改原积分步。');
 cfg.designNpRpm=v.Np0; cfg.designPowerW=v.power0; cfg.modelStep=v.Ts;
@@ -66,12 +98,50 @@ switch cfg.loadMode
 end
 assert(~changed||cfg.initialTransitionConfirmed,'sht:afo:initialTransition', ...
     '当前只能准备配套正转速初态。初始目标不同，请先确认从该初态过渡，或运行后再施加。');
+% ---- 内存改装模型守卫:同版本手术戳且已停止则复用;版本不符弃用重做 ----
+stgGuard = tic;
+model=MODEL;
+rtSlx=fullfile(runtime,[model '.slx']);
+if bdIsLoaded(model)
+    sink=[model '/AFO Business Recorder'];
+    try
+        if ~strcmp(get_param(model,'SimulationStatus'),'stopped')
+            set_param(model,'SimulationCommand','stop');
+        end
+    catch
+    end
+    t0=tic;
+    while bdIsLoaded(model)&&~strcmp(get_param(model,'SimulationStatus'),'stopped')&&toc(t0)<60
+        pause(0.2);
+    end
+    if ~strcmp(get_param(model,'SimulationStatus'),'stopped')||...
+            ~strcmp(get_param(sink,'Tag'),expectedTag)
+        close_system(model,0);  % 上一场未停止/旧版本改装:弃用,下方走load+手术
+    end
+end
+fprintf('AFO_PREPARE stage3a guard: %.2f s\n',toc(stgGuard));
 stgLoad = tic;
-model='Dll_Control_AFO_V8_5_R2019b';
-alreadyReady = bdIsLoaded(model) && ~isempty(find_system(model,'SearchDepth',1,'Name','AFO Business Recorder'));
-stgLoad = tic;
-if ~alreadyReady
-    load_system(fullfile(runtime,[model '.slx']));
+if ~bdIsLoaded(model)
+    % 项目级改装缓存(上一场手术产物/启动预装配产物):免手术,只付load
+    cacheDir=fullfile(cfg.sourceDir,'_dmg_cache');
+    cacheSlx=fullfile(cacheDir,[model '.slx']);
+    fromCache=false;
+    if exist(cacheSlx,'file')==2
+        meta=local_cache_meta(fullfile(cacheDir,'cache.mat'));
+        fromCache=~isempty(meta)&&strcmp(meta.tag,expectedTag)&&...
+            strcmp(meta.sourceSha,identity(1).sha256);
+    end
+    if fromCache
+        copyfile(cacheSlx,rtSlx);  % 覆盖stage1新拷的原始模型
+        try
+            load_system(rtSlx);
+        catch
+            copyfile(fullfile(cfg.sourceDir,[model '.slx']),rtSlx); % 缓存损坏回退原始模型
+            load_system(rtSlx);
+        end
+    else
+        load_system(rtSlx);
+    end
 end
 stgLoadSecs = toc(stgLoad); fprintf('AFO_PREPARE stage3 load_system: %.2f s\n',stgLoadSecs); stg = tic;
 stgMW = tic;
@@ -92,35 +162,26 @@ if ~cfg.legacyPulses
     pulses=find_system(model,'SearchDepth',1,'BlockType','DiscretePulseGenerator');
     for k=1:numel(pulses),set_param(pulses{k},'Amplitude','0');end
 end
-% 新源只替代四个指令常值，原物理接线和原脉冲验证分支均保留。
-if ~alreadyReady
-commandNames={'NpDem','Constant2','Mkp Direct Command','Collective Pitch Command'};
-reference=isfield(cfg,'verificationOriginalSources')&&cfg.verificationOriginalSources;
-if reference,assert(cfg.legacyPulses,'原指令源只用于显式旧脉冲回归。');end
-for k=1:4
-    if reference,continue;end % 回归保留原常值块，运行身份在下方按实际SLX计算。
-    b=[model '/' commandNames{k}]; ph=get_param(b,'PortHandles');
-    ln=get_param(ph.Outport,'Line'); dest=get_param(ln,'DstPortHandle'); pos=get_param(b,'Position');
-    delete_line(ln);delete_block(b);
-    add_block('simulink/User-Defined Functions/Level-2 MATLAB S-Function',b, ...
-        'FunctionName','SFunc_AFO_Command','Parameters',num2str(k),'Position',pos);
-    ph=get_param(b,'PortHandles');
-    for j=1:numel(dest),add_line(model,ph.Outport,dest(j),'autorouting','off');end
+[connections,surgeried]=sht_afo_surgery(model,cfg);  % 幂等:同版本手术戳已就位则零成本返回
+% runtime副本必须与内存中改装模型一致(run前身份校验与结果追溯都指向该文件)
+if ~strcmp(get_param(model,'FileName'),rtSlx)
+    fn=get_param(model,'FileName');
+    if exist(fn,'file')==2
+        copyfile(fn,rtSlx);          % 上一场runtime的改装模型文件(毫秒级)
+    else
+        save_system(model,rtSlx);    % 旧输出目录已清理:内存状态落盘(兜底)
+    end
 end
-% 全部业务输出接同一个只读记录器，不增加物理反馈。
-spec=sht_afo_channels; sink=[model '/AFO Business Recorder'];
-add_block('simulink/User-Defined Functions/Level-2 MATLAB S-Function',sink, ...
-    'FunctionName','SFunc_AFO_Recorder','Parameters',num2str(numel(spec)), ...
-    'Position',[2200 100 2360 400]);
-connections=cell(numel(spec),3);
-for k=1:numel(spec)
-    src=Simulink.ID.getHandle([model ':' num2str(spec(k).sid)]);
-    connections(k,:)={spec(k).id,getfullname(src),spec(k).port};
-    port=sht_afo_observation_port(model,src,spec(k).port,k);
-    dest=get_param(sink,'PortHandles');
-    add_line(model,port,dest.Inport(k),'autorouting','off');
-end
-save_system(model);close_system(model,0);
+if surgeried
+    % 手术刚发生:同步项目级改装缓存,下一次prepare/启动预装配免手术
+    cacheDir=fullfile(cfg.sourceDir,'_dmg_cache');
+    if ~exist(cacheDir,'dir'),mkdir(cacheDir);end
+    try
+        copyfile(rtSlx,fullfile(cacheDir,[model '.slx']));
+        meta=struct('tag',expectedTag,'sourceSha',identity(1).sha256,'updatedAt',datestr(now));
+        save(fullfile(cacheDir,'cache.mat'),'-struct','meta');
+    catch
+    end
 end
 fprintf('AFO_PREPARE stage5 surgery+save: %.2f s\n',toc(stgSurg));
 p=struct('config',cfg,'runtime',runtime,'model',model,'identity',identity, ...
@@ -131,6 +192,7 @@ p=struct('config',cfg,'runtime',runtime,'model',model,'identity',identity, ...
     'matlabVersion',version,'matlabRelease',version('-release'), ...
     'observationConnections',{connections});
 % 新入口与记录器的身份同样参与结果追溯，不只记录旧物理模型。
+stgTail = tic;
 helpers={'sht_afo_config.m','sht_afo_initialize.m','sht_afo_prepare.m', ...
     'sht_afo_session.m','sht_afo_results.m','sht_afo_channels.m', ...
     'SFunc_AFO_Command.m','SFunc_AFO_Recorder.m','Start_AFO_Multisystem.m', ...
@@ -141,19 +203,30 @@ for k=1:numel(helpers)
     p.identity(end+1)=struct('name',helpers{k},'sha256',local_hash(fullfile(cfg.sourceDir,helpers{k})));
 end
 p.identity(end+1)=struct('name','runtime/instrumented_model.slx', ...
-    'sha256',local_hash(fullfile(runtime,[model '.slx'])));
+    'sha256',local_hash(rtSlx));
 for k=2:numel(names)
     p.identity(end+1)=struct('name',['runtime/' names{k}], ...
         'sha256',local_hash(fullfile(runtime,names{k})));
 end
 save(fullfile(cfg.outputDir,'prepared.mat'),'p');
+fprintf('AFO_PREPARE stage6 identity+save: %.2f s\n',toc(stgTail));
 fprintf('AFO准备完成：实际Np=%.3f rpm，Ng=%.3f rpm，准备%.2f s。\n', ...
     v.InitStat(1),v.InitStat(2),p.prepareSeconds);
 fprintf('预计人工1倍速计算至少%.1f s，另加编译/暂停；fast不保证实时。\n',cfg.duration);
 end
 function local_restore(folder,p,g)
-if bdIsLoaded('Dll_Control_AFO_V8_5_R2019b'),close_system('Dll_Control_AFO_V8_5_R2019b',0);end
+% 改装模型保留在内存(下一场prepare直取复用、run免load_system);只还原环境。
 Simulink.fileGenControl('setConfig','config',g);cd(folder);path(p);
+end
+function meta=local_cache_meta(file)
+meta=[];
+try
+    loaded=load(file);
+    if isfield(loaded,'tag')&&isfield(loaded,'sourceSha')
+        meta=struct('tag',loaded.tag,'sourceSha',loaded.sourceSha);
+    end
+catch
+end
 end
 function h=local_hash(file)
 fid=fopen(file,'rb');g=onCleanup(@()fclose(fid));bytes=fread(fid,Inf,'*uint8');
