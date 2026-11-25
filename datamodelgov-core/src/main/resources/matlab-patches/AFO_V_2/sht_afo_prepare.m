@@ -72,6 +72,20 @@ end
 cacheKey=sprintf('%s|%s|%s',identity(2).sha256,scriptSha,version('-release'));
 cached=[];
 try,cached=evalin('base','dmg_afo_init_cache');catch,end
+if ~(isstruct(cached)&&isfield(cached,'key')&&strcmp(cached.key,cacheKey)&&...
+        isfield(cached,'v')&&isfield(cached.v,'Ts')&&isfield(cached.v,'Np0')&&...
+        isfield(cached.v,'power0')&&isfield(cached.v,'Wf0')&&isfield(cached.v,'InitStat'))
+    % 引擎内存无缓存(新引擎/回填/重启):回退项目级磁盘缓存,免GTESS重算(实测单次2~13s)
+    try
+        loaded=load(fullfile(cfg.sourceDir,'_dmg_cache','init_cache.mat'));
+        if isfield(loaded,'key')&&strcmp(loaded.key,cacheKey)&&isfield(loaded,'v')&&...
+                isfield(loaded.v,'Ts')&&isfield(loaded.v,'Np0')&&isfield(loaded.v,'InitStat')
+            cached=struct('key',loaded.key,'v',loaded.v);
+            assignin('base','dmg_afo_init_cache',cached);  % 回填引擎内存,后续直取
+        end
+    catch
+    end
+end
 if isstruct(cached)&&isfield(cached,'key')&&strcmp(cached.key,cacheKey)&&...
         isfield(cached,'v')&&isfield(cached.v,'Ts')&&isfield(cached.v,'Np0')&&...
         isfield(cached.v,'power0')&&isfield(cached.v,'Wf0')&&isfield(cached.v,'InitStat')
@@ -80,6 +94,13 @@ if isstruct(cached)&&isfield(cached,'key')&&strcmp(cached.key,cacheKey)&&...
 else
     v=sht_afo_initialize(runtime);
     assignin('base','dmg_afo_init_cache',struct('key',cacheKey,'v',v));
+    try
+        cacheDirI=fullfile(cfg.sourceDir,'_dmg_cache');
+        if ~isfolder(cacheDirI),mkdir(cacheDirI);end
+        meta=struct('key',cacheKey,'v',v);
+        save(fullfile(cacheDirI,'init_cache.mat'),'-struct','meta');
+    catch
+    end
     fprintf('AFO_PREPARE stage2 initialize: %.2f s\n',toc(stgInit));
 end
 stg = tic;

@@ -48,6 +48,7 @@ if ~fromCache
     meta=struct('tag',expectedTag,'sourceSha',sourceSha,'updatedAt',datestr(now));
     save(fullfile(cacheDir,'cache.mat'),'-struct','meta');
 end
+[~,~]=sht_afo_catalog;  % 预热显示字典(readtable单次1~9s,别让首场prepare付)
 fprintf('AFO_PRESURGERY 模型预装配完成(%s)。\n',local_source_name(fromCache));
 end
 function s=local_source_name(fromCache)

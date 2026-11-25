@@ -1551,6 +1551,10 @@ m.append("    case 'savepackage'\n");
         // AFO 启动预装配:服务启动期在专属引擎里装好改装模型并常驻内存,首场prepare免load免手术
         PROGRAM_PATCHES.put("AFO_V_2/sht_afo_presurgery.m",
                 "matlab-patches/AFO_V_2/sht_afo_presurgery.m");
+        // AFO 显示字典进程级memoize:readtable解析CSV每次1~9s,键=CSV/通道字典mtime+字节数,
+        // 文件变化自动失效;引擎复位clear sht_afo_session不影响本函数persistent
+        PROGRAM_PATCHES.put("AFO_V_2/sht_afo_catalog.m",
+                "matlab-patches/AFO_V_2/sht_afo_catalog.m");
     }
 
     static void applyProgramPatches(File programsRoot) {
