@@ -1156,11 +1156,21 @@ public class AfoService {
             final long prepareT0 = System.currentTimeMillis();
             s.message = "MATLAB已就绪;校验文件身份/初始化模型(气路与初态)中";
             logLine("MATLAB引擎已就绪,开始准备运行副本(校验身份/气路/初态)");
-            // 厂商 prepare 无阶段回调:每5s刷新已进行时长到页面(SSE),替代"无反馈假死"
+            // 厂商 prepare 无阶段回调:每5s读取MATLAB落盘的阶段标签(runtime/prepare-stage.txt,
+            // 每个阶段完成后写入)映射为界面文案+已进行时长,经SSE状态推送;文件缺失退回纯计时文案
             final java.util.concurrent.ScheduledFuture<?>[] tick = new java.util.concurrent.ScheduledFuture[1];
             tick[0] = livePump.scheduleWithFixedDelay(() -> {
                 try {
-                    s.message = "初始化模型中(已进行 " + (System.currentTimeMillis() - prepareT0) / 1000 + " s)";
+                    String stage = "";
+                    try {
+                        File sf = new File(s.outputDir, "runtime" + File.separator + "prepare-stage.txt");
+                        if (sf.isFile()) {
+                            stage = new String(java.nio.file.Files.readAllBytes(sf.toPath()),
+                                    java.nio.charset.StandardCharsets.US_ASCII).trim();
+                        }
+                    } catch (Exception ignore) { }
+                    long sec = (System.currentTimeMillis() - prepareT0) / 1000;
+                    s.message = prepareStageLabel(stage) + "(已进行 " + sec + " s)";
                 } catch (Exception ignore) { }
             }, 5, 5, java.util.concurrent.TimeUnit.SECONDS);
             // 引擎内调 session('prepare', cfg);适配器读JSON构造cfg
@@ -1698,6 +1708,22 @@ public class AfoService {
         if ("result".equals(action)) {
             File dst = new File(s.outputDir, "result.json");
             Files.copy(new File(resultFile).toPath(), dst.toPath(), StandardCopyOption.REPLACE_EXISTING);
+        }
+    }
+
+    /** prepare阶段文件标签(runtime/prepare-stage.txt,MATLAB每阶段完成后写入)→界面文案。
+     *  标签语义=已完成阶段,文案显示当前进行中的下一阶段;未知标签退回复制资产文案。 */
+    private static String prepareStageLabel(String stage) {
+        switch (stage) {
+            case "stage1":  return "准备Simulink运行环境中(冷启动较慢)";
+            case "stage1b": return "初始化气路与初态中";
+            case "stage2":
+            case "stage3a": return "装载模型中";
+            case "stage3":
+            case "stage4":  return "注入参数与模型手术中";
+            case "stage5":  return "身份留痕与结果登记中";
+            case "stage6":  return "收尾保存中";
+            default:        return "复制资产与身份校验中";
         }
     }
 

@@ -31,6 +31,7 @@ assert(islogical(cfg.externalAir)&&isscalar(cfg.externalAir),'externalAirĞëÎªÂß¼
 assert(~exist(cfg.outputDir,'dir'),'sht:afo:exists','½á¹ûÄ¿Â¼ÒÑ´æÔÚ£¬²»¸²¸Ç¡£');
 clock = tic;
 mkdir(cfg.outputDir); runtime = fullfile(cfg.outputDir,'runtime'); mkdir(runtime);
+stageFile=fullfile(runtime,'prepare-stage.txt');  % Java 5s tick¶ÁÈ¡Ó³ÉäÎª½çÃæ½×¶ÎÎÄ°¸
 stg = tic;
 % Ö»È¡³ÉÌ×ÔËĞĞËùĞè×Ê²ú£¬²»¸´ÖÆ¾É»º´æ¡¢×Ô¶¯±£´æ»òÆäËû°æ±¾Ä£ĞÍ¡£
 names = {'Dll_Control_AFO_V8_5_R2019b.slx','GTESS.dll','GTESS.h', ...
@@ -54,6 +55,7 @@ for k=1:numel(names)
     if endsWith(names{k},'.m'),local_runtime_encoding(fullfile(runtime,names{k}));end
 end
 stgCopySecs = toc(stg); fprintf('AFO_PREPARE stage1 copy+sha256: %.2f s\n',stgCopySecs); stg = tic;
+local_stage(stageFile,'stage1');
 stgEnv = tic;
 old=pwd; oldPath=path; oldGen=Simulink.fileGenControl('getConfig');
 cleaner=onCleanup(@() local_restore(old,oldPath,oldGen));
@@ -63,6 +65,7 @@ Simulink.fileGenControl('set','CacheFolder',fullfile(fileparts(fileparts(runtime
 % R2019bÇĞ»»»º´æÅäÖÃ¿ÉÄÜ»Ö¸´¾ÉËÑË÷Â·¾¶£¬±ØĞëÔÚ¸Ã²Ù×÷ºó¼ÓÈëÒµÎñÒÀÀµ¡£
 addpath(cfg.sourceDir,'-begin');addpath(runtime,'-begin');
 fprintf('AFO_PREPARE stage1b env(cd+cache+path): %.2f s\n',toc(stgEnv));
+local_stage(stageFile,'stage1b');
 % ---- stage2: ³õÊ¼»¯(ÒÀÀµSHA»º´æ:GTESS.dllÓë³õÊ¼»¯½Å±¾ÈÎÒ»Î´±ä¼´Ö±È¡ÉÏ´Î½á¹û) ----
 stgInit = tic;
 scriptSha='';
@@ -91,6 +94,7 @@ if isstruct(cached)&&isfield(cached,'key')&&strcmp(cached.key,cacheKey)&&...
         isfield(cached.v,'power0')&&isfield(cached.v,'Wf0')&&isfield(cached.v,'InitStat')
     v=cached.v;
     fprintf('AFO_PREPARE stage2 initialize (cached): 0.00 s\n');
+    local_stage(stageFile,'stage2');
 else
     v=sht_afo_initialize(runtime);
     assignin('base','dmg_afo_init_cache',struct('key',cacheKey,'v',v));
@@ -102,6 +106,7 @@ else
     catch
     end
     fprintf('AFO_PREPARE stage2 initialize: %.2f s\n',toc(stgInit));
+    local_stage(stageFile,'stage2');
 end
 stg = tic;
 assert(abs(cfg.recordStep/v.Ts-round(cfg.recordStep/v.Ts))<1e-9, ...
@@ -141,6 +146,7 @@ if bdIsLoaded(model)
     end
 end
 fprintf('AFO_PREPARE stage3a guard: %.2f s\n',toc(stgGuard));
+local_stage(stageFile,'stage3a');
 stgLoad = tic;
 if ~bdIsLoaded(model)
     % ÏîÄ¿¼¶¸Ä×°»º´æ(ÉÏÒ»³¡ÊÖÊõ²úÎï/Æô¶¯Ô¤×°Åä²úÎï):ÃâÊÖÊõ,Ö»¸¶load
@@ -165,6 +171,7 @@ if ~bdIsLoaded(model)
     end
 end
 stgLoadSecs = toc(stgLoad); fprintf('AFO_PREPARE stage3 load_system: %.2f s\n',stgLoadSecs); stg = tic;
+local_stage(stageFile,'stage3');
 stgMW = tic;
 mw=get_param(model,'ModelWorkspace'); fields=fieldnames(v);
 for k=1:numel(fields),assignin(mw,fields{k},v.(fields{k}));end
@@ -173,6 +180,7 @@ assignin(mw,'Wfb',v.Wf0);
 % È¥µô¾ÉInitFcn¶Ô»ù´¡¹¤×÷Çø¼°ÏàÁÚÏîÄ¿µÄÒşÊ½ÒÀÀµ£¬ÊıÖµ±ß½ç²»±ä¡£
 set_param(model,'InitFcn','');
 stgMWsec = toc(stgMW); fprintf('AFO_PREPARE stage4 workspace+pulses: %.2f s\n',stgMWsec); stgSurg = tic;
+local_stage(stageFile,'stage4');
 if strcmp(cfg.loadMode,'power'),mode='legacyPower';
 elseif strcmp(cfg.loadMode,'torque'),mode='directTorque';
 else,mode='collectivePitch';end
@@ -205,6 +213,7 @@ if surgeried
     end
 end
 fprintf('AFO_PREPARE stage5 surgery+save: %.2f s\n',toc(stgSurg));
+local_stage(stageFile,'stage5');
 p=struct('config',cfg,'runtime',runtime,'model',model,'identity',identity, ...
     'initialState',v.InitStat,'initialOutput',v.InitOut, ...
     'initialTransition',changed, ...
@@ -231,9 +240,18 @@ for k=2:numel(names)
 end
 save(fullfile(cfg.outputDir,'prepared.mat'),'p');
 fprintf('AFO_PREPARE stage6 identity+save: %.2f s\n',toc(stgTail));
+local_stage(stageFile,'stage6');
 fprintf('AFO×¼±¸Íê³É£ºÊµ¼ÊNp=%.3f rpm£¬Ng=%.3f rpm£¬×¼±¸%.2f s¡£\n', ...
     v.InitStat(1),v.InitStat(2),p.prepareSeconds);
 fprintf('Ô¤¼ÆÈË¹¤1±¶ËÙ¼ÆËãÖÁÉÙ%.1f s£¬Áí¼Ó±àÒë/ÔİÍ££»fast²»±£Ö¤ÊµÊ±¡£\n',cfg.duration);
+end
+function local_stage(file,tag)
+% ½×¶ÎÍê³É±êÇ©ÂäÅÌ(ASCII,ºÁÃë¼¶):¹©Java½ø¶Ètick¶ÁÈ¡Ó³Éä½çÃæÎÄ°¸;Ê§°Ü¾²Ä¬(½öÓ°ÏìÎÄ°¸)
+try
+    fid=fopen(file,'w');
+    if fid>0,fprintf(fid,'%s',tag);fclose(fid);end
+catch
+end
 end
 function local_restore(folder,p,g)
 % ¸Ä×°Ä£ĞÍ±£ÁôÔÚÄÚ´æ(ÏÂÒ»³¡prepareÖ±È¡¸´ÓÃ¡¢runÃâload_system);Ö»»¹Ô­»·¾³¡£
