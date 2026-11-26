@@ -1,3 +1,8 @@
+# Shell 脚本强制 LF 行尾，禁止按平台自动转换。
+# Windows 下 core.autocrlf=true 会在检出时把 .sh 转成 CRLF，
+# 打包上传到 Linux 后 shebang 变成 /bin/bash^M，
+# 执行时报「解释器错误: 没有那个文件或目录」。
+*.sh text eol=lf
 /mvnw text eol=lf
 *.cmd text eol=crlf
 # MATLAB 交付树资产必须字节保真:runtime_packages 等运行资产带 SHA-256 哈希校验
