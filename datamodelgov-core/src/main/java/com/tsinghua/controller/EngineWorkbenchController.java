@@ -2129,7 +2129,9 @@ public class EngineWorkbenchController {
                     (d, n) -> n.toLowerCase().endsWith(".md") && n.toLowerCase().contains("summary"));
             if (summary != null && summary.isFile()) {
                 byte[] raw = java.nio.file.Files.readAllBytes(summary.toPath());
-                out.put("summaryMd", new String(raw, com.tsinghua.matlab.MatlabCharset.SESSION));
+                // 交付程序文本产物按fopen显式UTF-8写出的,严格UTF-8优先,失败回退GBK
+                // (GBK SESSION只适用于.m源码与引擎控制台输出,此前按GBK解UTF-8 md导致界面乱码)
+                out.put("summaryMd", decodeProgramText(raw));
                 out.put("summaryFile", summary.getAbsolutePath());
             }
             out.put("confirmIdentity", t.getResult() instanceof Map
@@ -2139,6 +2141,19 @@ public class EngineWorkbenchController {
             return Result.success(out);
         } catch (IOException e) {
             return Result.error("读取F3运行资产失败: " + e.getMessage());
+        }
+    }
+
+    /** 交付程序文本产物解码:厂商md/JSON按fopen显式UTF-8写出,严格UTF-8优先,
+     *  解码失败回退GBK(引擎会话GBK只适用于.m源码与控制台输出,不适用于文本产物)。 */
+    private static String decodeProgramText(byte[] raw) {
+        try {
+            return java.nio.charset.StandardCharsets.UTF_8.newDecoder()
+                    .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
+                    .decode(java.nio.ByteBuffer.wrap(raw)).toString();
+        } catch (Exception e) {
+            return new String(raw, com.tsinghua.matlab.MatlabCharset.SESSION);
         }
     }
 
